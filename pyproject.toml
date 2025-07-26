@@ -26,6 +26,20 @@ classifiers = [
 
 [project.scripts]
 lcstudy = "lcstudy.cli:main"
+lcstudy-up = "lcstudy.cli:entry_up"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+web = [
+  "fastapi>=0.110",
+  "uvicorn>=0.23",
+]
+engines = [
+  "chess>=1.10.0",
+  "httpx>=0.25",
+]
+all = [
+  "lcstudy[web,engines]",
+]
