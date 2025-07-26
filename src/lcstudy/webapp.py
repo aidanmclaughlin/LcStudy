@@ -66,18 +66,18 @@ def html_index() -> str:
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <title>LcStudy</title>
     <style>
-      body {{ font-family: system-ui, sans-serif; margin: 1rem; }}
-      .row {{ display: flex; gap: 1rem; align-items:flex-start; }}
-      .panel {{ border: 1px solid #ccc; padding: .75rem; border-radius: .5rem; }}
-      .board {{ display:grid; grid-template-columns: repeat(8, 48px); grid-auto-rows: 48px; border:1px solid #aaa; }}
-      .sq {{ display:flex; align-items:center; justify-content:center; font-size: 28px; user-select:none; cursor:pointer; }}
-      .light {{ background:#f0d9b5; }}
-      .dark {{ background:#b58863; }}
-      .sel {{ outline: 3px solid #33a; }}
-      .controls input[type=text] {{ width: 8rem; }}
-      .lines tt {{ display: block; }}
-      .bar {{ height:8px; background:#ddd; position:relative; margin-top:6px; }}
-      .bar .w {{ background:#4caf50; height:100%; }}
+      body { font-family: system-ui, sans-serif; margin: 1rem; }
+      .row { display: flex; gap: 1rem; align-items:flex-start; }
+      .panel { border: 1px solid #ccc; padding: .75rem; border-radius: .5rem; }
+      .board { display:grid; grid-template-columns: repeat(8, 48px); grid-auto-rows: 48px; border:1px solid #aaa; }
+      .sq { display:flex; align-items:center; justify-content:center; font-size: 28px; user-select:none; cursor:pointer; }
+      .light { background:#f0d9b5; }
+      .dark { background:#b58863; }
+      .sel { outline: 3px solid #33a; }
+      .controls input[type=text] { width: 8rem; }
+      .lines tt { display: block; }
+      .bar { height:8px; background:#ddd; position:relative; margin-top:6px; }
+      .bar .w { background:#4caf50; height:100%; }
     </style>
   </head>
   <body>
