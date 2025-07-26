@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lcstudy"
+version = "0.1.0"
+description = "An educational app to learn and experiment with Leela Chess Zero (LcZero)"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "LcStudy Authors" }
+]
+keywords = ["chess", "lc0", "leela", "education", "uci"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Environment :: Console",
+  "Topic :: Games/Entertainment :: Board Games",
+  "Topic :: Education",
+]
+
+[project.scripts]
+lcstudy = "lcstudy.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
