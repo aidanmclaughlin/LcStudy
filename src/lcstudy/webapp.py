@@ -741,21 +741,19 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
             if temperature > 0:
                 # Prefer short time-based analysis to encourage multiple PVs
                 multipv_count = max(5, sess.multipv)
-                infos2 = maia.analyse(sess.board, seconds=0.35, multipv=multipv_count)
+                infos2 = maia.analyse(sess.board, nodes=sess.maia_nodes, multipv=multipv_count)
                 if not isinstance(infos2, list):
                     infos2 = [infos2]
                 if len(infos2) <= 1:
-                    # Try once more with a slightly higher node limit
-                    infos2 = maia.analyse(sess.board, nodes=1500, multipv=multipv_count)
-                    if not isinstance(infos2, list):
-                        infos2 = [infos2]
+                    # If we don't get multiple PVs with 1 node, use fallback heuristic
+                    infos2 = []  # Will trigger fallback move selection
                 if len(infos2) > 1:
                     mv2 = pick_from_multipv(infos2, pov=sess.board.turn, temperature=temperature)
                 else:
                     # As a last resort, pick a heuristic move with temperature
                     mv2 = _fallback_choose_move(sess.board, temperature=temperature)
             else:
-                mv2 = maia.bestmove(sess.board, nodes=max(400, sess.maia_nodes))
+                mv2 = maia.bestmove(sess.board, nodes=sess.maia_nodes)
         sess.board.push(mv2)
         maia_move_uci = mv2.uci()
         sess.move_index += 1
