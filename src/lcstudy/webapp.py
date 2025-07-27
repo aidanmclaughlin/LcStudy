@@ -234,8 +234,19 @@ def html_index() -> str:
 
       async function submitMoveToServer(mv, fromSquare, toSquare) {
         try {
+          console.log(`=== MOVE SUBMISSION START ===`);
+          const submitStart = performance.now();
+          
+          const fetchStart = performance.now();
           const res = await fetch('/api/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv})});
+          const fetchTime = performance.now() - fetchStart;
+          console.log(`Server request took ${fetchTime.toFixed(1)}ms`);
+          
+          const parseStart = performance.now();
           const data = await res.json();
+          const parseTime = performance.now() - parseStart;
+          console.log(`Response parsing took ${parseTime.toFixed(1)}ms`);
+          
           const last = document.getElementById('last');
           
           if (data.error) {
@@ -250,6 +261,11 @@ def html_index() -> str:
           if (ok) {
             flashBoard(true);
             last.innerHTML = `Correct! Leela played <b>${data.leela_move}</b>. Maia replied <b>${data.maia_move}</b>. Total ${data.total.toFixed(3)}.`;
+            
+            const totalSubmitTime = performance.now() - submitStart;
+            console.log(`Total move submission took ${totalSubmitTime.toFixed(1)}ms`);
+            console.log(`=== SCHEDULING REFRESH IN 600ms ===`);
+            
             setTimeout(async () => {
               await refresh();
             }, 600);
@@ -395,17 +411,36 @@ def html_index() -> str:
 
       async function refresh() {
         if (!SID) return;
+        
+        console.log(`=== REFRESH START ===`);
+        const refreshStart = performance.now();
+        
+        const fetchStart = performance.now();
         const res = await fetch('/api/session/' + SID + '/state');
+        const fetchTime = performance.now() - fetchStart;
+        console.log(`State fetch took ${fetchTime.toFixed(1)}ms`);
+        
+        const parseStart = performance.now();
         const data = await res.json();
+        const parseTime = performance.now() - parseStart;
+        console.log(`State parse took ${parseTime.toFixed(1)}ms`);
+        
+        const updateStart = performance.now();
         currentFen = data.fen;
         currentTurn = data.turn;
         leelaTopMoves = data.top_lines || [];
         updateBoardFromFen(currentFen);
         clearSelection();
         setWho(data.turn);
+        const updateTime = performance.now() - updateStart;
+        console.log(`Board update took ${updateTime.toFixed(1)}ms`);
+        
         if (data.status === 'finished') {
           document.getElementById('last').innerHTML = 'Session finished. Total score: ' + (data.score_total||0).toFixed(3) + ` <a href="/api/session/${SID}/pgn" target="_blank">Download PGN</a>`;
         }
+        
+        const totalRefreshTime = performance.now() - refreshStart;
+        console.log(`=== TOTAL REFRESH: ${totalRefreshTime.toFixed(1)}ms ===`);
       }
 
       document.getElementById('new').addEventListener('click', async () => {
@@ -478,17 +513,54 @@ def open_engines(sess: Session) -> tuple[Lc0Engine, Lc0Engine]:
 
     If Maia weights are missing, reuse Leela weights to keep the app usable.
     """
+    import time
+    start_time = time.time()
+    print(f"open_engines() called for session {sess.id}")
+    
     path = sess.lc0_path or find_lc0()
     if not path:
         raise RuntimeError("lc0 not found. Run `lcstudy install lc0` first or add lc0 to PATH.")
     
     # Create Leela engine if not exists (with thread safety)
+    leela_lock_start = time.time()
+    print("Acquiring Leela lock...")
     with sess.leela_lock:
+        leela_lock_time = time.time() - leela_lock_start
+        print(f"Leela lock acquired in {leela_lock_time:.3f}s")
         if sess.leela_engine is None:
+            print(f"Creating NEW Leela engine for session {sess.id}")
             leela_cfg = EngineConfig(exe=path, weights=sess.leela_weights)
             sess.leela_engine = Lc0Engine(leela_cfg)
             sess.leela_engine.open()
-            logger.debug("Created persistent Leela engine")
+            print(f"Leela engine created and opened for session {sess.id}")
+        else:
+            print(f"Reusing existing Leela engine for session {sess.id}")
+    
+    # Create Maia engine if not exists (with thread safety)
+    maia_lock_start = time.time()
+    print("Acquiring Maia lock...")
+    with sess.maia_lock:
+        maia_lock_time = time.time() - maia_lock_start
+        print(f"Maia lock acquired in {maia_lock_time:.3f}s")
+        if sess.maia_engine is None:
+            print(f"Creating NEW Maia engine for session {sess.id}")
+            maia_cfg = EngineConfig(exe=path, weights=sess.maia_weights or sess.leela_weights)
+            sess.maia_engine = Lc0Engine(maia_cfg)
+            sess.maia_engine.open()
+            print(f"Maia engine created and opened for session {sess.id}")
+        else:
+            print(f"Reusing existing Maia engine for session {sess.id}")
+    
+    total_time = time.time() - start_time
+    print(f"open_engines() completed in {total_time:.3f}s")
+    return sess.leela_engine, sess.maia_engine
+
+
+def get_maia_engine_only(sess: Session) -> Lc0Engine:
+    """Get or create just the Maia engine without touching Leela locks."""
+    path = sess.lc0_path or find_lc0()
+    if not path:
+        raise RuntimeError("lc0 not found. Run `lcstudy install lc0` first or add lc0 to PATH.")
     
     # Create Maia engine if not exists (with thread safety)
     with sess.maia_lock:
@@ -496,9 +568,11 @@ def open_engines(sess: Session) -> tuple[Lc0Engine, Lc0Engine]:
             maia_cfg = EngineConfig(exe=path, weights=sess.maia_weights or sess.leela_weights)
             sess.maia_engine = Lc0Engine(maia_cfg)
             sess.maia_engine.open()
-            logger.debug("Created persistent Maia engine")
+            print(f"Created NEW Maia-only engine for session {sess.id}")
+        else:
+            print(f"Reusing existing Maia-only engine for session {sess.id}")
     
-    return sess.leela_engine, sess.maia_engine
+    return sess.maia_engine
 
 
 def stop_analysis(sess: Session) -> None:
@@ -734,11 +808,28 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
     sess.move_index += 1
 
     maia_move_uci: Optional[str] = None
+    import time
+    print(f"=== MAIA MOVE START ===")
+    maia_total_start = time.time()
     try:
-        _, maia = open_engines(sess)
+        engine_start = time.time()
+        print("About to get Maia engine only...")
+        maia = get_maia_engine_only(sess)
+        engine_time = time.time() - engine_start
+        print(f"Maia engine access took {engine_time:.3f}s")
+        print(f"Got Maia engine: maia={id(maia)}")
+        
+        lock_start = time.time()
         with sess.maia_lock:
+            lock_time = time.time() - lock_start
+            print(f"Maia lock acquired in {lock_time:.3f}s")
+            
             temperature = 1.0 if sess.move_index < 10 else 0.0
+            print(f"Maia move {sess.move_index}, temperature={temperature}, nodes={sess.maia_nodes}")
+            
+            analysis_start = time.time()
             if temperature > 0:
+                print(f"Maia early game analysis path")
                 # Prefer short time-based analysis to encourage multiple PVs
                 multipv_count = max(5, sess.multipv)
                 infos2 = maia.analyse(sess.board, nodes=sess.maia_nodes, multipv=multipv_count)
@@ -749,20 +840,35 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
                     infos2 = []  # Will trigger fallback move selection
                 if len(infos2) > 1:
                     mv2 = pick_from_multipv(infos2, pov=sess.board.turn, temperature=temperature)
+                    print(f"Maia used multipv selection")
                 else:
                     # As a last resort, pick a heuristic move with temperature
                     mv2 = _fallback_choose_move(sess.board, temperature=temperature)
+                    print(f"Maia used fallback heuristic")
             else:
+                print(f"Maia late game bestmove path")
                 mv2 = maia.bestmove(sess.board, nodes=sess.maia_nodes)
+                print(f"Maia used bestmove")
+            analysis_time = time.time() - analysis_start
+            print(f"Maia analysis took {analysis_time:.3f}s")
+        
+        board_start = time.time()
         sess.board.push(mv2)
         maia_move_uci = mv2.uci()
         sess.move_index += 1
-    except Exception:
+        board_time = time.time() - board_start
+        print(f"Maia board update took {board_time:.3f}s")
+        
+    except Exception as e:
+        print(f"Maia exception: {e}")
         mv2 = _fallback_choose_move(sess.board, temperature=0.0)
         if mv2 and mv2 != chess.Move.null():
             sess.board.push(mv2)
             maia_move_uci = mv2.uci()
             sess.move_index += 1
+    
+    maia_total_time = time.time() - maia_total_start
+    print(f"=== MAIA TOTAL: {maia_total_time:.3f}s ===")
 
     sess.score_total += 1.0
     if sess.board.is_game_over():
