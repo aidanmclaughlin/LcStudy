@@ -28,6 +28,7 @@ from .engines import nets_dir
 app = FastAPI(title="LcStudy")
 
 
+
 @dataclass
 class Session:
     id: str
@@ -37,17 +38,23 @@ class Session:
     maia_level: int = 1500
     multipv: int = 5
     leela_nodes: int = 2000
-    maia_nodes: int = 300
+    maia_nodes: int = 1
     leela_weights: Optional[Path] = None
     maia_weights: Optional[Path] = None
     lc0_path: Optional[Path] = None
     status: str = "playing"  # playing|finished
     history: list[dict] = field(default_factory=list)
     flip: bool = False
+    # live analysis
+    analysis_thread: Optional[threading.Thread] = None
+    stop_evt: Optional[threading.Event] = None
+    analysis_fen: Optional[str] = None
+    last_lines: list[dict] = field(default_factory=list)
 
 
 SESSIONS: Dict[str, Session] = {}
 SESS_LOCK = threading.Lock()
+
 
 
 def get_session(sid: str) -> Session:
@@ -65,186 +72,393 @@ def html_index() -> str:
     <meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <title>LcStudy</title>
+    <script src="https://unpkg.com/chess.js@1.0.0-alpha.0/chess.min.js"></script>
     <style>
-      body { font-family: system-ui, sans-serif; margin: 1rem; }
-      .row { display: flex; gap: 1rem; align-items:flex-start; }
-      .panel { border: 1px solid #ccc; padding: .75rem; border-radius: .5rem; }
-      .board { display:grid; grid-template-columns: repeat(8, 48px); grid-auto-rows: 48px; border:1px solid #aaa; }
-      .sq { display:flex; align-items:center; justify-content:center; font-size: 28px; user-select:none; cursor:pointer; }
-      .light { background:#f0d9b5; }
-      .dark { background:#b58863; }
-      .sel { outline: 3px solid #33a; }
-      .controls input[type=text] { width: 8rem; }
-      .lines tt { display: block; }
-      .bar { height:8px; background:#ddd; position:relative; margin-top:6px; }
-      .bar .w { background:#4caf50; height:100%; }
+      :root { --sq: 64px; --light: #3b4252; --dark: #2e3440; --brand: #8b5cf6; --ok: #22c55e; --bad:#ef4444; --ink:#e5e7eb; --muted:#9ca3af; --bg1:#0b1220; --bg2:#0b1324; }
+      html,body { height: 100%; }
+      body { margin:0; font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,system-ui,sans-serif; color: var(--ink); background: radial-gradient(1200px 800px at 10% 10%, #0f1a34 0%, var(--bg1) 50%), linear-gradient(180deg, var(--bg1), var(--bg2)); }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 28px; }
+      .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+      h1 { margin:0; font-weight: 800; letter-spacing: -0.02em; font-size: 22px; color:#f8fafc; }
+      .meta { color: var(--muted); font-size: 13px; }
+      .panel { background: rgba(17, 24, 39, .7); border: 1px solid rgba(148,163,184,.15); padding: 14px; border-radius: 14px; box-shadow: 0 10px 30px rgba(2,6,23,.25); backdrop-filter: blur(4px); }
+      .stage { display:flex; align-items:center; justify-content:center; margin-top: 8px; }
+      #board { width: 512px; height: 512px; border: 1px solid rgba(148,163,184,.2); border-radius: 12px; overflow:hidden; display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); }
+      .square { display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; position: relative; }
+      .square.light { background: #f0d9b5; }
+      .square.dark { background: #b58863; }
+      .square.selected { box-shadow: inset 0 0 0 3px #ff6b6b; }
+      .square.highlight { box-shadow: inset 0 0 0 3px #4ecdc4; }
+      .piece { width: 85%; height: 85%; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: grab; transition: transform 0.1s ease; }
+      .piece:active { cursor: grabbing; transform: scale(1.1); }
+      .square:hover .piece { transform: scale(1.05); }
+      .board-flash-green { animation: boardOk 600ms ease; }
+      .board-flash-red { animation: boardBad 600ms ease; }
+      @keyframes boardOk { 
+        0% { box-shadow: 0 0 0 0 rgba(34,197,94,.0); transform: scale(1); } 
+        50% { box-shadow: 0 0 0 12px rgba(34,197,94,.8); transform: scale(1.02); } 
+        100% { box-shadow: 0 0 0 0 rgba(34,197,94,.0); transform: scale(1); } 
+      }
+      @keyframes boardBad { 
+        0% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); transform: scale(1); } 
+        50% { box-shadow: 0 0 0 12px rgba(239,68,68,.8); transform: scale(0.98); } 
+        100% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); transform: scale(1); } 
+      }
+      @keyframes shake { 
+        0%, 100% { transform: translateX(0) rotate(0deg); } 
+        25% { transform: translateX(-8px) rotate(-1deg); } 
+        75% { transform: translateX(8px) rotate(1deg); } 
+      }
+      .pill { display:inline-flex; align-items:center; gap:8px; background: rgba(139,92,246,.12); color:#c4b5fd; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(139,92,246,.25); }
+      .btn { background: linear-gradient(180deg,#8b5cf6,#7c3aed); color:#fff; border:0; padding:9px 14px; border-radius: 10px; font-weight:700; cursor:pointer; box-shadow: 0 6px 14px rgba(124,58,237,.3); }
+      .btn:hover { filter:brightness(1.05); }
     </style>
   </head>
   <body>
-    <h1>LcStudy: Learn to think like Leela</h1>
-    <div class='panel'>
-      <form id='startForm'>
-        Maia level: <input type='number' id='maia' value='1500' min='1100' max='1900' step='100'>
-        MultiPV: <input type='number' id='mpv' value='5' min='1' max='10'>
-        Leela nodes: <input type='number' id='lnodes' value='2000' min='200' step='100'>
-        Maia nodes: <input type='number' id='mnodes' value='300' min='50' step='50'>
-        <button type='submit'>Start New Session</button>
-      </form>
-      <div id='status'></div>
+    <div class='wrap'>
+    <div class='head'>
+      <h1>LcStudy</h1>
+      <div class='pill'><span id='who'>You (Leela) — White to move</span></div>
     </div>
-    <div class='row'>
-      <div class='panel' style='flex:1;'>
-        <h3>Board</h3>
-        <div id='board' class='board'></div>
-        <div>
-          <label><input type='checkbox' id='flip'> Black at bottom</label>
-        </div>
-        <div class='controls'>
-          <form id='moveForm'>
-            Predict Leela's move: <input type='text' id='move' autocomplete='off' placeholder='e2e4'>
-            <button type='submit'>Play</button>
-            <button type='button' id='resign'>End</button>
-          </form>
-          <div id='last'></div>
-        </div>
+    <div class='panel' style='display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:14px;'>
+      <button id='new' class='btn'>New Game</button>
+      <div id='status' class='meta'>Drag a piece to make your prediction.</div>
+    </div>
+    <div class='stage'>
+      <div>
+        <div id='board'></div>
+        <div class='meta' style='text-align:center; margin-top:8px;'>Green = exact match, Red = not Leela's choice.</div>
+        <div id='last' style='text-align:center; margin-top:8px;'></div>
       </div>
-      <div class='panel' style='width: 28rem;'>
-        <h3>Leela Top lines</h3>
-        <div id='lines' class='lines'></div>
-        <div class='bar'><div id='scorebar' class='w' style='width:0%'></div></div>
-        <div>Score total: <span id='score_total'>0.000</span> | Avg/guess: <span id='score_avg'>0.000</span></div>
-        <h4>History</h4>
-        <div id='history' style='max-height:12rem; overflow:auto; font-family:monospace;'></div>
-      </div>
+    </div>
     </div>
     <script>
+      console.log("Script starting to load...");
       let SID = null;
-      let ORIENT_BLACK = false;
-      let SELECTED = null;
-      let LEGAL_HINT = [];
-      const PIECES = { 'P':'♙','N':'♘','B':'♗','R':'♖','Q':'♕','K':'♔','p':'♟','n':'♞','b':'♝','r':'♜','q':'♛','k':'♚' };
+      let game = null;
+      let selectedSquare = null;
+      let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      let currentTurn = 'white';
+      let leelaTopMoves = []; // Pre-fetched Leela analysis for instant validation
+
+      // Piece images from Wikimedia Commons
+      const pieceImages = {
+        'wK': 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg',
+        'wQ': 'https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg',
+        'wR': 'https://upload.wikimedia.org/wikipedia/commons/7/72/Chess_rlt45.svg',
+        'wB': 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Chess_blt45.svg',
+        'wN': 'https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg',
+        'wP': 'https://upload.wikimedia.org/wikipedia/commons/4/45/Chess_plt45.svg',
+        'bK': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Chess_kdt45.svg',
+        'bQ': 'https://upload.wikimedia.org/wikipedia/commons/4/47/Chess_qdt45.svg',
+        'bR': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Chess_rdt45.svg',
+        'bB': 'https://upload.wikimedia.org/wikipedia/commons/9/98/Chess_bdt45.svg',
+        'bN': 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg',
+        'bP': 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg'
+      };
+
+      function flashBoard(success) {
+        const boardEl = document.getElementById('board');
+        const className = success ? 'board-flash-green' : 'board-flash-red';
+        
+        // Remove any existing flash classes first
+        boardEl.classList.remove('board-flash-green', 'board-flash-red');
+        
+        // Force reflow to ensure class removal takes effect
+        boardEl.offsetHeight;
+        
+        // Add new flash class
+        boardEl.classList.add(className);
+        setTimeout(() => {
+          boardEl.classList.remove(className);
+        }, 300); // Super fast casino-like feedback
+      }
+
+      let pendingMoves = new Set();
+
+      async function submitMove(mv){
+        if (!SID || pendingMoves.has(mv)) return;
+        
+        console.log("submitMove", mv);
+        pendingMoves.add(mv);
+        
+        const fromSquare = mv.slice(0, 2);
+        const toSquare = mv.slice(2, 4);
+        
+        // INSTANT CLIENT-SIDE VALIDATION using pre-fetched Leela moves
+        console.log("Checking move:", mv, "against Leela moves:", leelaTopMoves);
+        const leelaTopMove = leelaTopMoves.length > 0 ? leelaTopMoves[0].move : null;
+        const isLeelaMove = leelaTopMove === mv;
+        console.log("Leela top move:", leelaTopMove, "Is match:", isLeelaMove);
+        
+        if (isLeelaMove) {
+          // INSTANT CORRECT FEEDBACK - no server round trip needed!
+          animateMove(fromSquare, toSquare);
+          flashBoard(true);
+          
+          // Now submit to server in background to advance game
+          submitCorrectMoveToServer(mv);
+        } else if (leelaTopMove === null) {
+          // No Leela analysis available - allow move but validate with server
+          console.log("No Leela analysis available, falling back to server validation");
+          animateMove(fromSquare, toSquare);
+          submitMoveToServer(mv, fromSquare, toSquare);
+        } else {
+          // INSTANT WRONG FEEDBACK
+          flashBoard(false);
+          revertMove(fromSquare, toSquare);
+          document.getElementById('last').textContent = `Not Leela's choice. Try again. (Leela wants: ${leelaTopMove})`;
+        }
+        
+        pendingMoves.delete(mv);
+      }
+
+      async function submitCorrectMoveToServer(mv) {
+        try {
+          // Pass a flag indicating this move was pre-validated client-side
+          const res = await fetch('/api/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv, client_validated: true})});
+          const data = await res.json();
+          
+          if (data.correct) {
+            const last = document.getElementById('last');
+            last.innerHTML = `Correct! Leela played <b>${data.leela_move}</b>. Maia replied <b>${data.maia_move}</b>. Total ${data.total.toFixed(3)}.`;
+            
+            // Refresh to get new position and new Leela analysis
+            setTimeout(async () => {
+              await refresh();
+            }, 600);
+          }
+        } catch (e) {
+          console.error("Server error:", e);
+          // Even if server fails, the move was visually correct
+        }
+      }
+
+      async function submitMoveToServer(mv, fromSquare, toSquare) {
+        try {
+          const res = await fetch('/api/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv})});
+          const data = await res.json();
+          const last = document.getElementById('last');
+          
+          if (data.error) { 
+            flashBoard(false);
+            revertMove(fromSquare, toSquare);
+            last.textContent = 'Error: ' + data.error;
+            return;
+          }
+          
+          const ok = !!data.correct;
+          
+          if (ok) {
+            flashBoard(true);
+            last.innerHTML = `Correct! Leela played <b>${data.leela_move}</b>. Maia replied <b>${data.maia_move}</b>. Total ${data.total.toFixed(3)}.`;
+            setTimeout(async () => {
+              await refresh();
+            }, 600);
+          } else {
+            flashBoard(false);
+            revertMove(fromSquare, toSquare);
+            last.textContent = data.message || "Not Leela's choice. Try again.";
+          }
+        } catch (e) {
+          console.error("Server error:", e);
+          flashBoard(false);
+          revertMove(fromSquare, toSquare);
+        }
+      }
+
+      function animateMove(fromSquare, toSquare) {
+        const fromEl = document.querySelector(`[data-square="${fromSquare}"]`);
+        const toEl = document.querySelector(`[data-square="${toSquare}"]`);
+        const piece = fromEl?.querySelector('.piece');
+        
+        if (piece && toEl) {
+          // Remove any existing piece on target square
+          const existingPiece = toEl.querySelector('.piece');
+          if (existingPiece) {
+            existingPiece.remove();
+          }
+          
+          // Move piece instantly
+          toEl.appendChild(piece);
+          piece.style.transform = 'scale(1.1)';
+          setTimeout(() => {
+            piece.style.transform = '';
+          }, 150);
+        }
+      }
+
+      function revertMove(fromSquare, toSquare) {
+        // Revert to current board state instantly
+        updateBoardFromFen(currentFen);
+        
+        // Add a little shake animation to show rejection
+        const boardEl = document.getElementById('board');
+        boardEl.style.animation = 'shake 0.3s ease-in-out';
+        setTimeout(() => {
+          boardEl.style.animation = '';
+        }, 300);
+      }
+      function initBoard() {
+        console.log("Initializing board...");
+        createBoardHTML();
+        updateBoardFromFen(currentFen);
+        console.log("Board initialized with custom implementation");
+      }
+
+      function createBoardHTML() {
+        const boardEl = document.getElementById('board');
+        console.log("Board element found:", boardEl);
+        boardEl.innerHTML = '';
+        
+        let squareCount = 0;
+        for (let rank = 8; rank >= 1; rank--) {
+          for (let file = 0; file < 8; file++) {
+            const square = String.fromCharCode(97 + file) + rank; // a1, b1, etc.
+            const squareEl = document.createElement('div');
+            squareEl.className = `square ${(rank + file) % 2 === 0 ? 'dark' : 'light'}`;
+            squareEl.dataset.square = square;
+            squareEl.addEventListener('click', onSquareClick);
+            boardEl.appendChild(squareEl);
+            squareCount++;
+          }
+        }
+        console.log("Created", squareCount, "squares");
+      }
 
       function parseFEN(fen) {
-        const part = fen.split(' ')[0];
-        const ranks = part.split('/');
-        const board = [];
-        for (let r=0;r<8;r++){
-          const row = [];
-          for (const ch of ranks[r]){
-            if (/[1-8]/.test(ch)) { for(let i=0;i<parseInt(ch);i++) row.push(''); }
-            else row.push(ch);
-          }
-          board.push(row);
-        }
-        return board;
-      }
-
-      function sqName(file, rank) {
-        return 'abcdefgh'[file] + (rank+1);
-      }
-
-      function renderBoard(fen) {
-        const b = document.getElementById('board');
-        b.innerHTML = '';
-        const m = parseFEN(fen);
-        for (let r=0;r<8;r++){
-          for (let f=0; f<8; f++){
-            const rr = ORIENT_BLACK ? r : 7 - r;
-            const ff = ORIENT_BLACK ? 7 - f : f;
-            const piece = m[rr][ff];
-            const div = document.createElement('div');
-            const dark = (r+f)%2==1;
-            div.className = 'sq ' + (dark?'dark':'light');
-            div.dataset.square = sqName(f, r);
-            div.textContent = PIECES[piece] || '';
-            div.addEventListener('click', onSquareClick);
-            b.appendChild(div);
+        const position = {};
+        const parts = fen.split(' ');
+        const board = parts[0];
+        const ranks = board.split('/');
+        
+        for (let rankIndex = 0; rankIndex < 8; rankIndex++) {
+          const rank = 8 - rankIndex; // 8, 7, 6, ..., 1
+          const rankData = ranks[rankIndex];
+          let file = 0;
+          
+          for (let char of rankData) {
+            if (char >= '1' && char <= '8') {
+              file += parseInt(char);
+            } else {
+              const square = String.fromCharCode(97 + file) + rank;
+              const color = char === char.toUpperCase() ? 'w' : 'b';
+              const piece = char.toUpperCase();
+              position[square] = color + piece;
+              file++;
+            }
           }
         }
+        return position;
       }
 
-      function onSquareClick(ev){
-        const sq = ev.currentTarget.dataset.square;
-        if (!SELECTED) { SELECTED = sq; highlight(sq); return; }
-        if (SELECTED === sq) { SELECTED = null; clearHighlights(); return; }
-        const mv = SELECTED + sq;
-        SELECTED = null; clearHighlights();
-        document.getElementById('move').value = mv;
+      function updateBoardFromFen(fen) {
+        console.log("Updating board from FEN:", fen);
+        
+        // Clear all pieces
+        document.querySelectorAll('.piece').forEach(p => p.remove());
+        
+        // Parse FEN and add pieces
+        const position = parseFEN(fen);
+        console.log("Parsed position:", position);
+        
+        for (const [square, piece] of Object.entries(position)) {
+          const pieceEl = document.createElement('div');
+          pieceEl.className = 'piece';
+          pieceEl.style.backgroundImage = `url(${pieceImages[piece]})`;
+          pieceEl.dataset.piece = piece;
+          
+          const squareEl = document.querySelector(`[data-square="${square}"]`);
+          if (squareEl) {
+            squareEl.appendChild(pieceEl);
+          }
+        }
+        console.log("Updated board with", Object.keys(position).length, "pieces");
       }
 
-      function highlight(sq){
-        clearHighlights();
-        document.querySelectorAll('.sq').forEach(el=>{ if(el.dataset.square===sq) el.classList.add('sel'); });
+      function onSquareClick(event) {
+        const square = event.currentTarget.dataset.square;
+        const piece = event.currentTarget.querySelector('.piece');
+        
+        if (selectedSquare === null) {
+          // Select square if it has a white piece (user always plays white)
+          if (piece && piece.style.backgroundImage.includes('lt45')) {
+            selectedSquare = square;
+            event.currentTarget.classList.add('selected');
+          }
+        } else {
+          // Try to make a move
+          if (selectedSquare === square) {
+            // Deselect
+            clearSelection();
+          } else {
+            // Attempt move
+            const move = selectedSquare + square;
+            clearSelection();
+            submitMove(move);
+          }
+        }
       }
-      function clearHighlights(){
-        document.querySelectorAll('.sq').forEach(el=>el.classList.remove('sel'));
+
+      function clearSelection() {
+        document.querySelectorAll('.square.selected').forEach(sq => {
+          sq.classList.remove('selected');
+        });
+        selectedSquare = null;
       }
-      async function start() {{
-        const maia = parseInt(document.getElementById('maia').value);
-        const mpv = parseInt(document.getElementById('mpv').value);
-        const lnodes = parseInt(document.getElementById('lnodes').value);
-        const mnodes = parseInt(document.getElementById('mnodes').value);
-        const res = await fetch('/api/session/new', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{maia_level:maia, multipv:mpv, leela_nodes:lnodes, maia_nodes:mnodes}})}});
+
+      function setWho(turn) {
+        const el = document.getElementById('who');
+        el.textContent = `You (Leela) — ${turn.charAt(0).toUpperCase() + turn.slice(1)} to move`;
+      }
+
+      async function start() {
+        const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})});
         const data = await res.json();
         SID = data.id;
         document.getElementById('status').textContent = 'Session ' + SID + ' started.';
         await refresh();
-      }}
-      async function refresh() {{
+      }
+
+      async function refresh() {
         if (!SID) return;
         const res = await fetch('/api/session/' + SID + '/state');
         const data = await res.json();
-        renderBoard(data.fen);
-        const total = (data.score_total||0);
-        const guesses = (data.guesses||0);
-        document.getElementById('score_total').textContent = total.toFixed(3);
-        document.getElementById('score_avg').textContent = (guesses? total/guesses:0).toFixed(3);
-        const pct = Math.min(100, Math.max(0, total * 10));
-        document.getElementById('scorebar').style.width = pct + '%';
+        
+        currentFen = data.fen;
+        currentTurn = data.turn;
+        leelaTopMoves = data.top_lines || []; // Cache Leela's analysis for instant validation
+        
+        console.log('Refreshing with FEN:', currentFen, 'Turn:', currentTurn);
+        console.log('Raw top_lines from server:', data.top_lines);
+        console.log('Parsed leelaTopMoves:', leelaTopMoves);
+        if (leelaTopMoves.length > 0) {
+          console.log('Leela top move is:', leelaTopMoves[0].move);
+        } else {
+          console.log('NO LEELA MOVES AVAILABLE!');
+        }
+        
+        // Update board position
+        updateBoardFromFen(currentFen);
+        clearSelection();
+        
+        setWho(data.turn);
+        
         if (data.status === 'finished') {
           document.getElementById('last').innerHTML = 'Session finished. Total score: ' + (data.score_total||0).toFixed(3) + ` <a href="/api/session/${SID}/pgn" target="_blank">Download PGN</a>`;
         }
-        const hres = await fetch('/api/session/' + SID + '/history');
-        const hdata = await hres.json();
-        const hist = hdata.history || [];
-        const elh = document.getElementById('history');
-        elh.innerHTML = '';
-        hist.forEach((it, idx)=>{
-          const d = document.createElement('div');
-          d.textContent = `${idx+1}. you ${it.your_move} | leela ${it.leela_move} | maia ${it.maia_move} | +${it.score.toFixed(3)} (=${it.total.toFixed(3)})`;
-          elh.appendChild(d);
-        });
-      }}
-      document.getElementById('startForm').addEventListener('submit', async (e) => {{ e.preventDefault(); await start(); }});
-      document.getElementById('flip').addEventListener('change', async (e)=>{ ORIENT_BLACK = e.target.checked; await refresh(); });
-      document.getElementById('moveForm').addEventListener('submit', async (e) => {{
-        e.preventDefault();
-        if (!SID) return;
-        const mv = document.getElementById('move').value.trim();
-        document.getElementById('move').value = '';
-        const res = await fetch('/api/session/' + SID + '/predict', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{move: mv}})}});
-        const data = await res.json();
-        const last = document.getElementById('last');
-        if (data.error) {{
-          last.textContent = 'Error: ' + data.error;
-        }} else {{
-          last.innerHTML = `You played <b>${data.your_move}</b>. Leela played <b>${data.leela_move}</b>. Score +${data.score.toFixed(3)} (total ${data.total.toFixed(3)}). Maia replied <b>${data.maia_move}</b>.`;
-          const lines = data.top_lines || [];
-          const el = document.getElementById('lines');
-          el.innerHTML = '';
-          lines.forEach((ln) => {{
-            const tt = document.createElement('tt');
-            const cp = ln.cp !== null ? (ln.cp>0? '+'+ln.cp: ln.cp) : (ln.mate? ('#'+ln.mate): '');
-            tt.textContent = `#${ln.multipv} ${cp} ${ln.move}  ${ln.san||''}`;
-            el.appendChild(tt);
-          }});
-          await refresh();
-        }}
-      }});
-      document.getElementById('resign').addEventListener('click', async ()=>{
-        if (!SID) return;
-        await fetch('/api/session/' + SID + '/end', {method:'POST'});
-        await refresh();
+      }
+
+      // Event listeners
+      document.getElementById('new').addEventListener('click', async () => {
+        await start();
+      });
+
+      // Initialize when page loads
+      window.addEventListener('DOMContentLoaded', async () => {
+        console.log("DOM loaded, initializing board immediately");
+        initBoard();
+        start();
       });
     </script>
   </body>
@@ -318,9 +532,49 @@ def open_engines(sess: Session) -> tuple[Lc0Engine, Lc0Engine]:
     return Lc0Engine(leela_cfg), Lc0Engine(maia_cfg)
 
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    return html_index()
+def stop_analysis(sess: Session) -> None:
+    th = sess.analysis_thread
+    if th and th.is_alive():
+        if sess.stop_evt:
+            sess.stop_evt.set()
+        th.join(timeout=2.5)
+    sess.analysis_thread = None
+    sess.stop_evt = None
+
+
+def restart_analysis(sess: Session) -> None:
+    stop_analysis(sess)
+    sess.analysis_fen = sess.board.fen()
+    evt = threading.Event()
+    sess.stop_evt = evt
+
+    def worker():
+        try:
+            leela, _ = open_engines(sess)
+        except Exception:
+            return
+        try:
+            with leela:
+                board = chess.Board(sess.analysis_fen)
+                nodes = 1000
+                while not evt.is_set() and sess.status == "playing" and sess.analysis_fen == sess.board.fen():
+                    try:
+                        infos = leela.analyse(board, nodes=nodes, multipv=max(1, sess.multipv))
+                        sess.last_lines = info_to_lines_san(board, infos, board.turn)
+                        nodes = min(nodes * 2, 200000)
+                    except Exception:
+                        break
+        except Exception:
+            pass
+
+    th = threading.Thread(target=worker, daemon=True)
+    sess.analysis_thread = th
+    th.start()
+
+
+@app.get("/")
+def index() -> HTMLResponse:
+    return HTMLResponse(html_index(), media_type="text/html; charset=utf-8")
 
 
 @app.post("/api/session/new")
@@ -328,7 +582,7 @@ def api_session_new(payload: dict) -> JSONResponse:
     maia_level = int(payload.get("maia_level", 1500))
     multipv = int(payload.get("multipv", 5))
     leela_nodes = int(payload.get("leela_nodes", 2000))
-    maia_nodes = int(payload.get("maia_nodes", 300))
+    maia_nodes = 1
     sid = uuid.uuid4().hex[:8]
     # Resolve default weights paths if present
     leela_w = nets_dir() / "lczero-best.pb.gz"
@@ -346,6 +600,11 @@ def api_session_new(payload: dict) -> JSONResponse:
     )
     with SESS_LOCK:
         SESSIONS[sid] = sess
+    # start live analysis
+    try:
+        restart_analysis(sess)
+    except Exception:
+        pass
     return JSONResponse({"id": sid})
 
 
@@ -356,6 +615,9 @@ def api_session_state(sid: str) -> JSONResponse:
     except KeyError:
         raise HTTPException(404, "Session not found")
 
+    # Ensure we always have fresh Leela analysis
+    top_lines = get_current_leela_analysis(sess)
+
     return JSONResponse(
         {
             "id": sess.id,
@@ -365,44 +627,103 @@ def api_session_state(sid: str) -> JSONResponse:
             "guesses": len(sess.history),
             "ply": sess.move_index,
             "status": sess.status,
+            "top_lines": top_lines,
         }
     )
+
+def get_current_leela_analysis(sess):
+    """Get current Leela analysis by creating fresh engine instance"""
+    try:
+        # ALWAYS do fresh analysis for the current position - no caching
+        board = sess.board.copy()
+        print(f"🔥 Getting fresh Leela analysis for position: {board.fen()}")
+        
+        # Create fresh engine instance
+        leela, _ = open_engines(sess)
+            
+        # Quick analysis with moderate nodes for reasonable strength
+        with leela:
+            infos = leela.analyse(board, nodes=500, multipv=3)
+            if not isinstance(infos, list):
+                infos = [infos]
+        
+        from .engines import info_to_lines
+        lines = info_to_lines(infos, board.turn)
+        
+        # Cache the fresh analysis
+        sess.last_lines = lines
+        print(f"🎯 Fresh analysis complete, top move: {lines[0]['move'] if lines else 'none'}")
+        return lines
+            
+    except Exception as e:
+        print(f"❌ Leela analysis failed: {e}")
+        # Fallback to simple heuristic moves
+        board = sess.board.copy()
+        return _fallback_top_lines(board, k=3, pov=board.turn)
 
 
 @app.post("/api/session/{sid}/predict")
 def api_session_predict(sid: str, payload: dict) -> JSONResponse:
+    print(f"🎯 START predict endpoint: {payload}")
     try:
         sess = get_session(sid)
     except KeyError:
         raise HTTPException(404, "Session not found")
 
     move_str = str(payload.get("move", "")).strip()
+    client_validated = payload.get("client_validated", False)
+    print(f"🎯 Received move: {move_str}, client_validated: {client_validated}")
     if not move_str:
         return JSONResponse({"error": "Missing move"}, status_code=400)
 
     board = sess.board.copy()
+    print(f"🎯 Current board position: {board.fen()}")
     try:
         # Parse move (assume UCI)
         mv = chess.Move.from_uci(move_str)
+        print(f"🎯 Parsed move: {mv}")
         if mv not in board.legal_moves:
+            print(f"🚨 Illegal move! Legal moves: {[m.uci() for m in board.legal_moves]}")
             return JSONResponse({"error": "Illegal move in current position"}, status_code=400)
-    except Exception:
+        print(f"🎯 Move is legal, proceeding...")
+    except Exception as e:
+        print(f"🚨 Move parsing failed: {e}")
         return JSONResponse({"error": "Invalid move format. Use UCI like e2e4 or g1f3."}, status_code=400)
 
-    # Compute Leela best move and multipv
-    engine_ok = True
-    try:
-        leela, maia = open_engines(sess)
-        with leela:
-            infos = leela.analyse(board, nodes=sess.leela_nodes, multipv=max(1, sess.multipv))
-            top_lines = info_to_lines_san(board, infos, board.turn)
-            # Determine best move
-            best_move = infos[0].get("pv")[0] if infos and infos[0].get("pv") else leela.bestmove(board, nodes=max(1000, sess.leela_nodes // 2))
-    except Exception as e:
-        engine_ok = False
-        infos = []
-        top_lines = _fallback_top_lines(board, k=max(1, sess.multipv), pov=board.turn)
-        best_move = _fallback_choose_move(board, temperature=0.0)
+    # Compute Leela best move (prefer live lines; fallback to quick query)
+    if client_validated:
+        # Trust client-side validation - use the submitted move as Leela's choice
+        print(f"🔥 Skipping Leela validation - trusting client-side analysis")
+        best_move = mv
+        engine_ok = True
+        infos = []  # Initialize empty infos for client-validated moves
+        top_lines = []  # Initialize empty top_lines for client-validated moves
+    else:
+        print(f"🔥 Starting Leela best move computation...")
+        engine_ok = True
+        try:
+            stop_analysis(sess)
+            infos = []
+            top_lines = sess.last_lines or []
+            print(f"🔥 Cached top_lines: {top_lines}")
+            if top_lines and top_lines[0].get("move"):
+                best_move = chess.Move.from_uci(top_lines[0]["move"])  # type: ignore
+                print(f"🔥 Using cached Leela move: {best_move.uci()}")
+            else:
+                # Create fresh engine instance for bestmove
+                print(f"🔥 No cached move, creating fresh Leela engine...")
+                leela, _ = open_engines(sess)
+                with leela:
+                    print(f"🔥 Calculating Leela bestmove...")
+                    best_move = leela.bestmove(board, nodes=max(1000, sess.leela_nodes), seconds=10.0)
+                    print(f"🔥 Leela bestmove: {best_move.uci()}")
+        except Exception as e:
+            print(f"🚨 Leela bestmove failed: {e}")
+            engine_ok = False
+            infos = []
+            top_lines = _fallback_top_lines(board, k=max(1, sess.multipv), pov=board.turn)
+            best_move = _fallback_choose_move(board, temperature=0.0)
+            print(f"🔥 Fallback Leela move: {best_move.uci()}")
 
     # Find chosen move rank and cp
     your_rank = None
@@ -430,9 +751,29 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
     from .engines import score_similarity
 
     score = score_similarity(best_cp, your_cp, your_rank, max_rank=len(infos))
-    sess.score_total += score
 
-    # Apply Leela move (not the user's guess)
+    # Require exact match to proceed
+    print(f"🎯 Move validation: user={mv.uci()} vs leela={best_move.uci()}")
+    if mv != best_move:
+        # Wrong guess: do not advance; restart analysis and ask to try again
+        print(f"❌ Move rejected: {mv.uci()} != {best_move.uci()}")
+        try:
+            restart_analysis(sess)
+        except Exception:
+            pass
+        response = {
+            "your_move": mv.uci(),
+            "correct": False,
+            "message": "Not Leela's choice. Try again.",
+            "score_hint": score,
+        }
+        print(f"🎯 Returning rejection response: {response}")
+        return JSONResponse(response)
+    
+    print(f"✅ Move accepted: {mv.uci()} matches Leela's choice!")
+
+    # Correct: award score and proceed (apply Leela's best move)
+    sess.score_total += 1.0
     board.push(best_move)
     sess.board = board
     sess.move_index += 1
@@ -441,23 +782,30 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
     reply_move_san = None
     try:
         if engine_ok:
+            # Create fresh Maia engine instance
+            print(f"🎭 Creating Maia engine for position: {sess.board.fen()}")
+            _, maia = open_engines(sess)
             with maia:
-                # For the first 10 plies (5 moves by each), sample from MultiPV with temperature
-                temperature = 1.2 if sess.move_index <= 10 else 0.0
-                mpv = max(2, min(5, sess.multipv)) if temperature > 0 else 1
-                infos_m = maia.analyse(sess.board, nodes=sess.maia_nodes, multipv=mpv)
-                if temperature > 0 and mpv > 1:
-                    mv_reply = pick_from_multipv(infos_m, sess.board.turn, temperature=temperature)
-                else:
-                    mv_reply = infos_m[0].get("pv")[0] if infos_m and infos_m[0].get("pv") else maia.bestmove(sess.board, nodes=max(200, sess.maia_nodes))
+                print(f"🎭 Maia calculating move with nodes=1...")
+                # Add 5 second timeout to prevent hanging
+                mv_reply = maia.bestmove(sess.board, nodes=1, seconds=5.0)
+                print(f"🎭 Maia chose move: {mv_reply.uci()}")
         else:
-            temperature = 1.2 if sess.move_index <= 10 else 0.0
-            mv_reply = _fallback_choose_move(sess.board, temperature=temperature)
-    except Exception:
-        mv_reply = _fallback_choose_move(sess.board, temperature=1.0 if sess.move_index <= 10 else 0.0)
+            print(f"🎭 Engine not ok, using fallback for Maia move")
+            mv_reply = _fallback_choose_move(sess.board, temperature=0.0)
+    except Exception as e:
+        print(f"🚨 Maia move generation failed: {e}")
+        mv_reply = _fallback_choose_move(sess.board, temperature=0.0)
+        print(f"🎭 Fallback Maia move: {mv_reply.uci()}")
 
+    print(f"🎭 Pushing Maia move {mv_reply.uci()} to board")
     sess.board.push(mv_reply)
     sess.move_index += 1
+    print(f"🎭 Board after Maia move: {sess.board.fen()}")
+    print(f"🎭 Move index now: {sess.move_index}")
+    
+    # CRITICAL: Clear old analysis for fresh analysis next time
+    sess.last_lines = []  # Clear cached analysis so next state request gets fresh data
 
     # Record history entry
     sess.history.append(
@@ -473,6 +821,12 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
         }
     )
 
+    # restart analysis for next position
+    try:
+        restart_analysis(sess)
+    except Exception:
+        pass
+
     # Check game over
     game_over = False
     result = None
@@ -481,20 +835,19 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
         result = sess.board.result(claim_draw=True)
         sess.status = "finished"
 
-    return JSONResponse(
-        {
-            "your_move": mv.uci(),
-            "leela_move": best_move.uci(),
-            "maia_move": mv_reply.uci(),
-            "score": score,
-            "total": sess.score_total,
-            "top_lines": top_lines,
-            "fen": sess.board.fen(),
-            "board_ascii": board_ascii(sess.board),
-            "game_over": game_over,
-            "result": result,
-        }
-    )
+    response_data = {
+        "your_move": mv.uci(),
+        "leela_move": best_move.uci(),
+        "maia_move": mv_reply.uci(),
+        "correct": True,
+        "score": 1.0,
+        "total": sess.score_total,
+        "fen": sess.board.fen(),
+        "game_over": game_over,
+        "result": result,
+    }
+    print(f"🎯 Returning response: {response_data}")
+    return JSONResponse(response_data)
 
 
 @app.post("/api/session/{sid}/end")
@@ -504,6 +857,10 @@ def api_session_end(sid: str) -> JSONResponse:
     except KeyError:
         raise HTTPException(404, "Session not found")
     sess.status = "finished"
+    try:
+        stop_analysis(sess)
+    except Exception:
+        pass
     return JSONResponse({"ok": True})
 
 
