@@ -193,12 +193,14 @@ def info_to_lines(
         nodes = info.get("nodes")
         depth = info.get("depth")
         seldepth = info.get("seldepth")
+        wdl = info.get("wdl")  # Win-Draw-Loss probabilities from Leela
         lines.append(
             {
                 "multipv": idx,
                 "move": move.uci() if isinstance(move, chess.Move) else None,
                 "cp": cp,
                 "mate": mate,
+                "wdl": wdl,
                 "nps": nps,
                 "nodes": nodes,
                 "depth": depth,

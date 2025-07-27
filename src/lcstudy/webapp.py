@@ -93,18 +93,19 @@ def html_index() -> str:
     <meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <title>LcStudy</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
       :root { --sq: 64px; --light: #3b4252; --dark: #2e3440; --brand: #8b5cf6; --ok: #22c55e; --bad:#ef4444; --ink:#e5e7eb; --muted:#9ca3af; --bg1:#0b1220; --bg2:#0b1324; }
-      html,body { height: 100%; }
-      body { margin:0; font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,system-ui,sans-serif; color: var(--ink); background: radial-gradient(1200px 800px at 10% 10%, #0f1a34 0%, var(--bg1) 50%), linear-gradient(180deg, var(--bg1), var(--bg2)); }
+      html,body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+      body { font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,system-ui,sans-serif; color: var(--ink); background: radial-gradient(1200px 800px at 10% 10%, #0f1a34 0%, var(--bg1) 50%), linear-gradient(180deg, var(--bg1), var(--bg2)); }
       .wrap { max-width: 1100px; margin: 0 auto; padding: 28px; }
       .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
       h1 { margin:0; font-weight: 800; letter-spacing: -0.02em; font-size: 22px; color:#f8fafc; }
       .meta { color: var(--muted); font-size: 13px; }
       .panel { background: rgba(17, 24, 39, .7); border: 1px solid rgba(148,163,184,.15); padding: 14px; border-radius: 14px; box-shadow: 0 10px 30px rgba(2,6,23,.25); backdrop-filter: blur(4px); }
       .stage { display:flex; align-items:center; justify-content:center; margin-top: 8px; }
-      #board { width: 512px; height: 512px; border: 1px solid rgba(148,163,184,.2); border-radius: 12px; overflow:hidden; display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); }
+      #board { border: 1px solid rgba(148,163,184,.2); border-radius: 12px; overflow:hidden; display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); box-shadow: 0 20px 50px rgba(2,6,23,.4); }
       .square { display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; position: relative; }
       .square.light { background: #f0d9b5; }
       .square.dark { background: #b58863; }
@@ -136,20 +137,65 @@ def html_index() -> str:
     </style>
   </head>
   <body>
-    <div class='wrap'>
-    <div class='head'>
-      <h1>LcStudy</h1>
-      <div class='pill'><span id='who'>You (Leela) — White to move</span></div>
-    </div>
-    <div class='panel' style='display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:14px;'>
-      <button id='new' class='btn'>New Game</button>
-      <div id='status' class='meta'>Drag a piece to make your prediction.</div>
-    </div>
-    <div class='stage'>
-      <div>
-        <div id='board'></div>
-        <div class='meta' style='text-align:center; margin-top:8px;'>Green = exact match, Red = not Leela's choice.</div>
-        <div id='last' style='text-align:center; margin-top:8px;'></div>
+    <div class='wrap' style='width: 100%; height: 100vh; padding: 1vh; box-sizing: border-box; display: flex; align-items: center; justify-content: center;'>
+    <!-- Two-column layout -->
+    <div style='display: flex; gap: 3vw; align-items: flex-start; height: 90vh;'>
+      
+      <!-- Left column: Board section (larger) -->
+      <div style='display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%;'>
+        <div style='text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: center;'>
+          <div id='board' style='width: min(70vw, 90vh); height: min(70vw, 90vh); margin: 0 auto;'></div>
+        </div>
+        
+      </div>
+      
+      <!-- Right column: Stats and controls -->
+      <div style='width: 25vw; min-width: 280px; display: flex; flex-direction: column; gap: 1vh; height: 100%; overflow: hidden;'>
+        
+        <!-- Header & Controls Combined -->
+        <div class='panel' style='padding: 1vh;'>
+          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1vh;'>
+            <h1 style='margin: 0; color: #f8fafc; font-size: 1.2rem; font-weight: 800;'>LcStudy</h1>
+            <button id='new' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap;'>New Game</button>
+          </div>
+          <div>
+            <label for='maia-elo' style='display: block; margin-bottom: 0.3vh; color: var(--muted); font-size: 0.7rem;'>Maia Strength:</label>
+            <select id='maia-elo' style='width: 100%; padding: 0.3vh 0.8vh; border-radius: 0.3vh; border: 1px solid rgba(148,163,184,.3); background: rgba(17, 24, 39, .8); color: var(--ink); font-size: 0.75rem;'>
+              <option value="1100">1100 (Beginner)</option>
+              <option value="1300">1300 (Novice)</option>
+              <option value="1500" selected>1500 (Intermediate)</option>
+              <option value="1700">1700 (Advanced)</option>
+              <option value="1900">1900 (Expert)</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Leela Score Chart -->
+        <div class='panel' style='padding: 1vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
+          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5vh;'>
+            <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Win Probability</h2>
+            <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Score: <span id='total-score'>0.000</span></span>
+          </div>
+          <canvas id='score-chart' style='width: 100%; flex: 1;'></canvas>
+        </div>
+        
+        <!-- Attempts Chart -->
+        <div class='panel' style='padding: 1vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
+          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5vh;'>
+            <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Attempts per Move</h2>
+            <span style='color: #f59e0b; font-weight: 600; font-size: 0.75rem;'>Avg: <span id='avg-attempts'>0.0</span></span>
+          </div>
+          <canvas id='attempts-chart' style='width: 100%; flex: 1;'></canvas>
+        </div>
+        
+        <!-- PGN Moves (Single Line) -->
+        <div class='panel' style='padding: 1vh; flex: 0 0 auto;'>
+          <h2 style='margin: 0 0 0.5vh 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Recent Moves</h2>
+          <div id='pgn-moves' style='font-family: Georgia, serif; font-size: 0.7rem; line-height: 1.3; overflow-x: auto; white-space: nowrap;'>
+            <div id='move-list' class='meta'>Game not started</div>
+          </div>
+        </div>
+        
       </div>
     </div>
     </div>
@@ -160,6 +206,18 @@ def html_index() -> str:
       let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
       let currentTurn = 'white';
       let leelaTopMoves = []; // Pre-fetched Leela analysis for instant validation
+      
+      // Game tracking data
+      let gameScores = []; // Leela evaluations per move
+      let gameAttempts = []; // Attempts per move
+      let totalAttempts = 0;
+      let currentMoveAttempts = 0;
+      let moveCounter = 1;
+      let pgnMoves = [];
+      
+      // Chart instances
+      let scoreChart = null;
+      let attemptsChart = null;
 
       
       const pieceImages = {
@@ -176,6 +234,177 @@ def html_index() -> str:
         'bN': 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg',
         'bP': 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg'
       };
+
+      function initializeCharts() {
+        // Initialize Score Chart
+        const scoreCtx = document.getElementById('score-chart').getContext('2d');
+        scoreChart = new Chart(scoreCtx, {
+          type: 'line',
+          data: {
+            labels: [],
+            datasets: [{
+              label: "Win Probability",
+              data: [],
+              borderColor: '#8b5cf6',
+              backgroundColor: 'rgba(139, 92, 246, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+              padding: 15
+            },
+            scales: {
+              y: {
+                min: 0,
+                max: 100,
+                grid: { color: 'rgba(148,163,184,0.2)' },
+                ticks: { 
+                  color: '#9ca3af', 
+                  font: { size: 10 },
+                  callback: function(value) {
+                    return value + '%';
+                  }
+                }
+              },
+              x: {
+                grid: { color: 'rgba(148,163,184,0.2)' },
+                ticks: { 
+                  color: '#9ca3af', 
+                  font: { size: 10 }
+                }
+              }
+            },
+            plugins: {
+              legend: { 
+                display: false
+              }
+            }
+          }
+        });
+
+        // Initialize Attempts Chart
+        const attemptsCtx = document.getElementById('attempts-chart').getContext('2d');
+        attemptsChart = new Chart(attemptsCtx, {
+          type: 'bar',
+          data: {
+            labels: [],
+            datasets: [{
+              label: 'Attempts',
+              data: [],
+              backgroundColor: '#f59e0b',
+              borderColor: '#d97706',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+              padding: 15
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                grid: { color: 'rgba(148,163,184,0.2)' },
+                ticks: { 
+                  color: '#9ca3af', 
+                  font: { size: 10 },
+                  stepSize: 1
+                }
+              },
+              x: {
+                grid: { color: 'rgba(148,163,184,0.2)' },
+                ticks: { 
+                  color: '#9ca3af', 
+                  font: { size: 10 }
+                }
+              }
+            },
+            plugins: {
+              legend: { 
+                display: false
+              }
+            }
+          }
+        });
+      }
+
+      function updateStatistics(scoreTotal, currentMove) {
+        document.getElementById('total-score').textContent = scoreTotal.toFixed(3);
+        
+        const avgAttempts = totalAttempts > 0 ? (totalAttempts / Math.max(1, gameAttempts.length)) : 0;
+        document.getElementById('avg-attempts').textContent = avgAttempts.toFixed(1);
+      }
+
+      function updateCharts() {
+        if (scoreChart && gameScores.length > 0) {
+          scoreChart.data.labels = gameScores.map((_, i) => i + 1);
+          scoreChart.data.datasets[0].data = gameScores;
+          scoreChart.update('none');
+        }
+        
+        if (attemptsChart && gameAttempts.length > 0) {
+          attemptsChart.data.labels = gameAttempts.map((_, i) => `Move ${i + 1}`);
+          attemptsChart.data.datasets[0].data = gameAttempts;
+          attemptsChart.update('none');
+        }
+      }
+
+      function updatePGNDisplay() {
+        const pgnElement = document.getElementById('move-list');
+        const pgnContainer = document.getElementById('pgn-moves');
+        
+        if (pgnMoves.length === 0) {
+          pgnElement.innerHTML = '<span class="meta">Game not started</span>';
+          return;
+        }
+        
+        let pgnText = '';
+        for (let i = 0; i < pgnMoves.length; i += 2) {
+          const moveNum = Math.floor(i / 2) + 1;
+          const whiteMove = pgnMoves[i] || '';
+          const blackMove = pgnMoves[i + 1] || '';
+          pgnText += `<span style="color: #f8fafc; font-weight: 600;">${moveNum}.</span> ${whiteMove}`;
+          if (blackMove) pgnText += ` ${blackMove}`;
+          pgnText += ' ';
+        }
+        pgnElement.innerHTML = pgnText;
+        
+        // Auto-scroll to show latest moves
+        setTimeout(() => {
+          pgnContainer.scrollLeft = pgnContainer.scrollWidth;
+        }, 10);
+        
+      }
+
+      function resetGameData() {
+        gameScores = [];
+        gameAttempts = [];
+        totalAttempts = 0;
+        currentMoveAttempts = 0;
+        moveCounter = 1;
+        pgnMoves = [];
+        
+        if (scoreChart) {
+          scoreChart.data.labels = [];
+          scoreChart.data.datasets[0].data = [];
+          scoreChart.update('none');
+        }
+        
+        if (attemptsChart) {
+          attemptsChart.data.labels = [];
+          attemptsChart.data.datasets[0].data = [];
+          attemptsChart.update('none');
+        }
+        
+        updatePGNDisplay();
+        updateStatistics(0, 1);
+      }
 
       function flashBoard(success) {
         const boardEl = document.getElementById('board');
@@ -202,16 +431,21 @@ def html_index() -> str:
         const isLeelaMove = leelaTopMove === mv;
         
         if (isLeelaMove) {
+          currentMoveAttempts++;
+          totalAttempts++;
           animateMove(fromSquare, toSquare);
           flashBoard(true);
           submitCorrectMoveToServer(mv);
         } else if (leelaTopMove === null) {
+          currentMoveAttempts++;
+          totalAttempts++;
           animateMove(fromSquare, toSquare);
           submitMoveToServer(mv, fromSquare, toSquare);
         } else {
+          currentMoveAttempts++;
+          totalAttempts++;
           flashBoard(false);
           revertMove();
-          document.getElementById('last').textContent = `Not Leela's choice. Try again. (Leela wants: ${leelaTopMove})`;
         }
         
         pendingMoves.delete(mv);
@@ -223,8 +457,18 @@ def html_index() -> str:
           const data = await res.json();
           
           if (data.correct) {
-            const last = document.getElementById('last');
-            last.innerHTML = `Correct! Leela played <b>${data.leela_move}</b>. Maia replied <b>${data.maia_move}</b>. Total ${data.total.toFixed(3)}.`;
+            // Record this move's attempt count
+            gameAttempts.push(currentMoveAttempts);
+            currentMoveAttempts = 0;
+            moveCounter++;
+            
+            // Add moves to PGN tracking
+            pgnMoves.push(data.leela_move);
+            if (data.maia_move) {
+              pgnMoves.push(data.maia_move);
+            }
+            
+            // Move feedback removed - visual feedback through board animation
             
             setTimeout(async () => {
               await refresh();
@@ -262,8 +506,19 @@ def html_index() -> str:
           const ok = !!data.correct;
           
           if (ok) {
+            // Record this move's attempt count
+            gameAttempts.push(currentMoveAttempts);
+            currentMoveAttempts = 0;
+            moveCounter++;
+            
+            // Add moves to PGN tracking
+            pgnMoves.push(data.leela_move);
+            if (data.maia_move) {
+              pgnMoves.push(data.maia_move);
+            }
+            
             flashBoard(true);
-            last.innerHTML = `Correct! Leela played <b>${data.leela_move}</b>. Maia replied <b>${data.maia_move}</b>. Total ${data.total.toFixed(3)}.`;
+            // Move feedback removed - visual feedback through board animation
             
             const totalSubmitTime = performance.now() - submitStart;
             console.log(`Total move submission took ${totalSubmitTime.toFixed(1)}ms`);
@@ -275,7 +530,6 @@ def html_index() -> str:
           } else {
             flashBoard(false);
             revertMove();
-            last.textContent = data.message || "Not Leela's choice. Try again.";
           }
         } catch (e) {
           flashBoard(false);
@@ -400,15 +654,15 @@ def html_index() -> str:
       }
 
       function setWho(turn) {
-        const el = document.getElementById('who');
-        el.textContent = `You (Leela) — ${turn.charAt(0).toUpperCase() + turn.slice(1)} to move`;
+        // Turn indicator removed - color is evident from board orientation
       }
 
       async function start() {
-        const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})});
+        const maiaLevel = parseInt(document.getElementById('maia-elo').value);
+        const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({maia_level: maiaLevel})});
         const data = await res.json();
         SID = data.id;
-        document.getElementById('status').textContent = 'Session ' + SID + ' started.';
+        resetGameData();
         await refresh();
       }
 
@@ -433,14 +687,41 @@ def html_index() -> str:
         currentTurn = data.turn;
         leelaTopMoves = data.top_lines || [];
         console.log(`*** Client received: FEN=${currentFen.slice(0,30)}, top_move=${leelaTopMoves[0]?.move || 'none'}`);
+        
+        // Extract Leela's win probability if available
+        if (leelaTopMoves.length > 0) {
+          // Try to get win probability from Leela (could be in wdl, winrate, or other field)
+          let winProb = null;
+          if (leelaTopMoves[0].wdl && leelaTopMoves[0].wdl.length >= 3) {
+            // WDL format: [win, draw, loss] probabilities
+            winProb = leelaTopMoves[0].wdl[0] * 100; // Convert to percentage
+          } else if (leelaTopMoves[0].winrate !== null && leelaTopMoves[0].winrate !== undefined) {
+            winProb = leelaTopMoves[0].winrate * 100; // Convert to percentage
+          } else if (leelaTopMoves[0].cp !== null) {
+            // Fallback: convert centipawns to approximate win probability
+            const cp = leelaTopMoves[0].cp;
+            winProb = (1 / (1 + Math.pow(10, -cp / 400))) * 100;
+          }
+          
+          if (winProb !== null) {
+            gameScores.push(winProb);
+          }
+        }
+        
         updateBoardFromFen(currentFen);
         clearSelection();
         setWho(data.turn);
+        
+        // Update statistics and charts
+        updateStatistics(data.score_total || 0, data.ply || moveCounter);
+        updateCharts();
+        updatePGNDisplay();
+        
         const updateTime = performance.now() - updateStart;
         console.log(`Board update took ${updateTime.toFixed(1)}ms`);
         
         if (data.status === 'finished') {
-          document.getElementById('last').innerHTML = 'Session finished. Total score: ' + (data.score_total||0).toFixed(3) + ` <a href="/api/session/${SID}/pgn" target="_blank">Download PGN</a>`;
+          // Game finished - final score shown in chart header
         }
         
         const totalRefreshTime = performance.now() - refreshStart;
@@ -451,7 +732,11 @@ def html_index() -> str:
         await start();
       });
 
-      window.addEventListener('DOMContentLoaded', async () => { initBoard(); start(); });
+      window.addEventListener('DOMContentLoaded', async () => { 
+        initBoard(); 
+        initializeCharts();
+        start(); 
+      });
     </script>
   </body>
  </html>
