@@ -62,6 +62,11 @@ class Session:
     stop_evt: Optional[threading.Event] = None
     analysis_fen: Optional[str] = None
     last_lines: list[dict] = field(default_factory=list)
+    # Persistent engines (stay open for the session duration)
+    leela_engine: Optional['Lc0Engine'] = None
+    maia_engine: Optional['Lc0Engine'] = None
+    leela_lock: threading.Lock = field(default_factory=threading.Lock)
+    maia_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 SESSIONS: Dict[str, Session] = {}
@@ -469,16 +474,31 @@ def _fallback_choose_move(board: chess.Board, temperature: float = 0.0) -> chess
 
 
 def open_engines(sess: Session) -> tuple[Lc0Engine, Lc0Engine]:
-    """Create fresh engine instances for Leela and Maia.
+    """Get or create persistent engine instances for Leela and Maia.
 
     If Maia weights are missing, reuse Leela weights to keep the app usable.
     """
     path = sess.lc0_path or find_lc0()
     if not path:
         raise RuntimeError("lc0 not found. Run `lcstudy install lc0` first or add lc0 to PATH.")
-    leela_cfg = EngineConfig(exe=path, weights=sess.leela_weights)
-    maia_cfg = EngineConfig(exe=path, weights=sess.maia_weights or sess.leela_weights)
-    return Lc0Engine(leela_cfg), Lc0Engine(maia_cfg)
+    
+    # Create Leela engine if not exists (with thread safety)
+    with sess.leela_lock:
+        if sess.leela_engine is None:
+            leela_cfg = EngineConfig(exe=path, weights=sess.leela_weights)
+            sess.leela_engine = Lc0Engine(leela_cfg)
+            sess.leela_engine.open()
+            logger.debug("Created persistent Leela engine")
+    
+    # Create Maia engine if not exists (with thread safety)
+    with sess.maia_lock:
+        if sess.maia_engine is None:
+            maia_cfg = EngineConfig(exe=path, weights=sess.maia_weights or sess.leela_weights)
+            sess.maia_engine = Lc0Engine(maia_cfg)
+            sess.maia_engine.open()
+            logger.debug("Created persistent Maia engine")
+    
+    return sess.leela_engine, sess.maia_engine
 
 
 def stop_analysis(sess: Session) -> None:
@@ -505,16 +525,16 @@ def restart_analysis(sess: Session) -> None:
         except Exception:
             return
         try:
-            with leela:
-                board = chess.Board(sess.analysis_fen)
-                nodes = 1000
-                while not evt.is_set() and sess.status == "playing" and sess.analysis_fen == sess.board.fen():
-                    try:
+            board = chess.Board(sess.analysis_fen)
+            nodes = 1000
+            while not evt.is_set() and sess.status == "playing" and sess.analysis_fen == sess.board.fen():
+                try:
+                    with sess.leela_lock:
                         infos = leela.analyse(board, nodes=nodes, multipv=max(1, sess.multipv))
-                        sess.last_lines = info_to_lines_san(board, infos, board.turn)
-                        nodes = min(nodes * 2, 200000)
-                    except Exception:
-                        break
+                    sess.last_lines = info_to_lines_san(board, infos, board.turn)
+                    nodes = min(nodes * 2, 200000)
+                except Exception:
+                    break
         except Exception:
             pass
 
@@ -551,6 +571,14 @@ def api_session_new(payload: dict) -> JSONResponse:
     )
     with SESS_LOCK:
         SESSIONS[sid] = sess
+    
+    # Pre-warm engines to eliminate first-move delay
+    try:
+        leela, maia = open_engines(sess)
+        logger.info("Pre-warmed engines for session %s", sid)
+    except Exception as e:
+        logger.warning("Failed to pre-warm engines: %s", e)
+    
     try:
         restart_analysis(sess)
     except Exception:
@@ -586,7 +614,7 @@ def get_current_leela_analysis(sess):
         board = sess.board.copy()
         logger.debug("Analyzing current position: %s", board.fen())
         leela, _ = open_engines(sess)
-        with leela:
+        with sess.leela_lock:
             infos = leela.analyse(board, nodes=500, multipv=3)
             if not isinstance(infos, list):
                 infos = [infos]
@@ -647,10 +675,10 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
             else:
                 logger.debug("no cached move; creating engine")
                 leela, _ = open_engines(sess)
-                with leela:
-                    logger.debug("calculating bestmove")
+                logger.debug("calculating bestmove")
+                with sess.leela_lock:
                     best_move = leela.bestmove(board, nodes=max(1000, sess.leela_nodes), seconds=10.0)
-                    logger.debug("bestmove=%s", best_move.uci())
+                logger.debug("bestmove=%s", best_move.uci())
         except Exception as e:
             logger.warning("bestmove failed: %s", e)
             engine_ok = False
@@ -708,7 +736,7 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
     maia_move_uci: Optional[str] = None
     try:
         _, maia = open_engines(sess)
-        with maia:
+        with sess.maia_lock:
             temperature = 1.0 if sess.move_index < 10 else 0.0
             if temperature > 0:
                 # Prefer short time-based analysis to encourage multiple PVs
@@ -728,9 +756,9 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
                     mv2 = _fallback_choose_move(sess.board, temperature=temperature)
             else:
                 mv2 = maia.bestmove(sess.board, nodes=max(400, sess.maia_nodes))
-            sess.board.push(mv2)
-            maia_move_uci = mv2.uci()
-            sess.move_index += 1
+        sess.board.push(mv2)
+        maia_move_uci = mv2.uci()
+        sess.move_index += 1
     except Exception:
         mv2 = _fallback_choose_move(sess.board, temperature=0.0)
         if mv2 and mv2 != chess.Move.null():
