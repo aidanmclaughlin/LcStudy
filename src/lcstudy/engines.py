@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+"""Engine utilities and thin wrappers around python-chess engines.
+
+This module standardizes where binaries and networks live, selects a sensible
+default lc0 backend, and exposes a tiny Lc0Engine helper with convenience
+methods. It also provides helpers to convert engine output to simple line
+dicts usable by the web UI.
+"""
+
 import asyncio
 import os
 import platform
@@ -14,34 +22,39 @@ import chess.engine
 
 
 def home_dir() -> Path:
+    """Return the base application directory (default: ~/.lcstudy)."""
     d = os.environ.get("LCSTUDY_HOME")
     if d:
         return Path(d).expanduser()
-    # Default to ~/.lcstudy
     return Path.home() / ".lcstudy"
 
 
 def bin_dir() -> Path:
+    """Return the directory for binaries."""
     return home_dir() / "bin"
 
 
 def nets_dir() -> Path:
+    """Return the directory for network weights."""
     return home_dir() / "nets"
 
 
 def ensure_dirs() -> None:
+    """Create standard directories if they do not already exist."""
     bin_dir().mkdir(parents=True, exist_ok=True)
     nets_dir().mkdir(parents=True, exist_ok=True)
 
 
 def default_backend() -> Optional[str]:
+    """Choose a reasonable lc0 backend based on platform.
+
+    macOS prefers Metal, others let lc0 decide unless overridden.
+    """
     sysname = platform.system().lower()
     machine = platform.machine().lower()
     if sysname == "darwin":
-        # Prefer Metal on macOS for Apple Silicon and Intel (if present)
         return "metal"
     if sysname == "linux":
-        # Let lc0 pick; users can override to opencl/cuda depending on setup
         return None
     if sysname == "windows":
         return None
@@ -49,15 +62,13 @@ def default_backend() -> Optional[str]:
 
 
 def find_lc0() -> Optional[Path]:
-    # 1) Look for system lc0
+    """Locate the lc0 executable in PATH or the local bin directory."""
     p = shutil.which("lc0")
     if p:
         return Path(p)
-    # 2) Look in our bin
     cand = bin_dir() / "lc0"
     if cand.exists():
         return cand
-    # 3) On Windows
     cand_exe = bin_dir() / "lc0.exe"
     if cand_exe.exists():
         return cand_exe
@@ -66,26 +77,27 @@ def find_lc0() -> Optional[Path]:
 
 @dataclass
 class EngineConfig:
+    """Configuration for an lc0 engine instance."""
     exe: Path
     weights: Optional[Path] = None
     threads: int = max(os.cpu_count() or 2, 2)
     backend: Optional[str] = default_backend()
 
     def to_options(self) -> dict[str, object]:
+        """Map the config to lc0 UCI option names."""
         opts: dict[str, object] = {
             "Threads": self.threads,
         }
         if self.backend:
-            # lc0 uses Backend option name
             opts["Backend"] = self.backend
         if self.weights:
-            # lc0 accepts either WeightsFile or Weights depending on version
             opts["WeightsFile"] = str(self.weights)
             opts["Weights"] = str(self.weights)
         return opts
 
 
 class Lc0Engine:
+    """Thin context-managed wrapper around an lc0 engine process."""
     def __init__(self, cfg: EngineConfig):
         self.cfg = cfg
         self.engine: Optional[chess.engine.SimpleEngine] = None
@@ -98,17 +110,17 @@ class Lc0Engine:
         self.close()
 
     def open(self) -> None:
+        """Start the engine process and configure options."""
         if self.engine is not None:
             return
         self.engine = chess.engine.SimpleEngine.popen_uci(str(self.cfg.exe))
-        # Configure options
         try:
             self.engine.configure(self.cfg.to_options())
         except chess.engine.EngineError:
-            # Some options may not exist in some builds; ignore
             pass
 
     def close(self) -> None:
+        """Shut down the engine process if running."""
         if self.engine is not None:
             try:
                 self.engine.quit()
@@ -124,6 +136,7 @@ class Lc0Engine:
         depth: Optional[int] = None,
         multipv: int = 1,
     ) -> list[chess.engine.InfoDict]:
+        """Run analyse and return a list of InfoDicts regardless of backend."""
         if self.engine is None:
             raise RuntimeError("Engine not open")
         limit = chess.engine.Limit(time=seconds, nodes=nodes, depth=depth)
@@ -140,6 +153,7 @@ class Lc0Engine:
         nodes: Optional[int] = None,
         depth: Optional[int] = None,
     ) -> chess.Move:
+        """Return the best move for a given limit."""
         if self.engine is None:
             raise RuntimeError("Engine not open")
         limit = chess.engine.Limit(time=seconds, nodes=nodes, depth=depth)
@@ -148,6 +162,7 @@ class Lc0Engine:
 
 
 def pv_to_san(board: chess.Board, pv: Iterable[chess.Move]) -> str:
+    """Convert a principal variation to SAN string from a board position."""
     b = board.copy(stack=False)
     parts: list[str] = []
     for mv in pv:
@@ -159,6 +174,7 @@ def pv_to_san(board: chess.Board, pv: Iterable[chess.Move]) -> str:
 def info_to_lines(
     infos: Iterable[chess.engine.InfoDict], pov: chess.Color
 ) -> list[dict]:
+    """Project python-chess InfoDicts to simple JSON-serializable dicts."""
     lines: list[dict] = []
     for idx, info in enumerate(infos, start=1):
         move = None
@@ -195,6 +211,7 @@ def info_to_lines(
 def info_to_lines_san(
     board: chess.Board, infos: Iterable[chess.engine.InfoDict], pov: chess.Color
 ) -> list[dict]:
+    """Like info_to_lines but include the SAN line for display."""
     lines: list[dict] = []
     for idx, info in enumerate(infos, start=1):
         pv = info.get("pv")
@@ -225,7 +242,11 @@ def pick_from_multipv(
     pov: chess.Color,
     temperature: float = 1.0,
 ) -> chess.Move:
-    # Softmax over cp scores (converted to centipawns from pov)
+    """Pick a move from MultiPV using a softmax over cp scores.
+
+    If a mating line is present, prefer it deterministically. When
+    temperature is near zero, this becomes argmax.
+    """
     import math
 
     moves: list[chess.Move] = []
@@ -242,7 +263,6 @@ def pick_from_multipv(
             continue
         pov_score = score.pov(pov)
         if pov_score.is_mate():
-            # If a mate line exists, prefer it deterministically
             return move
         cp = float(pov_score.score())
         if best_cp is None or cp > best_cp:
@@ -251,7 +271,6 @@ def pick_from_multipv(
         scores.append(cp)
 
     if not moves:
-        # Fallback: choose the first pv move
         for info in infos:
             pv = info.get("pv")
             if pv:
@@ -261,7 +280,6 @@ def pick_from_multipv(
     if temperature <= 1e-6:
         return moves[scores.index(max(scores))]
 
-    # Normalize scores relative to best to stabilize exponentials
     max_cp = max(scores)
     logits = [(s - max_cp) / max(temperature, 1e-6) for s in scores]
     exps = [math.exp(l) for l in logits]
@@ -287,16 +305,17 @@ def score_similarity(
     rank: Optional[int],
     max_rank: int,
 ) -> float:
-    # Simple scoring: 1.0 for exact best move, else discount by cp delta and rank
+    """Heuristic similarity score in [0,1] between chosen and best.
+
+    1.0 for exact best, else decays with cp delta and rank.
+    """
     if rank == 1:
         return 1.0
-    # If no evals, fallback on rank-based scoring
     if best_cp is None or chosen_cp is None:
         if rank is None:
             return 0.0
         return max(0.0, 1.0 - (rank - 1) / max(max_rank - 1, 1))
     delta = float(best_cp - chosen_cp)
-    # Convert to [0,1] using exp decay per 100 cp
     import math
 
     base = math.exp(-max(0.0, delta) / 100.0)

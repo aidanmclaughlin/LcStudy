@@ -1,18 +1,35 @@
+"""LcStudy command-line interface.
+
+This module provides the ``lcstudy`` console entrypoint, offering
+- environment checks (doctor)
+- installer helpers for engines and networks
+- a local web app launcher
+
+The implementation keeps a light touch: we only check for required Python
+dependencies at runtime and print clear instructions if something is missing,
+instead of attempting to modify the user's environment.
+"""
+
 import argparse
+import importlib
 import shutil
 import subprocess
 import sys
 from typing import Optional
-import importlib
 
 from . import __version__
 
 
 def which(cmd: str) -> Optional[str]:
+    """Return full path to an executable if it is found on PATH."""
     return shutil.which(cmd)
 
 
 def run(cmd: list[str]) -> tuple[int, str, str]:
+    """Run a command and capture its output.
+
+    Returns a tuple of (returncode, stdout, stderr).
+    """
     try:
         proc = subprocess.run(
             cmd,
@@ -27,17 +44,20 @@ def run(cmd: list[str]) -> tuple[int, str, str]:
 
 
 def cmd_version(_: argparse.Namespace) -> int:
+    """Print package version."""
     print(__version__)
     return 0
 
 
 def cmd_hello(args: argparse.Namespace) -> int:
+    """Friendly greeting for quick smoke testing."""
     name = args.name or "there"
     print(f"Hello, {name}! This is LcStudy.")
     return 0
 
 
 def cmd_doctor(_: argparse.Namespace) -> int:
+    """Check local environment for common requirements (lc0, networks)."""
     print("LcStudy environment check:\n")
     ok = True
 
@@ -63,7 +83,6 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         print("- lc0: NOT found in PATH")
         print("  Tip: Install LcZero and ensure the 'lc0' binary is available on your PATH.")
 
-    # Networks
     try:
         nd = nets_dir()
         best = nd / "lczero-best.pb.gz"
@@ -88,9 +107,7 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     else:
         print("\nSome checks failed. See tips above.")
         return 1
-
-
-# Commands
+ 
 def cmd_install_lc0(_: argparse.Namespace) -> int:
     try:
         from .install import install_lc0
@@ -102,10 +119,10 @@ def cmd_install_lc0(_: argparse.Namespace) -> int:
         return 1
 
 
-def cmd_install_bestnet(args: argparse.Namespace) -> int:
+def cmd_install_bestnet(_: argparse.Namespace) -> int:
     try:
         from .install import install_lczero_best_network
-        path = install_lczero_best_network(url=getattr(args, 'url', None), sha=getattr(args, 'sha', None), file=getattr(args, 'file', None))
+        path = install_lczero_best_network()
         print(f"Best network saved to {path}")
         return 0
     except Exception as e:
@@ -143,13 +160,11 @@ def cmd_install_all(_: argparse.Namespace) -> int:
 
 
 def cmd_web(args: argparse.Namespace) -> int:
-    # Ensure web deps and launch the FastAPI app with uvicorn
     if not _ensure_web_deps():
         return 1
     import uvicorn  # type: ignore
     from .webapp import app
 
-    # Quick preflight
     try:
         from .engines import find_lc0
         if not find_lc0():
@@ -162,17 +177,15 @@ def cmd_web(args: argparse.Namespace) -> int:
 
 
 def cmd_up(args: argparse.Namespace) -> int:
-    # Ensure Python deps
-    _ensure_web_deps()
+    if not _ensure_web_deps():
+        return 1
 
-    # Ensure required engines/nets
     try:
         _ensure_installed(quick=bool(args.quick), maia_level=int(args.maia_level))
     except Exception as e:
         print(f"Setup warning: {e}")
         print("Proceeding to launch the web app in fallback mode. You can still explore the UI.")
 
-    # Launch web
     import uvicorn  # type: ignore
     from .webapp import app
 
@@ -190,25 +203,30 @@ def cmd_up(args: argparse.Namespace) -> int:
 
 
 def _ensure_web_deps() -> bool:
+    """Validate optional runtime dependencies are importable.
+
+    We do not attempt to auto-install packages here; instead we provide clear
+    instructions to the user to install the documented extras.
+    """
     required = ["fastapi", "uvicorn", "chess", "httpx"]
     for pkg in required:
         try:
             importlib.import_module(pkg)
         except ModuleNotFoundError:
             print(f"Missing required package: {pkg}")
-            print("Run: pip install fastapi uvicorn python-chess httpx")
+            print("Run: pip install -e '.[all]'  # or: pip install fastapi uvicorn python-chess httpx")
             return False
     return True
 
 
 def _ensure_installed(quick: bool = False, maia_level: int = 1500) -> None:
+    """Ensure lc0 and required networks exist, installing if missing."""
     from .engines import find_lc0, nets_dir
     from .install import (
         install_lc0,
         install_lczero_best_network,
         install_maia_all,
         install_maia,
-        DEFAULT_BESTNET_URL,
     )
 
     if not find_lc0():
@@ -218,20 +236,8 @@ def _ensure_installed(quick: bool = False, maia_level: int = 1500) -> None:
     nd.mkdir(parents=True, exist_ok=True)
     best = nd / "lczero-best.pb.gz"
     if not best.exists():
-        print("Downloading best LcZero network (default BT4-1740)...")
-        try:
-            # First try the provided default; users can override via env/CLI later
-            install_lczero_best_network(url=DEFAULT_BESTNET_URL)
-        except Exception:
-            # Fallback to legacy endpoints and instructions
-            try:
-                install_lczero_best_network()
-            except Exception as e:
-                print("  Best net auto-download failed. You can provide one via:")
-                print("   - lcstudy install bestnet --url https://.../nn-xxxx.pb.gz")
-                print("   - lcstudy install bestnet --sha <sha>")
-                print("   - lcstudy install bestnet --file /path/to/nn.pb.gz")
-                raise
+        print("Downloading best LcZero network...")
+        install_lczero_best_network()
     if quick:
         mp = nd / f"maia-{maia_level}.pb.gz"
         if not mp.exists():
@@ -245,6 +251,7 @@ def _ensure_installed(quick: bool = False, maia_level: int = 1500) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Create the top-level argument parser for the CLI."""
     parser = argparse.ArgumentParser(
         prog="lcstudy",
         description="LcStudy - learn and experiment with LcZero",
@@ -261,7 +268,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_doc = sub.add_parser("doctor", help="Check local environment and lc0 availability")
     p_doc.set_defaults(func=cmd_doctor)
 
-    # Installers
     p_inst = sub.add_parser("install", help="Install engines and networks")
     inst_sub = p_inst.add_subparsers(dest="what", required=True)
 
@@ -269,9 +275,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_lc0.set_defaults(func=cmd_install_lc0)
 
     p_net = inst_sub.add_parser("bestnet", help="Download best LcZero network")
-    p_net.add_argument("--url", help="Direct URL to a .pb.gz weights file", default=None)
-    p_net.add_argument("--sha", help="Network SHA to fetch from known endpoints", default=None)
-    p_net.add_argument("--file", help="Local path to a .pb.gz weights file", default=None)
     p_net.set_defaults(func=cmd_install_bestnet)
 
     p_maia = inst_sub.add_parser("maia", help="Download Maia networks")
@@ -281,13 +284,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_all = inst_sub.add_parser("all", help="Install lc0, best net, and all Maia nets")
     p_all.set_defaults(func=cmd_install_all)
 
-    # Web app
     p_web = sub.add_parser("web", help="Run local web app")
     p_web.add_argument("--host", default="127.0.0.1")
     p_web.add_argument("--port", type=int, default=8000)
     p_web.set_defaults(func=cmd_web)
 
-    # One-shot: install everything (if needed) and launch web app
     p_up = sub.add_parser("up", help="Install engines/nets if missing and launch the web app")
     p_up.add_argument("--host", default="127.0.0.1")
     p_up.add_argument("--port", type=int, default=8000)
@@ -311,61 +312,3 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-
-
-# End of file
-
-
-def cmd_up(args: argparse.Namespace) -> int:
-    # Ensure Python deps
-    _ensure_web_deps()
-
-    # Ensure required engines/nets
-    try:
-        _ensure_installed(quick=bool(args.quick), maia_level=int(args.maia_level))
-    except Exception as e:
-        print(f"Setup warning: {e}")
-        print("Proceeding to launch the web app in fallback mode. You can still explore the UI.")
-
-    # Launch web
-    import uvicorn  # type: ignore
-    from .webapp import app
-
-    url = f"http://{args.host}:{args.port}"
-    print(f"Launching web app at {url}")
-    if not args.no_open:
-        try:
-            import webbrowser
-            webbrowser.open(url)
-        except Exception:
-            pass
-    uvicorn.run(app, host=args.host, port=args.port)
-    return 0
-
-
-# Single launch command is `lcstudy up`.
-
-
-def _ensure_web_deps() -> bool:
-    needed = []
-    def _try(mod):
-        try:
-            importlib.import_module(mod)
-            return True
-        except Exception:
-            return False
-    if not _try('fastapi'):
-        needed.append('fastapi>=0.110')
-    if not _try('uvicorn'):
-        needed.append('uvicorn>=0.23')
-    if not _try('chess'):
-        needed.append('chess>=1.10.0')
-    if not _try('httpx'):
-        needed.append('httpx>=0.25')
-    if needed:
-        print('Installing missing Python dependencies: ' + ' '.join(needed))
-        code, out, err = run([sys.executable, '-m', 'pip', 'install', *needed])
-        if code != 0:
-            print('Dependency installation failed. Please run: pip install -e \'.[all]\'')
-            return False
-    return True
