@@ -62,6 +62,9 @@ class Session:
     stop_evt: Optional[threading.Event] = None
     analysis_fen: Optional[str] = None
     last_lines: list[dict] = field(default_factory=list)
+    # Predictive cache for next likely position
+    predicted_fen: Optional[str] = None
+    predicted_lines: list[dict] = field(default_factory=list)
     # Persistent engines (stay open for the session duration)
     leela_engine: Optional['Lc0Engine'] = None
     maia_engine: Optional['Lc0Engine'] = None
@@ -460,6 +463,7 @@ def board_ascii(board: chess.Board) -> str:
     return board.unicode(borders=True)
 
 
+
 def _fallback_top_lines(board: chess.Board, k: int = 5, pov: Optional[chess.Color] = None) -> list[dict]:
     """Cheap heuristic move ranking used when engines are unavailable."""
     pov = board.turn if pov is None else pov
@@ -587,6 +591,7 @@ def stop_analysis(sess: Session) -> None:
     sess.stop_evt = None
 
 
+
 def restart_analysis(sess: Session) -> None:
     """DISABLED: Background analysis was causing cache corruption."""
     # Stop any existing analysis
@@ -654,10 +659,21 @@ def api_session_state(sid: str) -> JSONResponse:
         top_lines = sess.last_lines
         top_move = top_lines[0]['move'] if top_lines else 'none'
         print(f"*** Cache HIT for {current_fen[:30]} (top move: {top_move})")
+    elif sess.predicted_fen == current_fen and sess.predicted_lines:
+        # Predictive cache hit!
+        top_lines = sess.predicted_lines
+        top_move = top_lines[0]['move'] if top_lines else 'none'
+        print(f"*** PREDICTIVE CACHE HIT for {current_fen[:30]} (top move: {top_move})")
+        # Move prediction to main cache
+        sess.last_lines = sess.predicted_lines
+        sess.analysis_fen = current_fen
+        sess.predicted_fen = None
+        sess.predicted_lines = []
     else:
         # Cache miss - get fresh analysis and update cache
         print(f"*** Cache MISS for {current_fen[:30]} (cached_fen: {sess.analysis_fen[:30] if sess.analysis_fen else 'None'})")
         
+        # Cache miss - get fresh analysis and update cache  
         try:
             leela, _ = open_engines(sess)
             if sess.leela_lock.acquire(timeout=0.2):  # 200ms timeout
