@@ -116,6 +116,7 @@ def html_index() -> str:
       .square:hover .piece { transform: scale(1.05); }
       .board-flash-green { animation: boardOk 600ms ease; }
       .board-flash-red { animation: boardBad 600ms ease; }
+      .board-flash-gray { animation: boardGray 600ms ease; }
       @keyframes boardOk { 
         0% { box-shadow: 0 0 0 0 rgba(34,197,94,.0); transform: scale(1); } 
         50% { box-shadow: 0 0 0 12px rgba(34,197,94,.8); transform: scale(1.02); } 
@@ -125,6 +126,11 @@ def html_index() -> str:
         0% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); transform: scale(1); } 
         50% { box-shadow: 0 0 0 12px rgba(239,68,68,.8); transform: scale(0.98); } 
         100% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); transform: scale(1); } 
+      }
+      @keyframes boardGray { 
+        0% { box-shadow: 0 0 0 0 rgba(107,114,128,.0); transform: scale(1); } 
+        50% { box-shadow: 0 0 0 12px rgba(107,114,128,.6); transform: scale(1.0); } 
+        100% { box-shadow: 0 0 0 0 rgba(107,114,128,.0); transform: scale(1); } 
       }
       @keyframes shake { 
         0%, 100% { transform: translateX(0) rotate(0deg); } 
@@ -174,7 +180,7 @@ def html_index() -> str:
         <div class='panel' style='padding: 1vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
           <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5vh;'>
             <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Win Probability</h2>
-            <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Score: <span id='total-score'>0.000</span></span>
+            <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Current: <span id='current-eval'>0.0%</span></span>
           </div>
           <canvas id='score-chart' style='width: 100%; flex: 1;'></canvas>
         </div>
@@ -335,7 +341,12 @@ def html_index() -> str:
       }
 
       function updateStatistics(scoreTotal, currentMove) {
-        document.getElementById('total-score').textContent = scoreTotal.toFixed(3);
+        // Update current evaluation display
+        const currentEvalElement = document.getElementById('current-eval');
+        if (currentEvalElement && gameScores.length > 0) {
+          const currentEval = gameScores[gameScores.length - 1];
+          currentEvalElement.textContent = currentEval.toFixed(1) + '%';
+        }
         
         const avgAttempts = totalAttempts > 0 ? (totalAttempts / Math.max(1, gameAttempts.length)) : 0;
         document.getElementById('avg-attempts').textContent = avgAttempts.toFixed(1);
@@ -406,10 +417,17 @@ def html_index() -> str:
         updateStatistics(0, 1);
       }
 
-      function flashBoard(success) {
+      function flashBoard(result) {
         const boardEl = document.getElementById('board');
-        const className = success ? 'board-flash-green' : 'board-flash-red';
-        boardEl.classList.remove('board-flash-green', 'board-flash-red');
+        let className;
+        if (result === 'success') {
+          className = 'board-flash-green';
+        } else if (result === 'illegal') {
+          className = 'board-flash-gray';
+        } else {
+          className = 'board-flash-red';
+        }
+        boardEl.classList.remove('board-flash-green', 'board-flash-red', 'board-flash-gray');
         boardEl.offsetHeight;
         boardEl.classList.add(className);
         setTimeout(() => {
@@ -421,6 +439,24 @@ def html_index() -> str:
 
       async function submitMove(mv){
         if (!SID || pendingMoves.has(mv)) return;
+        
+        // Check if move is legal using a quick server call
+        try {
+          const legalCheckRes = await fetch('/api/session/' + SID + '/check-move', {
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({move: mv})
+          });
+          const legalData = await legalCheckRes.json();
+          
+          if (!legalData.legal) {
+            flashBoard('illegal');
+            return;
+          }
+        } catch (e) {
+          // If check fails, continue with normal processing
+          console.log('Move legality check failed:', e);
+        }
         
         pendingMoves.add(mv);
         
@@ -434,17 +470,15 @@ def html_index() -> str:
           currentMoveAttempts++;
           totalAttempts++;
           animateMove(fromSquare, toSquare);
-          flashBoard(true);
+          flashBoard('success');
           submitCorrectMoveToServer(mv);
         } else if (leelaTopMove === null) {
-          currentMoveAttempts++;
-          totalAttempts++;
           animateMove(fromSquare, toSquare);
           submitMoveToServer(mv, fromSquare, toSquare);
         } else {
           currentMoveAttempts++;
           totalAttempts++;
-          flashBoard(false);
+          flashBoard('wrong');
           revertMove();
         }
         
@@ -497,7 +531,15 @@ def html_index() -> str:
           const last = document.getElementById('last');
           
           if (data.error) {
-            flashBoard(false);
+            // Check if it's an illegal move (don't count against attempts)
+            if (data.error.includes('Illegal move')) {
+              flashBoard('illegal');
+            } else {
+              // Count this as a wrong attempt for other errors
+              currentMoveAttempts++;
+              totalAttempts++;
+              flashBoard('wrong');
+            }
             revertMove();
             last.textContent = 'Error: ' + data.error;
             return;
@@ -506,6 +548,9 @@ def html_index() -> str:
           const ok = !!data.correct;
           
           if (ok) {
+            // Count this as an attempt since it was legal (even if correct)
+            currentMoveAttempts++;
+            totalAttempts++;
             // Record this move's attempt count
             gameAttempts.push(currentMoveAttempts);
             currentMoveAttempts = 0;
@@ -517,7 +562,7 @@ def html_index() -> str:
               pgnMoves.push(data.maia_move);
             }
             
-            flashBoard(true);
+            flashBoard('success');
             // Move feedback removed - visual feedback through board animation
             
             const totalSubmitTime = performance.now() - submitStart;
@@ -528,11 +573,17 @@ def html_index() -> str:
               await refresh();
             }, 600);
           } else {
-            flashBoard(false);
+            // Count this as a wrong attempt for legal but incorrect moves
+            currentMoveAttempts++;
+            totalAttempts++;
+            flashBoard('wrong');
             revertMove();
           }
         } catch (e) {
-          flashBoard(false);
+          // Count network/server errors as attempts
+          currentMoveAttempts++;
+          totalAttempts++;
+          flashBoard('wrong');
           revertMove();
         }
       }
@@ -888,6 +939,26 @@ def restart_analysis(sess: Session) -> None:
 @app.get("/")
 def index() -> HTMLResponse:
     return HTMLResponse(html_index(), media_type="text/html; charset=utf-8")
+
+
+@app.post("/api/session/{sid}/check-move")
+def api_session_check_move(sid: str, payload: dict) -> JSONResponse:
+    """Check if a move is legal without making it."""
+    try:
+        sess = get_session(sid)
+    except KeyError:
+        raise HTTPException(404, "Session not found")
+    
+    move_str = str(payload.get("move", "")).strip()
+    if not move_str:
+        return JSONResponse({"legal": False})
+    
+    try:
+        mv = chess.Move.from_uci(move_str)
+        legal = mv in sess.board.legal_moves
+        return JSONResponse({"legal": legal})
+    except Exception:
+        return JSONResponse({"legal": False})
 
 
 @app.post("/api/session/new")
