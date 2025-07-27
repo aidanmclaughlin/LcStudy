@@ -429,6 +429,7 @@ def html_index() -> str:
         currentFen = data.fen;
         currentTurn = data.turn;
         leelaTopMoves = data.top_lines || [];
+        console.log(`*** Client received: FEN=${currentFen.slice(0,30)}, top_move=${leelaTopMoves[0]?.move || 'none'}`);
         updateBoardFromFen(currentFen);
         clearSelection();
         setWho(data.turn);
@@ -587,34 +588,11 @@ def stop_analysis(sess: Session) -> None:
 
 
 def restart_analysis(sess: Session) -> None:
-    """Start (or restart) incremental background analysis for the current board."""
+    """DISABLED: Background analysis was causing cache corruption."""
+    # Stop any existing analysis
     stop_analysis(sess)
-    sess.analysis_fen = sess.board.fen()
-    evt = threading.Event()
-    sess.stop_evt = evt
-
-    def worker():
-        try:
-            leela, _ = open_engines(sess)
-        except Exception:
-            return
-        try:
-            board = chess.Board(sess.analysis_fen)
-            nodes = 1000
-            while not evt.is_set() and sess.status == "playing" and sess.analysis_fen == sess.board.fen():
-                try:
-                    with sess.leela_lock:
-                        infos = leela.analyse(board, nodes=nodes, multipv=max(1, sess.multipv))
-                    sess.last_lines = info_to_lines_san(board, infos, board.turn)
-                    nodes = min(nodes * 2, 200000)
-                except Exception:
-                    break
-        except Exception:
-            pass
-
-    th = threading.Thread(target=worker, daemon=True)
-    sess.analysis_thread = th
-    th.start()
+    # Don't start new background analysis - we'll use on-demand analysis instead
+    print(f"Background analysis disabled for session {sess.id}")
 
 
 @app.get("/")
@@ -662,12 +640,54 @@ def api_session_new(payload: dict) -> JSONResponse:
 
 @app.get("/api/session/{sid}/state")
 def api_session_state(sid: str) -> JSONResponse:
-    """Return the current session state and fresh Leela top lines."""
+    """Return the current session state and cached Leela top lines."""
     try:
         sess = get_session(sid)
     except KeyError:
         raise HTTPException(404, "Session not found")
-    top_lines = get_current_leela_analysis(sess)
+    
+    # Smart cache: check if we have valid analysis for current position
+    current_fen = sess.board.fen()
+    
+    # Check if cache is valid for current position
+    if sess.analysis_fen == current_fen and sess.last_lines:
+        top_lines = sess.last_lines
+        top_move = top_lines[0]['move'] if top_lines else 'none'
+        print(f"*** Cache HIT for {current_fen[:30]} (top move: {top_move})")
+    else:
+        # Cache miss - get fresh analysis and update cache
+        print(f"*** Cache MISS for {current_fen[:30]} (cached_fen: {sess.analysis_fen[:30] if sess.analysis_fen else 'None'})")
+        
+        try:
+            leela, _ = open_engines(sess)
+            if sess.leela_lock.acquire(timeout=0.2):  # 200ms timeout
+                try:
+                    board = sess.board.copy()
+                    infos = leela.analyse(board, nodes=150, multipv=3)  # Quick analysis
+                    if not isinstance(infos, list):
+                        infos = [infos]
+                    top_lines = info_to_lines(infos, board.turn)
+                    
+                    # Update cache with fresh analysis for THIS position
+                    sess.last_lines = top_lines
+                    sess.analysis_fen = current_fen
+                    
+                    top_move = top_lines[0]['move'] if top_lines else 'none'
+                    print(f"*** Got fresh analysis and updated cache (top move: {top_move})")
+                finally:
+                    sess.leela_lock.release()
+            else:
+                # Couldn't get lock, use fallback but don't cache it
+                board = sess.board.copy()
+                top_lines = _fallback_top_lines(board, k=3, pov=board.turn)
+                top_move = top_lines[0]['move'] if top_lines else 'none'
+                print(f"*** Lock timeout, using fallback (top move: {top_move})")
+        except Exception as e:
+            # Error getting analysis, use fallback
+            board = sess.board.copy()
+            top_lines = _fallback_top_lines(board, k=3, pov=board.turn)
+            top_move = top_lines[0]['move'] if top_lines else 'none'
+            print(f"*** Analysis error, using fallback (top move: {top_move}): {e}")
 
     return JSONResponse(
         {
