@@ -112,30 +112,28 @@ def html_index() -> str:
       .square.selected { box-shadow: inset 0 0 0 3px #ff6b6b; }
       .square.highlight { box-shadow: inset 0 0 0 3px #4ecdc4; }
       .piece { width: 85%; height: 85%; background-size: contain; background-repeat: no-repeat; background-position: center; cursor: grab; transition: transform 0.1s ease; }
-      .piece:active { cursor: grabbing; transform: scale(1.1); }
-      .square:hover .piece { transform: scale(1.05); }
+      .piece.flipped { transform: rotate(180deg); }
+      .piece.flipped.animate { transform: rotate(180deg) scale(1.1); }
+      .piece.animate { transform: scale(1.1); }
+      .piece:active { cursor: grabbing; }
+      .square:hover .piece { }
       .board-flash-green { animation: boardOk 600ms ease; }
       .board-flash-red { animation: boardBad 600ms ease; }
       .board-flash-gray { animation: boardGray 600ms ease; }
       @keyframes boardOk { 
-        0% { box-shadow: 0 0 0 0 rgba(34,197,94,.0); transform: scale(1); } 
-        50% { box-shadow: 0 0 0 12px rgba(34,197,94,.8); transform: scale(1.02); } 
-        100% { box-shadow: 0 0 0 0 rgba(34,197,94,.0); transform: scale(1); } 
+        0% { box-shadow: 0 0 0 0 rgba(34,197,94,.0); } 
+        50% { box-shadow: 0 0 0 12px rgba(34,197,94,.8); } 
+        100% { box-shadow: 0 0 0 0 rgba(34,197,94,.0); } 
       }
       @keyframes boardBad { 
-        0% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); transform: scale(1); } 
-        50% { box-shadow: 0 0 0 12px rgba(239,68,68,.8); transform: scale(0.98); } 
-        100% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); transform: scale(1); } 
+        0% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); } 
+        50% { box-shadow: 0 0 0 12px rgba(239,68,68,.8); } 
+        100% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); } 
       }
       @keyframes boardGray { 
-        0% { box-shadow: 0 0 0 0 rgba(107,114,128,.0); transform: scale(1); } 
-        50% { box-shadow: 0 0 0 12px rgba(107,114,128,.6); transform: scale(1.0); } 
-        100% { box-shadow: 0 0 0 0 rgba(107,114,128,.0); transform: scale(1); } 
-      }
-      @keyframes shake { 
-        0%, 100% { transform: translateX(0) rotate(0deg); } 
-        25% { transform: translateX(-8px) rotate(-1deg); } 
-        75% { transform: translateX(8px) rotate(1deg); } 
+        0% { box-shadow: 0 0 0 0 rgba(107,114,128,.0); } 
+        50% { box-shadow: 0 0 0 12px rgba(107,114,128,.6); } 
+        100% { box-shadow: 0 0 0 0 rgba(107,114,128,.0); } 
       }
       .pill { display:inline-flex; align-items:center; gap:8px; background: rgba(139,92,246,.12); color:#c4b5fd; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(139,92,246,.25); }
       .btn { background: linear-gradient(180deg,#8b5cf6,#7c3aed); color:#fff; border:0; padding:9px 14px; border-radius: 10px; font-weight:700; cursor:pointer; box-shadow: 0 6px 14px rgba(124,58,237,.3); }
@@ -162,7 +160,10 @@ def html_index() -> str:
         <div class='panel' style='padding: 1vh;'>
           <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1vh;'>
             <h1 style='margin: 0; color: #f8fafc; font-size: 1.2rem; font-weight: 800;'>LcStudy</h1>
-            <button id='new' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap;'>New Game</button>
+            <div style='display: flex; gap: 0.5vh;'>
+              <button id='new' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap;'>New Game</button>
+              <button onclick='playLeelaMove()' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap; background: #22c55e;'>Leela</button>
+            </div>
           </div>
           <div>
             <label for='maia-elo' style='display: block; margin-bottom: 0.3vh; color: var(--muted); font-size: 0.7rem;'>Maia Strength:</label>
@@ -176,13 +177,12 @@ def html_index() -> str:
           </div>
         </div>
         
-        <!-- Leela Score Chart -->
+        <!-- Accuracy Over Time Chart -->
         <div class='panel' style='padding: 1vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
           <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5vh;'>
-            <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Win Probability</h2>
-            <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Current: <span id='current-eval'>0.0%</span></span>
+            <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Your Accuracy Over Time</h2>
           </div>
-          <canvas id='score-chart' style='width: 100%; flex: 1;'></canvas>
+          <canvas id='accuracy-chart' style='width: 100%; flex: 1;'></canvas>
         </div>
         
         <!-- Attempts Chart -->
@@ -195,9 +195,12 @@ def html_index() -> str:
         </div>
         
         <!-- PGN Moves (Single Line) -->
-        <div class='panel' style='padding: 1vh; flex: 0 0 auto;'>
-          <h2 style='margin: 0 0 0.5vh 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Recent Moves</h2>
-          <div id='pgn-moves' style='font-family: Georgia, serif; font-size: 0.7rem; line-height: 1.3; overflow-x: auto; white-space: nowrap;'>
+        <div class='panel' style='padding: 2vh 2vh; flex: 0 0 auto; min-height: 8vh; display: flex; flex-direction: column; justify-content: center;'>
+          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1vh;'>
+            <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Recent Moves</h2>
+            <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Current: <span id='current-eval'>0.0%</span></span>
+          </div>
+          <div id='pgn-moves' style='font-family: Georgia, serif; font-size: 0.7rem; line-height: 1.3; overflow-x: auto; white-space: nowrap; padding: 0.5vh 0;'>
             <div id='move-list' class='meta'>Game not started</div>
           </div>
         </div>
@@ -212,17 +215,19 @@ def html_index() -> str:
       let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
       let currentTurn = 'white';
       let leelaTopMoves = []; // Pre-fetched Leela analysis for instant validation
+      let boardIsFlipped = false; // Track flip state globally
       
       // Game tracking data
-      let gameScores = []; // Leela evaluations per move
       let gameAttempts = []; // Attempts per move
       let totalAttempts = 0;
       let currentMoveAttempts = 0;
       let moveCounter = 1;
       let pgnMoves = [];
+      let gameHistory = []; // Historical game averages
+      let cumulativeAverages = []; // Running average over time
       
       // Chart instances
-      let scoreChart = null;
+      let accuracyChart = null;
       let attemptsChart = null;
 
       
@@ -242,20 +247,30 @@ def html_index() -> str:
       };
 
       function initializeCharts() {
-        // Initialize Score Chart
-        const scoreCtx = document.getElementById('score-chart').getContext('2d');
-        scoreChart = new Chart(scoreCtx, {
+        // Initialize Accuracy Chart
+        const accuracyCtx = document.getElementById('accuracy-chart').getContext('2d');
+        accuracyChart = new Chart(accuracyCtx, {
           type: 'line',
           data: {
             labels: [],
             datasets: [{
-              label: "Win Probability",
+              label: "Average Retries",
               data: [],
               borderColor: '#8b5cf6',
               backgroundColor: 'rgba(139, 92, 246, 0.1)',
               borderWidth: 2,
               fill: true,
               tension: 0.3
+            }, {
+              label: "Current Game",
+              data: [],
+              borderColor: '#22c55e',
+              backgroundColor: 'rgba(34, 197, 94, 0.2)',
+              borderWidth: 2,
+              pointRadius: 6,
+              pointHoverRadius: 8,
+              fill: false,
+              tension: 0
             }]
           },
           options: {
@@ -267,13 +282,12 @@ def html_index() -> str:
             scales: {
               y: {
                 min: 0,
-                max: 100,
                 grid: { color: 'rgba(148,163,184,0.2)' },
                 ticks: { 
                   color: '#9ca3af', 
                   font: { size: 10 },
                   callback: function(value) {
-                    return value + '%';
+                    return value.toFixed(1);
                   }
                 }
               },
@@ -341,11 +355,25 @@ def html_index() -> str:
       }
 
       function updateStatistics(scoreTotal, currentMove) {
-        // Update current evaluation display
+        // Update current position win probability from Leela
         const currentEvalElement = document.getElementById('current-eval');
-        if (currentEvalElement && gameScores.length > 0) {
-          const currentEval = gameScores[gameScores.length - 1];
-          currentEvalElement.textContent = currentEval.toFixed(1) + '%';
+        if (currentEvalElement && leelaTopMoves.length > 0) {
+          // Extract win probability from Leela's evaluation
+          let winProb = null;
+          if (leelaTopMoves[0].wdl && leelaTopMoves[0].wdl.length >= 3) {
+            // WDL format: [win, draw, loss] probabilities
+            winProb = leelaTopMoves[0].wdl[0] * 100;
+          } else if (leelaTopMoves[0].winrate !== null && leelaTopMoves[0].winrate !== undefined) {
+            winProb = leelaTopMoves[0].winrate * 100;
+          } else if (leelaTopMoves[0].cp !== null) {
+            // Convert centipawns to win probability
+            const cp = leelaTopMoves[0].cp;
+            winProb = (1 / (1 + Math.pow(10, -cp / 400))) * 100;
+          }
+          
+          if (winProb !== null) {
+            currentEvalElement.textContent = winProb.toFixed(1) + '%';
+          }
         }
         
         const avgAttempts = totalAttempts > 0 ? (totalAttempts / Math.max(1, gameAttempts.length)) : 0;
@@ -353,10 +381,31 @@ def html_index() -> str:
       }
 
       function updateCharts() {
-        if (scoreChart && gameScores.length > 0) {
-          scoreChart.data.labels = gameScores.map((_, i) => i + 1);
-          scoreChart.data.datasets[0].data = gameScores;
-          scoreChart.update('none');
+        if (accuracyChart) {
+          // Historical games
+          const labels = [];
+          const historicalData = [];
+          const currentGameData = [];
+          
+          // Add historical game labels and data
+          for (let i = 0; i < cumulativeAverages.length; i++) {
+            labels.push(`Game ${i + 1}`);
+            historicalData.push(cumulativeAverages[i]);
+            currentGameData.push(null); // No current game data for historical games
+          }
+          
+          // Add current game if we have attempts
+          if (gameAttempts.length > 0) {
+            const currentGameAvg = totalAttempts / gameAttempts.length;
+            labels.push(`Game ${cumulativeAverages.length + 1}`);
+            historicalData.push(null); // No historical data for current game
+            currentGameData.push(currentGameAvg);
+          }
+          
+          accuracyChart.data.labels = labels;
+          accuracyChart.data.datasets[0].data = historicalData;
+          accuracyChart.data.datasets[1].data = currentGameData;
+          accuracyChart.update('none');
         }
         
         if (attemptsChart && gameAttempts.length > 0) {
@@ -393,25 +442,90 @@ def html_index() -> str:
         
       }
 
+      async function loadGameHistory() {
+        try {
+          const res = await fetch('/api/game-history');
+          const data = await res.json();
+          gameHistory = data.history || [];
+          
+          // Calculate cumulative averages
+          cumulativeAverages = [];
+          let runningSum = 0;
+          for (let i = 0; i < gameHistory.length; i++) {
+            runningSum += gameHistory[i].average_retries;
+            cumulativeAverages.push(runningSum / (i + 1));
+          }
+          
+          updateCharts();
+        } catch (e) {
+          console.log('Failed to load game history:', e);
+        }
+      }
+
+      async function saveCompletedGame(result) {
+        console.log('*** saveCompletedGame called with result:', result);
+        console.log('*** gameAttempts.length:', gameAttempts.length);
+        console.log('*** totalAttempts:', totalAttempts);
+        
+        if (gameAttempts.length === 0) {
+          console.log('*** No moves made, not saving game');
+          return;
+        }
+        
+        const avgRetries = totalAttempts / gameAttempts.length;
+        const maiaLevel = parseInt(document.getElementById('maia-elo').value);
+        
+        console.log('*** Saving game with avgRetries:', avgRetries, 'maiaLevel:', maiaLevel);
+        
+        try {
+          await fetch('/api/game-history', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              average_retries: avgRetries,
+              total_moves: gameAttempts.length,
+              maia_level: maiaLevel,
+              result: result
+            })
+          });
+          
+          // Update local data and chart
+          gameHistory.push({
+            average_retries: avgRetries,
+            total_moves: gameAttempts.length,
+            maia_level: maiaLevel,
+            result: result
+          });
+          
+          // Recalculate cumulative averages
+          let runningSum = 0;
+          cumulativeAverages = [];
+          for (let i = 0; i < gameHistory.length; i++) {
+            runningSum += gameHistory[i].average_retries;
+            cumulativeAverages.push(runningSum / (i + 1));
+          }
+          
+          updateCharts();
+        } catch (e) {
+          console.log('Failed to save game:', e);
+        }
+      }
+
       function resetGameData() {
-        gameScores = [];
         gameAttempts = [];
         totalAttempts = 0;
         currentMoveAttempts = 0;
         moveCounter = 1;
         pgnMoves = [];
         
-        if (scoreChart) {
-          scoreChart.data.labels = [];
-          scoreChart.data.datasets[0].data = [];
-          scoreChart.update('none');
-        }
-        
         if (attemptsChart) {
           attemptsChart.data.labels = [];
           attemptsChart.data.datasets[0].data = [];
           attemptsChart.update('none');
         }
+        
+        // Update accuracy chart to remove current game data
+        updateCharts();
         
         updatePGNDisplay();
         updateStatistics(0, 1);
@@ -437,8 +551,175 @@ def html_index() -> str:
 
       let pendingMoves = new Set();
 
+      function isPawnPromotion(mv) {
+        if (mv.length !== 4) return false;
+        const fromSquare = mv.slice(0, 2);
+        const toSquare = mv.slice(2, 4);
+        const fromRank = parseInt(fromSquare[1]);
+        const toRank = parseInt(toSquare[1]);
+        
+        // Check if it's a move to the back rank (promotion rank)
+        if (!(toRank === 8 || toRank === 1)) return false;
+        
+        // Check if it's a pawn moving to the back rank
+        const fromElement = document.getElementById(fromSquare);
+        const piece = fromElement?.querySelector('.piece');
+        if (!piece) {
+          console.log(`*** isPawnPromotion: No piece found at ${fromSquare}`);
+          return false;
+        }
+        
+        const pieceStyle = piece.style.backgroundImage;
+        console.log(`*** isPawnPromotion: piece style = ${pieceStyle}`);
+        
+        // Check for pawn in the URL - look for 'plt45' or 'pdt45'
+        const isWhitePawn = pieceStyle.includes('plt45');
+        const isBlackPawn = pieceStyle.includes('pdt45');
+        const isPawn = isWhitePawn || isBlackPawn;
+        
+        console.log(`*** isPawnPromotion: isPawn=${isPawn}, isWhitePawn=${isWhitePawn}, isBlackPawn=${isBlackPawn}`);
+        console.log(`*** isPawnPromotion: fromRank=${fromRank}, toRank=${toRank}`);
+        
+        // White pawns promote on rank 8, black pawns on rank 1
+        const isWhitePawnPromotion = isWhitePawn && fromRank === 7 && toRank === 8;
+        const isBlackPawnPromotion = isBlackPawn && fromRank === 2 && toRank === 1;
+        
+        const result = isWhitePawnPromotion || isBlackPawnPromotion;
+        console.log(`*** isPawnPromotion: result=${result}`);
+        
+        return result;
+      }
+
+      function showPromotionDialog() {
+        return new Promise((resolve) => {
+          // Create modal overlay
+          const overlay = document.createElement('div');
+          overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+          `;
+          
+          // Create dialog
+          const dialog = document.createElement('div');
+          dialog.style.cssText = `
+            background: #2a2a2a;
+            padding: 24px;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+            font-family: inherit;
+          `;
+          
+          const title = document.createElement('h3');
+          title.textContent = 'Choose promotion piece:';
+          title.style.cssText = 'margin: 0 0 20px 0; font-size: 18px;';
+          dialog.appendChild(title);
+          
+          // Create piece buttons
+          const pieces = [
+            { piece: 'q', name: 'Queen', symbol: '♕' },
+            { piece: 'r', name: 'Rook', symbol: '♖' },
+            { piece: 'b', name: 'Bishop', symbol: '♗' },
+            { piece: 'n', name: 'Knight', symbol: '♘' }
+          ];
+          
+          const buttonContainer = document.createElement('div');
+          buttonContainer.style.cssText = 'display: flex; gap: 12px; justify-content: center;';
+          
+          pieces.forEach(({ piece, name, symbol }) => {
+            const button = document.createElement('button');
+            button.innerHTML = `<div style="font-size: 32px; margin-bottom: 8px;">${symbol}</div><div style="font-size: 12px;">${name}</div>`;
+            button.style.cssText = `
+              background: #4a4a4a;
+              border: 2px solid #666;
+              border-radius: 8px;
+              color: white;
+              padding: 16px 12px;
+              cursor: pointer;
+              min-width: 80px;
+              transition: all 0.2s;
+            `;
+            
+            button.onmouseover = () => {
+              button.style.background = '#5a5a5a';
+              button.style.borderColor = '#888';
+            };
+            button.onmouseout = () => {
+              button.style.background = '#4a4a4a';
+              button.style.borderColor = '#666';
+            };
+            
+            button.onclick = () => {
+              document.body.removeChild(overlay);
+              resolve(piece);
+            };
+            
+            buttonContainer.appendChild(button);
+          });
+          
+          dialog.appendChild(buttonContainer);
+          overlay.appendChild(dialog);
+          document.body.appendChild(overlay);
+          
+          // Close on overlay click
+          overlay.onclick = (e) => {
+            if (e.target === overlay) {
+              document.body.removeChild(overlay);
+              resolve(null);
+            }
+          };
+        });
+      }
+
+      async function playLeelaMove() {
+        if (!SID) {
+          console.log('*** No session ID');
+          return;
+        }
+        
+        try {
+          console.log('*** Fetching Leela move...');
+          const res = await fetch('/api/session/' + SID + '/state');
+          const data = await res.json();
+          
+          // Try different ways to get the move
+          let leelaMove = null;
+          if (data.lines && data.lines.length > 0 && data.lines[0].move) {
+            leelaMove = data.lines[0].move;
+          } else if (data.top_move) {
+            leelaMove = data.top_move;
+          } else if (data.top_lines && data.top_lines.length > 0 && data.top_lines[0].move) {
+            leelaMove = data.top_lines[0].move;
+          }
+          
+          if (leelaMove) {
+            console.log(`*** Playing Leela's top move: ${leelaMove}`);
+            await submitMove(leelaMove);
+          } else {
+            console.log('*** No Leela move available');
+          }
+        } catch (error) {
+          console.error('*** Error playing Leela move:', error);
+        }
+      }
+
       async function submitMove(mv){
         if (!SID || pendingMoves.has(mv)) return;
+        
+        // Handle pawn promotion with piece selection
+        if (isPawnPromotion(mv)) {
+          const promotionPiece = await showPromotionDialog();
+          if (!promotionPiece) return; // User cancelled
+          mv = mv + promotionPiece;
+        }
         
         // Check if move is legal using a quick server call
         try {
@@ -500,6 +781,13 @@ def html_index() -> str:
             pgnMoves.push(data.leela_move);
             if (data.maia_move) {
               pgnMoves.push(data.maia_move);
+            }
+            
+            // Check if this move ended the game and save immediately
+            if (data.status === 'finished') {
+              console.log('*** Correct move resulted in game finish - saving immediately...');
+              await saveCompletedGame('finished');
+              await loadGameHistory();
             }
             
             // Move feedback removed - visual feedback through board animation
@@ -598,18 +886,18 @@ def html_index() -> str:
             existingPiece.remove();
           }
           toEl.appendChild(piece);
-          piece.style.transform = 'scale(1.1)';
+          // Use CSS class for animation
+          piece.classList.add('animate');
           setTimeout(() => {
-            piece.style.transform = '';
+            piece.classList.remove('animate');
           }, 150);
         }
       }
 
       function revertMove() {
+        // Just revert to current position, flip state never changes
         updateBoardFromFen(currentFen);
-        const boardEl = document.getElementById('board');
-        boardEl.style.animation = 'shake 0.3s ease-in-out';
-        setTimeout(() => { boardEl.style.animation = ''; }, 300);
+        // Removed shake animation as it was interfering with board flip
       }
       function initBoard() {
         createBoardHTML();
@@ -660,15 +948,36 @@ def html_index() -> str:
         return position;
       }
 
+      function setBoardFlip(flip) {
+        const board = document.getElementById('board');
+        console.log(`*** setBoardFlip called with: ${flip}`);
+        boardIsFlipped = flip; // Store globally
+        if (flip) {
+          board.style.transform = 'rotate(180deg)';
+        } else {
+          board.style.transform = 'none';
+        }
+      }
+
       function updateBoardFromFen(fen) {
         document.querySelectorAll('.piece').forEach(p => p.remove());
         const position = parseFEN(fen);
+        
+        console.log(`*** updateBoardFromFen - boardIsFlipped: ${boardIsFlipped}`);
         
         for (const [square, piece] of Object.entries(position)) {
           const pieceEl = document.createElement('div');
           pieceEl.className = 'piece';
           pieceEl.style.backgroundImage = `url(${pieceImages[piece]})`;
           pieceEl.dataset.piece = piece;
+          
+          // Use CSS class for rotation instead of inline styles
+          if (boardIsFlipped) {
+            pieceEl.classList.add('flipped');
+            console.log(`*** Adding flipped class to piece ${piece}`);
+          } else {
+            console.log(`*** No flip class for piece ${piece}`);
+          }
           
           const squareEl = document.querySelector(`[data-square="${square}"]`);
           if (squareEl) {
@@ -682,9 +991,14 @@ def html_index() -> str:
         const piece = event.currentTarget.querySelector('.piece');
         
         if (selectedSquare === null) {
-          if (piece && piece.style.backgroundImage.includes('lt45')) {
-            selectedSquare = square;
-            event.currentTarget.classList.add('selected');
+          if (piece) {
+            // Determine which pieces player can move based on board orientation
+            const playerPieceType = boardIsFlipped ? 'dt45' : 'lt45'; // dt45 = dark/black pieces, lt45 = light/white pieces
+            
+            if (piece.style.backgroundImage.includes(playerPieceType)) {
+              selectedSquare = square;
+              event.currentTarget.classList.add('selected');
+            }
           }
         } else {
           if (selectedSquare === square) {
@@ -710,9 +1024,19 @@ def html_index() -> str:
 
       async function start() {
         const maiaLevel = parseInt(document.getElementById('maia-elo').value);
-        const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({maia_level: maiaLevel})});
+        const playerColor = Math.random() < 0.5 ? 'white' : 'black'; // Random starting color
+        const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({maia_level: maiaLevel, player_color: playerColor})});
         const data = await res.json();
         SID = data.id;
+        
+        // Immediately set board flip state (this should stay constant for the entire game)
+        const shouldFlip = data.flip || false;
+        setBoardFlip(shouldFlip);
+        
+        // Set initial position
+        const sessionFen = data.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        updateBoardFromFen(sessionFen);
+        
         resetGameData();
         await refresh();
       }
@@ -737,28 +1061,12 @@ def html_index() -> str:
         currentFen = data.fen;
         currentTurn = data.turn;
         leelaTopMoves = data.top_lines || [];
-        console.log(`*** Client received: FEN=${currentFen.slice(0,30)}, top_move=${leelaTopMoves[0]?.move || 'none'}`);
+        const shouldFlip = data.flip || false;
+        console.log(`*** Client received: FEN=${currentFen.slice(0,30)}, top_move=${leelaTopMoves[0]?.move || 'none'}, flip=${shouldFlip}`);
         
-        // Extract Leela's win probability if available
-        if (leelaTopMoves.length > 0) {
-          // Try to get win probability from Leela (could be in wdl, winrate, or other field)
-          let winProb = null;
-          if (leelaTopMoves[0].wdl && leelaTopMoves[0].wdl.length >= 3) {
-            // WDL format: [win, draw, loss] probabilities
-            winProb = leelaTopMoves[0].wdl[0] * 100; // Convert to percentage
-          } else if (leelaTopMoves[0].winrate !== null && leelaTopMoves[0].winrate !== undefined) {
-            winProb = leelaTopMoves[0].winrate * 100; // Convert to percentage
-          } else if (leelaTopMoves[0].cp !== null) {
-            // Fallback: convert centipawns to approximate win probability
-            const cp = leelaTopMoves[0].cp;
-            winProb = (1 / (1 + Math.pow(10, -cp / 400))) * 100;
-          }
-          
-          if (winProb !== null) {
-            gameScores.push(winProb);
-          }
-        }
+        // No longer tracking win probability per move
         
+        // Update board position (flip state is already set and won't change)
         updateBoardFromFen(currentFen);
         clearSelection();
         setWho(data.turn);
@@ -771,8 +1079,14 @@ def html_index() -> str:
         const updateTime = performance.now() - updateStart;
         console.log(`Board update took ${updateTime.toFixed(1)}ms`);
         
+        console.log('*** Game status:', data.status);
         if (data.status === 'finished') {
-          // Game finished - final score shown in chart header
+          console.log('*** Game finished - saving to history...');
+          // Save completed game stats
+          await saveCompletedGame('finished');
+          
+          // Reload game history to update the chart
+          await loadGameHistory();
         }
         
         const totalRefreshTime = performance.now() - refreshStart;
@@ -786,6 +1100,7 @@ def html_index() -> str:
       window.addEventListener('DOMContentLoaded', async () => { 
         initBoard(); 
         initializeCharts();
+        await loadGameHistory();
         start(); 
       });
     </script>
@@ -941,6 +1256,64 @@ def index() -> HTMLResponse:
     return HTMLResponse(html_index(), media_type="text/html; charset=utf-8")
 
 
+@app.get("/api/game-history")
+def api_get_game_history() -> JSONResponse:
+    """Load game history from local JSON file."""
+    import json
+    from lcstudy.engines import home_dir
+    history_file = home_dir() / "game_history.json"
+    try:
+        if history_file.exists():
+            with open(history_file, 'r') as f:
+                history = json.load(f)
+        else:
+            history = []
+        return JSONResponse({"history": history})
+    except Exception as e:
+        logger.warning("Failed to load game history: %s", e)
+        return JSONResponse({"history": []})
+
+
+@app.post("/api/game-history")
+def api_save_game_history(payload: dict) -> JSONResponse:
+    """Save completed game stats to local JSON file."""
+    import json
+    from datetime import datetime
+    from lcstudy.engines import home_dir, ensure_dirs
+    
+    history_file = home_dir() / "game_history.json"
+    
+    # Load existing history
+    try:
+        if history_file.exists():
+            with open(history_file, 'r') as f:
+                history = json.load(f)
+        else:
+            history = []
+    except Exception:
+        history = []
+    
+    # Add new game
+    game_data = {
+        "date": datetime.now().isoformat(),
+        "average_retries": float(payload.get("average_retries", 0)),
+        "total_moves": int(payload.get("total_moves", 0)),
+        "maia_level": int(payload.get("maia_level", 1500)),
+        "result": str(payload.get("result", "unknown"))
+    }
+    history.append(game_data)
+    
+    # Save updated history
+    try:
+        ensure_dirs()  # Ensure the directory exists
+        with open(history_file, 'w') as f:
+            json.dump(history, f, indent=2)
+        return JSONResponse({"success": True})
+    except Exception as e:
+        logger.warning("Failed to save game history: %s", e)
+        return JSONResponse({"success": False, "error": str(e)})
+
+
 @app.post("/api/session/{sid}/check-move")
 def api_session_check_move(sid: str, payload: dict) -> JSONResponse:
     """Check if a move is legal without making it."""
@@ -954,10 +1327,13 @@ def api_session_check_move(sid: str, payload: dict) -> JSONResponse:
         return JSONResponse({"legal": False})
     
     try:
+        # Handle both regular moves (e2e4) and promotions (e7e8q)
         mv = chess.Move.from_uci(move_str)
         legal = mv in sess.board.legal_moves
         return JSONResponse({"legal": legal})
-    except Exception:
+    except Exception as e:
+        # If parsing fails, it's definitely not legal
+        logger.debug(f"Move parsing failed for '{move_str}': {e}")
         return JSONResponse({"legal": False})
 
 
@@ -968,6 +1344,7 @@ def api_session_new(payload: dict) -> JSONResponse:
     multipv = int(payload.get("multipv", 5))
     leela_nodes = int(payload.get("leela_nodes", 2000))
     maia_nodes = 1
+    player_color = str(payload.get("player_color", "white"))
     sid = uuid.uuid4().hex[:8]
     leela_w = nets_dir() / "lczero-best.pb.gz"
     leela_w = leela_w if leela_w.exists() else None
@@ -981,6 +1358,7 @@ def api_session_new(payload: dict) -> JSONResponse:
         maia_nodes=maia_nodes,
         leela_weights=leela_w,
         maia_weights=maia_w,
+        flip=(player_color == "black"),
     )
     with SESS_LOCK:
         SESSIONS[sid] = sess
@@ -989,6 +1367,21 @@ def api_session_new(payload: dict) -> JSONResponse:
     try:
         leela, maia = open_engines(sess)
         logger.info("Pre-warmed engines for session %s", sid)
+        
+        # If player is black, make Maia's opening move
+        if player_color == "black":
+            with sess.maia_lock:
+                # Use some randomness for opening variety
+                temperature = 1.0 if sess.move_index < 10 else 0.0
+                if temperature > 0:
+                    infos = maia.analyse(sess.board, nodes=max(100, sess.maia_nodes), multipv=5)
+                    maia_move = pick_from_multipv(infos, sess.board.turn, temperature)
+                else:
+                    maia_move = maia.bestmove(sess.board, nodes=sess.maia_nodes)
+                sess.board.push(maia_move)
+                sess.move_index += 1
+                logger.info("Maia opened with %s", maia_move.uci())
+                
     except Exception as e:
         logger.warning("Failed to pre-warm engines: %s", e)
     
@@ -996,7 +1389,11 @@ def api_session_new(payload: dict) -> JSONResponse:
         restart_analysis(sess)
     except Exception:
         pass
-    return JSONResponse({"id": sid})
+    return JSONResponse({
+        "id": sid, 
+        "flip": sess.flip,
+        "fen": sess.board.fen()
+    })
 
 
 @app.get("/api/session/{sid}/state")
@@ -1071,6 +1468,7 @@ def api_session_state(sid: str) -> JSONResponse:
             "ply": sess.move_index,
             "status": sess.status,
             "top_lines": top_lines,
+            "flip": sess.flip,
         }
     )
 
