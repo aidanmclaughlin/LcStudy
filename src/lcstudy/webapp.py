@@ -201,7 +201,10 @@ def html_index() -> str:
         <div class='panel' style='padding: 2.5vh 3vh; flex: 0 0 auto; min-height: 8vh; display: flex; flex-direction: column; justify-content: center;'>
           <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5vh;'>
             <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Recent Moves</h2>
-            <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Current: <span id='current-eval'>0.0%</span></span>
+            <div style='display: flex; gap: 1vh; align-items: center;'>
+              <span style='color: #64748b; font-weight: 600; font-size: 0.75rem;'>Nodes: <span id='node-count'>0</span></span>
+              <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Win Prob: <span id='current-eval'>0.0%</span></span>
+            </div>
           </div>
           <div id='pgn-moves' style='font-family: Georgia, serif; font-size: 0.7rem; line-height: 1.3; overflow-x: scroll; white-space: nowrap; padding: 0.5vh 0; scrollbar-width: none; -ms-overflow-style: none;'>
             <div id='move-list' class='meta'>Game not started</div>
@@ -360,6 +363,8 @@ def html_index() -> str:
       function updateStatistics(scoreTotal, currentMove) {
         // Update current position win probability from Leela
         const currentEvalElement = document.getElementById('current-eval');
+        const nodeCountElement = document.getElementById('node-count');
+        
         if (currentEvalElement && leelaTopMoves.length > 0) {
           // Extract win probability from Leela's evaluation
           let winProb = null;
@@ -376,6 +381,12 @@ def html_index() -> str:
           
           if (winProb !== null) {
             currentEvalElement.textContent = winProb.toFixed(1) + '%';
+          }
+          
+          // Update node count
+          if (nodeCountElement && leelaTopMoves[0].nodes) {
+            const nodeCount = formatNodeCount(leelaTopMoves[0].nodes);
+            nodeCountElement.textContent = nodeCount;
           }
         }
         
@@ -466,19 +477,14 @@ def html_index() -> str:
       }
 
       async function saveCompletedGame(result) {
-        console.log('*** saveCompletedGame called with result:', result);
-        console.log('*** gameAttempts.length:', gameAttempts.length);
-        console.log('*** totalAttempts:', totalAttempts);
         
         if (gameAttempts.length === 0) {
-          console.log('*** No moves made, not saving game');
           return;
         }
         
         const avgRetries = totalAttempts / gameAttempts.length;
         const maiaLevel = window.currentMaiaLevel || 1500; // Use the randomly selected level
         
-        console.log('*** Saving game with avgRetries:', avgRetries, 'maiaLevel:', maiaLevel);
         
         try {
           await fetch('/api/game-history', {
@@ -562,33 +568,17 @@ def html_index() -> str:
         const toRank = parseInt(toSquare[1]);
         
         // Check if it's a move to the back rank (promotion rank)
-        if (!(toRank === 8 || toRank === 1)) return false;
-        
-        // Check if it's a pawn moving to the back rank
-        const fromElement = document.getElementById(fromSquare);
-        const piece = fromElement?.querySelector('.piece');
-        if (!piece) {
-          console.log(`*** isPawnPromotion: No piece found at ${fromSquare}`);
+        if (!(toRank === 8 || toRank === 1)) {
           return false;
         }
         
-        const pieceStyle = piece.style.backgroundImage;
-        console.log(`*** isPawnPromotion: piece style = ${pieceStyle}`);
-        
-        // Check for pawn in the URL - look for 'plt45' or 'pdt45'
-        const isWhitePawn = pieceStyle.includes('plt45');
-        const isBlackPawn = pieceStyle.includes('pdt45');
-        const isPawn = isWhitePawn || isBlackPawn;
-        
-        console.log(`*** isPawnPromotion: isPawn=${isPawn}, isWhitePawn=${isWhitePawn}, isBlackPawn=${isBlackPawn}`);
-        console.log(`*** isPawnPromotion: fromRank=${fromRank}, toRank=${toRank}`);
-        
-        // White pawns promote on rank 8, black pawns on rank 1
-        const isWhitePawnPromotion = isWhitePawn && fromRank === 7 && toRank === 8;
-        const isBlackPawnPromotion = isBlackPawn && fromRank === 2 && toRank === 1;
+        // Use chess logic instead of DOM inspection for more reliability
+        // White pawns promote when moving from rank 7 to rank 8
+        // Black pawns promote when moving from rank 2 to rank 1
+        const isWhitePawnPromotion = fromRank === 7 && toRank === 8;
+        const isBlackPawnPromotion = fromRank === 2 && toRank === 1;
         
         const result = isWhitePawnPromotion || isBlackPawnPromotion;
-        console.log(`*** isPawnPromotion: result=${result}`);
         
         return result;
       }
@@ -682,6 +672,18 @@ def html_index() -> str:
         });
       }
 
+      function formatNodeCount(nodes) {
+        if (nodes >= 1e9) {
+          return (nodes / 1e9).toFixed(1) + 'B';
+        } else if (nodes >= 1e6) {
+          return (nodes / 1e6).toFixed(1) + 'M';
+        } else if (nodes >= 1e3) {
+          return (nodes / 1e3).toFixed(1) + 'K';
+        } else {
+          return nodes.toString();
+        }
+      }
+
       function createConfetti() {
         const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd', '#98d8c8', '#f7dc6f'];
         const confettiCount = 150;
@@ -707,14 +709,18 @@ def html_index() -> str:
         }
       }
 
+      async function setupPromotionTest() {
+        // Test position with white pawn on b7 ready to promote
+        const testFen = "8/1P6/8/8/8/8/8/8 w - - 0 1";
+        await start(testFen);
+      }
+
       async function playLeelaMove() {
         if (!SID) {
-          console.log('*** No session ID');
           return;
         }
         
         try {
-          console.log('*** Fetching Leela move...');
           const res = await fetch('/api/session/' + SID + '/state');
           const data = await res.json();
           
@@ -729,10 +735,8 @@ def html_index() -> str:
           }
           
           if (leelaMove) {
-            console.log(`*** Playing Leela's top move: ${leelaMove}`);
             await submitMove(leelaMove);
           } else {
-            console.log('*** No Leela move available');
           }
         } catch (error) {
           console.error('*** Error playing Leela move:', error);
@@ -813,7 +817,6 @@ def html_index() -> str:
             
             // Check if this move ended the game and save immediately
             if (data.status === 'finished') {
-              console.log('*** Correct move resulted in game finish - saving immediately...');
               
               // Celebrate with confetti!
               createConfetti();
@@ -840,18 +843,8 @@ def html_index() -> str:
 
       async function submitMoveToServer(mv, fromSquare, toSquare) {
         try {
-          console.log(`=== MOVE SUBMISSION START ===`);
-          const submitStart = performance.now();
-          
-          const fetchStart = performance.now();
           const res = await fetch('/api/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv})});
-          const fetchTime = performance.now() - fetchStart;
-          console.log(`Server request took ${fetchTime.toFixed(1)}ms`);
-          
-          const parseStart = performance.now();
           const data = await res.json();
-          const parseTime = performance.now() - parseStart;
-          console.log(`Response parsing took ${parseTime.toFixed(1)}ms`);
           
           const last = document.getElementById('last');
           
@@ -890,9 +883,6 @@ def html_index() -> str:
             flashBoard('success');
             // Move feedback removed - visual feedback through board animation
             
-            const totalSubmitTime = performance.now() - submitStart;
-            console.log(`Total move submission took ${totalSubmitTime.toFixed(1)}ms`);
-            console.log(`=== SCHEDULING REFRESH IN 600ms ===`);
             
             setTimeout(async () => {
               await refresh();
@@ -987,7 +977,6 @@ def html_index() -> str:
 
       function setBoardFlip(flip) {
         const board = document.getElementById('board');
-        console.log(`*** setBoardFlip called with: ${flip}`);
         boardIsFlipped = flip; // Store globally
         if (flip) {
           board.style.transform = 'rotate(180deg)';
@@ -1000,8 +989,6 @@ def html_index() -> str:
         document.querySelectorAll('.piece').forEach(p => p.remove());
         const position = parseFEN(fen);
         
-        console.log(`*** updateBoardFromFen - boardIsFlipped: ${boardIsFlipped}`);
-        
         for (const [square, piece] of Object.entries(position)) {
           const pieceEl = document.createElement('div');
           pieceEl.className = 'piece';
@@ -1011,9 +998,6 @@ def html_index() -> str:
           // Use CSS class for rotation instead of inline styles
           if (boardIsFlipped) {
             pieceEl.classList.add('flipped');
-            console.log(`*** Adding flipped class to piece ${piece}`);
-          } else {
-            console.log(`*** No flip class for piece ${piece}`);
           }
           
           const squareEl = document.querySelector(`[data-square="${square}"]`);
@@ -1059,12 +1043,18 @@ def html_index() -> str:
         // Turn indicator removed - color is evident from board orientation
       }
 
-      async function start() {
+      async function start(customFen = null) {
         const maiaLevels = [1100, 1300, 1500, 1700, 1900];
         const maiaLevel = maiaLevels[Math.floor(Math.random() * maiaLevels.length)];
         window.currentMaiaLevel = maiaLevel; // Store for saving later
+        
+        
         const playerColor = Math.random() < 0.5 ? 'white' : 'black'; // Random starting color
-        const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({maia_level: maiaLevel, player_color: playerColor})});
+        const payload = {maia_level: maiaLevel, player_color: playerColor};
+        if (customFen) {
+          payload.custom_fen = customFen;
+        }
+        const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
         const data = await res.json();
         SID = data.id;
         
@@ -1083,25 +1073,14 @@ def html_index() -> str:
       async function refresh() {
         if (!SID) return;
         
-        console.log(`=== REFRESH START ===`);
-        const refreshStart = performance.now();
-        
-        const fetchStart = performance.now();
         const res = await fetch('/api/session/' + SID + '/state');
-        const fetchTime = performance.now() - fetchStart;
-        console.log(`State fetch took ${fetchTime.toFixed(1)}ms`);
         
-        const parseStart = performance.now();
         const data = await res.json();
-        const parseTime = performance.now() - parseStart;
-        console.log(`State parse took ${parseTime.toFixed(1)}ms`);
         
-        const updateStart = performance.now();
         currentFen = data.fen;
         currentTurn = data.turn;
         leelaTopMoves = data.top_lines || [];
         const shouldFlip = data.flip || false;
-        console.log(`*** Client received: FEN=${currentFen.slice(0,30)}, top_move=${leelaTopMoves[0]?.move || 'none'}, flip=${shouldFlip}`);
         
         // No longer tracking win probability per move
         
@@ -1115,12 +1094,7 @@ def html_index() -> str:
         updateCharts();
         updatePGNDisplay();
         
-        const updateTime = performance.now() - updateStart;
-        console.log(`Board update took ${updateTime.toFixed(1)}ms`);
-        
-        console.log('*** Game status:', data.status);
         if (data.status === 'finished') {
-          console.log('*** Game finished - saving to history...');
           
           // Celebrate with confetti!
           createConfetti();
@@ -1137,8 +1111,6 @@ def html_index() -> str:
           }, 2500);
         }
         
-        const totalRefreshTime = performance.now() - refreshStart;
-        console.log(`=== TOTAL REFRESH: ${totalRefreshTime.toFixed(1)}ms ===`);
       }
 
       document.getElementById('new').addEventListener('click', async () => {
@@ -1219,7 +1191,6 @@ def open_engines(sess: Session) -> tuple[Lc0Engine, Lc0Engine]:
     """
     import time
     start_time = time.time()
-    print(f"open_engines() called for session {sess.id}")
     
     path = sess.lc0_path or find_lc0()
     if not path:
@@ -1227,36 +1198,27 @@ def open_engines(sess: Session) -> tuple[Lc0Engine, Lc0Engine]:
     
     # Create Leela engine if not exists (with thread safety)
     leela_lock_start = time.time()
-    print("Acquiring Leela lock...")
     with sess.leela_lock:
         leela_lock_time = time.time() - leela_lock_start
-        print(f"Leela lock acquired in {leela_lock_time:.3f}s")
         if sess.leela_engine is None:
-            print(f"Creating NEW Leela engine for session {sess.id}")
             leela_cfg = EngineConfig(exe=path, weights=sess.leela_weights)
             sess.leela_engine = Lc0Engine(leela_cfg)
             sess.leela_engine.open()
-            print(f"Leela engine created and opened for session {sess.id}")
         else:
-            print(f"Reusing existing Leela engine for session {sess.id}")
+            pass
     
     # Create Maia engine if not exists (with thread safety)
     maia_lock_start = time.time()
-    print("Acquiring Maia lock...")
     with sess.maia_lock:
         maia_lock_time = time.time() - maia_lock_start
-        print(f"Maia lock acquired in {maia_lock_time:.3f}s")
         if sess.maia_engine is None:
-            print(f"Creating NEW Maia engine for session {sess.id}")
             maia_cfg = EngineConfig(exe=path, weights=sess.maia_weights or sess.leela_weights)
             sess.maia_engine = Lc0Engine(maia_cfg)
             sess.maia_engine.open()
-            print(f"Maia engine created and opened for session {sess.id}")
         else:
-            print(f"Reusing existing Maia engine for session {sess.id}")
+            pass
     
     total_time = time.time() - start_time
-    print(f"open_engines() completed in {total_time:.3f}s")
     return sess.leela_engine, sess.maia_engine
 
 
@@ -1272,9 +1234,8 @@ def get_maia_engine_only(sess: Session) -> Lc0Engine:
             maia_cfg = EngineConfig(exe=path, weights=sess.maia_weights or sess.leela_weights)
             sess.maia_engine = Lc0Engine(maia_cfg)
             sess.maia_engine.open()
-            print(f"Created NEW Maia-only engine for session {sess.id}")
         else:
-            print(f"Reusing existing Maia-only engine for session {sess.id}")
+            pass
     
     return sess.maia_engine
 
@@ -1296,7 +1257,6 @@ def restart_analysis(sess: Session) -> None:
     # Stop any existing analysis
     stop_analysis(sess)
     # Don't start new background analysis - we'll use on-demand analysis instead
-    print(f"Background analysis disabled for session {sess.id}")
 
 
 @app.get("/")
@@ -1381,7 +1341,6 @@ def api_session_check_move(sid: str, payload: dict) -> JSONResponse:
         return JSONResponse({"legal": legal})
     except Exception as e:
         # If parsing fails, it's definitely not legal
-        logger.debug(f"Move parsing failed for '{move_str}': {e}")
         return JSONResponse({"legal": False})
 
 
@@ -1393,13 +1352,24 @@ def api_session_new(payload: dict) -> JSONResponse:
     leela_nodes = int(payload.get("leela_nodes", 2000))
     maia_nodes = 1
     player_color = str(payload.get("player_color", "white"))
+    custom_fen = payload.get("custom_fen")
     sid = uuid.uuid4().hex[:8]
     leela_w = nets_dir() / "lczero-best.pb.gz"
     leela_w = leela_w if leela_w.exists() else None
     maia_w = nets_dir() / f"maia-{maia_level}.pb.gz"
     maia_w = maia_w if maia_w.exists() else None
+    
+    # Create board with custom position if provided
+    board = chess.Board()
+    if custom_fen:
+        try:
+            board = chess.Board(custom_fen)
+        except ValueError as e:
+            logger.warning(f"Invalid FEN provided: {custom_fen}, using starting position. Error: {e}")
+    
     sess = Session(
         id=sid,
+        board=board,
         maia_level=maia_level,
         multipv=multipv,
         leela_nodes=leela_nodes,
@@ -1411,10 +1381,11 @@ def api_session_new(payload: dict) -> JSONResponse:
     with SESS_LOCK:
         SESSIONS[sid] = sess
     
+    print(f"New game started with Maia {maia_level}")
+    
     # Pre-warm engines to eliminate first-move delay
     try:
         leela, maia = open_engines(sess)
-        logger.info("Pre-warmed engines for session %s", sid)
         
         # If player is black, make Maia's opening move
         if player_color == "black":
@@ -1428,7 +1399,6 @@ def api_session_new(payload: dict) -> JSONResponse:
                     maia_move = maia.bestmove(sess.board, nodes=sess.maia_nodes)
                 sess.board.push(maia_move)
                 sess.move_index += 1
-                logger.info("Maia opened with %s", maia_move.uci())
                 
     except Exception as e:
         logger.warning("Failed to pre-warm engines: %s", e)
@@ -1459,12 +1429,10 @@ def api_session_state(sid: str) -> JSONResponse:
     if sess.analysis_fen == current_fen and sess.last_lines:
         top_lines = sess.last_lines
         top_move = top_lines[0]['move'] if top_lines else 'none'
-        print(f"*** Cache HIT for {current_fen[:30]} (top move: {top_move})")
     elif sess.predicted_fen == current_fen and sess.predicted_lines:
         # Predictive cache hit!
         top_lines = sess.predicted_lines
         top_move = top_lines[0]['move'] if top_lines else 'none'
-        print(f"*** PREDICTIVE CACHE HIT for {current_fen[:30]} (top move: {top_move})")
         # Move prediction to main cache
         sess.last_lines = sess.predicted_lines
         sess.analysis_fen = current_fen
@@ -1472,7 +1440,6 @@ def api_session_state(sid: str) -> JSONResponse:
         sess.predicted_lines = []
     else:
         # Cache miss - get fresh analysis and update cache
-        print(f"*** Cache MISS for {current_fen[:30]} (cached_fen: {sess.analysis_fen[:30] if sess.analysis_fen else 'None'})")
         
         # Cache miss - get fresh analysis and update cache  
         try:
@@ -1490,7 +1457,6 @@ def api_session_state(sid: str) -> JSONResponse:
                     sess.analysis_fen = current_fen
                     
                     top_move = top_lines[0]['move'] if top_lines else 'none'
-                    print(f"*** Got fresh analysis and updated cache (top move: {top_move})")
                 finally:
                     sess.leela_lock.release()
             else:
@@ -1498,13 +1464,11 @@ def api_session_state(sid: str) -> JSONResponse:
                 board = sess.board.copy()
                 top_lines = _fallback_top_lines(board, k=3, pov=board.turn)
                 top_move = top_lines[0]['move'] if top_lines else 'none'
-                print(f"*** Lock timeout, using fallback (top move: {top_move})")
         except Exception as e:
             # Error getting analysis, use fallback
             board = sess.board.copy()
             top_lines = _fallback_top_lines(board, k=3, pov=board.turn)
             top_move = top_lines[0]['move'] if top_lines else 'none'
-            print(f"*** Analysis error, using fallback (top move: {top_move}): {e}")
 
     return JSONResponse(
         {
@@ -1524,7 +1488,6 @@ def get_current_leela_analysis(sess):
     """Compute fresh Leela analysis for the session's current board."""
     try:
         board = sess.board.copy()
-        logger.debug("Analyzing current position: %s", board.fen())
         leela, _ = open_engines(sess)
         with sess.leela_lock:
             infos = leela.analyse(board, nodes=500, multipv=3)
@@ -1532,7 +1495,6 @@ def get_current_leela_analysis(sess):
                 infos = [infos]
         lines = info_to_lines(infos, board.turn)
         sess.last_lines = lines
-        logger.debug("Analysis complete; top move: %s", (lines[0]['move'] if lines else None))
         return lines
     except Exception as e:
         logger.warning("Leela analysis failed: %s", e)
@@ -1543,7 +1505,6 @@ def get_current_leela_analysis(sess):
 @app.post("/api/session/{sid}/predict")
 def api_session_predict(sid: str, payload: dict) -> JSONResponse:
     """Validate a user's move, advance the game on a correct prediction, and score it."""
-    logger.debug("predict: %s", payload)
     try:
         sess = get_session(sid)
     except KeyError:
@@ -1551,15 +1512,12 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
 
     move_str = str(payload.get("move", "")).strip()
     client_validated = payload.get("client_validated", False)
-    logger.debug("received move=%s client_validated=%s", move_str, client_validated)
     if not move_str:
         return JSONResponse({"error": "Missing move"}, status_code=400)
 
     board = sess.board.copy()
-    logger.debug("board=%s", board.fen())
     try:
         mv = chess.Move.from_uci(move_str)
-        logger.debug("parsed move: %s", mv)
         if mv not in board.legal_moves:
             logger.debug("illegal move: %s", mv)
             return JSONResponse({"error": "Illegal move in current position"}, status_code=400)
@@ -1647,27 +1605,20 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
 
     maia_move_uci: Optional[str] = None
     import time
-    print(f"=== MAIA MOVE START ===")
     maia_total_start = time.time()
     try:
         engine_start = time.time()
-        print("About to get Maia engine only...")
         maia = get_maia_engine_only(sess)
         engine_time = time.time() - engine_start
-        print(f"Maia engine access took {engine_time:.3f}s")
-        print(f"Got Maia engine: maia={id(maia)}")
         
         lock_start = time.time()
         with sess.maia_lock:
             lock_time = time.time() - lock_start
-            print(f"Maia lock acquired in {lock_time:.3f}s")
             
             temperature = 1.0 if sess.move_index < 10 else 0.0
-            print(f"Maia move {sess.move_index}, temperature={temperature}, nodes={sess.maia_nodes}")
             
             analysis_start = time.time()
             if temperature > 0:
-                print(f"Maia early game analysis path")
                 # Prefer short time-based analysis to encourage multiple PVs
                 multipv_count = max(5, sess.multipv)
                 infos2 = maia.analyse(sess.board, nodes=sess.maia_nodes, multipv=multipv_count)
@@ -1678,27 +1629,20 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
                     infos2 = []  # Will trigger fallback move selection
                 if len(infos2) > 1:
                     mv2 = pick_from_multipv(infos2, pov=sess.board.turn, temperature=temperature)
-                    print(f"Maia used multipv selection")
                 else:
                     # As a last resort, pick a heuristic move with temperature
                     mv2 = _fallback_choose_move(sess.board, temperature=temperature)
-                    print(f"Maia used fallback heuristic")
             else:
-                print(f"Maia late game bestmove path")
                 mv2 = maia.bestmove(sess.board, nodes=sess.maia_nodes)
-                print(f"Maia used bestmove")
             analysis_time = time.time() - analysis_start
-            print(f"Maia analysis took {analysis_time:.3f}s")
         
         board_start = time.time()
         sess.board.push(mv2)
         maia_move_uci = mv2.uci()
         sess.move_index += 1
         board_time = time.time() - board_start
-        print(f"Maia board update took {board_time:.3f}s")
         
     except Exception as e:
-        print(f"Maia exception: {e}")
         mv2 = _fallback_choose_move(sess.board, temperature=0.0)
         if mv2 and mv2 != chess.Move.null():
             sess.board.push(mv2)
@@ -1706,7 +1650,6 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
             sess.move_index += 1
     
     maia_total_time = time.time() - maia_total_start
-    print(f"=== MAIA TOTAL: {maia_total_time:.3f}s ===")
 
     sess.score_total += 1.0
     if sess.board.is_game_over():
