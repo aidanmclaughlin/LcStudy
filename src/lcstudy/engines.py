@@ -80,14 +80,19 @@ class EngineConfig:
     """Configuration for an lc0 engine instance."""
     exe: Path
     weights: Optional[Path] = None
-    threads: int = max(os.cpu_count() or 2, 2)
-    backend: Optional[str] = default_backend()
+    threads: Optional[int] = None  # Let backend auto-configure
+    backend: Optional[str] = None  # Let lc0 auto-detect optimal backend
 
     def to_options(self) -> dict[str, object]:
         """Map the config to lc0 UCI option names."""
         opts: dict[str, object] = {
-            "Threads": self.threads,
+            # Let backend suggest optimal configuration for everything
+            "MinibatchSize": 0,  # Auto-suggest batch size
         }
+        # Only set threads if explicitly configured
+        if self.threads is not None:
+            opts["Threads"] = self.threads
+        # Only set backend if explicitly configured
         if self.backend:
             opts["Backend"] = self.backend
         if self.weights:

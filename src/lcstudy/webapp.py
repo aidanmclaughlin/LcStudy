@@ -112,8 +112,9 @@ def continuous_leela_analysis(sess: Session) -> None:
             if sess.stop_analysis_event.is_set():
                 return
             
-            # Start unlimited analysis - no time, node, or depth limits
-            analysis_result = leela.engine.analysis(board, chess.engine.Limit(), multipv=3)
+            # Start unlimited analysis - no time, node, or depth limits  
+            # Note: MultiPV=1 (default) is optimal for Leela performance
+            analysis_result = leela.engine.analysis(board, chess.engine.Limit())
         
         # Process analysis info as it comes in
         for info in analysis_result:
@@ -300,7 +301,6 @@ def html_index() -> str:
           <h1 style='margin: 0; color: #f8fafc; font-size: 1.2rem; font-weight: 800;'>LcStudy</h1>
           <div style='display: flex; gap: 0.5vh;'>
             <button id='new' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap;'>New Game</button>
-            <button onclick='playLeelaMove()' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap; background: #22c55e;'>Leela</button>
           </div>
         </div>
         
@@ -661,27 +661,20 @@ def html_index() -> str:
 
       let pendingMoves = new Set();
 
-      function isPawnPromotion(mv) {
-        if (mv.length !== 4) return false;
-        const fromSquare = mv.slice(0, 2);
-        const toSquare = mv.slice(2, 4);
-        const fromRank = parseInt(fromSquare[1]);
-        const toRank = parseInt(toSquare[1]);
-        
-        // Check if it's a move to the back rank (promotion rank)
-        if (!(toRank === 8 || toRank === 1)) {
+      async function needsPromotion(mv) {
+        // Let the server's chess engine determine if this needs promotion
+        // This prevents false positives like kings moving to back rank
+        try {
+          const res = await fetch('/api/session/' + SID + '/check-move', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({move: mv})
+          });
+          const data = await res.json();
+          return data.needs_promotion || false;
+        } catch (e) {
           return false;
         }
-        
-        // Use chess logic instead of DOM inspection for more reliability
-        // White pawns promote when moving from rank 7 to rank 8
-        // Black pawns promote when moving from rank 2 to rank 1
-        const isWhitePawnPromotion = fromRank === 7 && toRank === 8;
-        const isBlackPawnPromotion = fromRank === 2 && toRank === 1;
-        
-        const result = isWhitePawnPromotion || isBlackPawnPromotion;
-        
-        return result;
       }
 
       function showPromotionDialog() {
@@ -773,17 +766,6 @@ def html_index() -> str:
         });
       }
 
-      function formatNodeCount(nodes) {
-        if (nodes >= 1e9) {
-          return (nodes / 1e9).toFixed(1) + 'B';
-        } else if (nodes >= 1e6) {
-          return (nodes / 1e6).toFixed(1) + 'M';
-        } else if (nodes >= 1e3) {
-          return (nodes / 1e3).toFixed(1) + 'K';
-        } else {
-          return nodes.toString();
-        }
-      }
 
       async function pollAnalysisUpdates() {
         if (!SID) return;
@@ -818,7 +800,19 @@ def html_index() -> str:
               nodes = Math.floor(data.nodes);
             }
             
-            analysisStatsElement.innerHTML = `<span style='color: #8b5cf6;'>D ${depth}</span> <span style='color: #06b6d4;'>N ${nodes}</span> <span style='color: #10b981;'>P ${winProb}</span>`;
+            // Format nodes with K/M/B
+            let formattedNodes;
+            if (nodes >= 1e9) {
+              formattedNodes = Math.floor(nodes / 1e9) + 'B';
+            } else if (nodes >= 1e6) {
+              formattedNodes = Math.floor(nodes / 1e6) + 'M';
+            } else if (nodes >= 1e3) {
+              formattedNodes = Math.floor(nodes / 1e3) + 'K';
+            } else {
+              formattedNodes = nodes.toString();
+            }
+            
+            analysisStatsElement.innerHTML = `<span style='color: #8b5cf6;'>D ${depth}</span> <span style='color: #06b6d4;'>N ${formattedNodes}</span> <span style='color: #10b981;'>P ${winProb}</span>`;
           }
           
           // Update global state for move validation
@@ -877,39 +871,12 @@ def html_index() -> str:
         await start(testFen);
       }
 
-      async function playLeelaMove() {
-        if (!SID) {
-          return;
-        }
-        
-        try {
-          const res = await fetch('/api/session/' + SID + '/state');
-          const data = await res.json();
-          
-          // Try different ways to get the move
-          let leelaMove = null;
-          if (data.lines && data.lines.length > 0 && data.lines[0].move) {
-            leelaMove = data.lines[0].move;
-          } else if (data.top_move) {
-            leelaMove = data.top_move;
-          } else if (data.top_lines && data.top_lines.length > 0 && data.top_lines[0].move) {
-            leelaMove = data.top_lines[0].move;
-          }
-          
-          if (leelaMove) {
-            await submitMove(leelaMove);
-          } else {
-          }
-        } catch (error) {
-          console.error('*** Error playing Leela move:', error);
-        }
-      }
 
       async function submitMove(mv){
         if (!SID || pendingMoves.has(mv)) return;
         
-        // Handle pawn promotion with piece selection
-        if (isPawnPromotion(mv)) {
+        // Handle pawn promotion with piece selection (server-side detection)
+        if (await needsPromotion(mv)) {
           const promotionPiece = await showPromotionDialog();
           if (!promotionPiece) return; // User cancelled
           mv = mv + promotionPiece;
@@ -1487,7 +1454,7 @@ def api_save_game_history(payload: dict) -> JSONResponse:
 
 @app.post("/api/session/{sid}/check-move")
 def api_session_check_move(sid: str, payload: dict) -> JSONResponse:
-    """Check if a move is legal without making it."""
+    """Check if a move is legal and detect promotion needs."""
     try:
         sess = get_session(sid)
     except KeyError:
@@ -1495,16 +1462,35 @@ def api_session_check_move(sid: str, payload: dict) -> JSONResponse:
     
     move_str = str(payload.get("move", "")).strip()
     if not move_str:
-        return JSONResponse({"legal": False})
+        return JSONResponse({"legal": False, "needs_promotion": False})
     
     try:
-        # Handle both regular moves (e2e4) and promotions (e7e8q)
+        # First check if move without promotion is legal
         mv = chess.Move.from_uci(move_str)
-        legal = mv in sess.board.legal_moves
-        return JSONResponse({"legal": legal})
+        if mv in sess.board.legal_moves:
+            return JSONResponse({"legal": True, "needs_promotion": False})
+        
+        # If not legal, check if it's a pawn promotion that needs a piece
+        if len(move_str) == 4:  # e7e8 format
+            from_square = chess.parse_square(move_str[:2])
+            to_square = chess.parse_square(move_str[2:4])
+            piece = sess.board.piece_at(from_square)
+            
+            # Check if it's a pawn moving to promotion rank
+            if (piece and piece.piece_type == chess.PAWN and 
+                ((piece.color == chess.WHITE and chess.square_rank(to_square) == 7) or  # rank 8 in chess.py is index 7
+                 (piece.color == chess.BLACK and chess.square_rank(to_square) == 0))):  # rank 1 in chess.py is index 0
+                
+                # Check if any promotion move would be legal
+                for promotion in [chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT]:
+                    test_move = chess.Move(from_square, to_square, promotion=promotion)
+                    if test_move in sess.board.legal_moves:
+                        return JSONResponse({"legal": False, "needs_promotion": True})
+        
+        return JSONResponse({"legal": False, "needs_promotion": False})
+        
     except Exception as e:
-        # If parsing fails, it's definitely not legal
-        return JSONResponse({"legal": False})
+        return JSONResponse({"legal": False, "needs_promotion": False})
 
 
 @app.post("/api/session/new")
@@ -1556,7 +1542,8 @@ def api_session_new(payload: dict) -> JSONResponse:
                 # Use some randomness for opening variety
                 temperature = 1.0 if sess.move_index < 10 else 0.0
                 if temperature > 0:
-                    infos = maia.analyse(sess.board, nodes=max(100, sess.maia_nodes), multipv=5)
+                    # MultiPV=1 (default) is optimal for lc0 performance (Maia uses lc0)
+                    infos = maia.analyse(sess.board, nodes=max(100, sess.maia_nodes))
                     maia_move = pick_from_multipv(infos, sess.board.turn, temperature)
                 else:
                     maia_move = maia.bestmove(sess.board, nodes=sess.maia_nodes)
@@ -1632,7 +1619,8 @@ def get_current_leela_analysis(sess):
         board = sess.board.copy()
         leela, _ = open_engines(sess)
         with sess.leela_lock:
-            infos = leela.analyse(board, nodes=500, multipv=3)
+            # MultiPV=1 (default) is optimal for Leela performance
+            infos = leela.analyse(board, nodes=500)
             if not isinstance(infos, list):
                 infos = [infos]
         lines = info_to_lines(infos, board.turn)
@@ -1780,9 +1768,9 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
             
             analysis_start = time.time()
             if temperature > 0:
-                # Prefer short time-based analysis to encourage multiple PVs
-                multipv_count = max(5, sess.multipv)
-                infos2 = maia.analyse(sess.board, nodes=sess.maia_nodes, multipv=multipv_count)
+                # MultiPV=1 (default) is optimal for lc0 performance (Maia uses lc0)
+                # Note: lc0 has internal randomness mechanisms for variety
+                infos2 = maia.analyse(sess.board, nodes=sess.maia_nodes)
                 if not isinstance(infos2, list):
                     infos2 = [infos2]
                 if len(infos2) <= 1:

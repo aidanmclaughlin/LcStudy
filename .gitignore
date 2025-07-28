@@ -16,3 +16,6 @@ venv/
 # IDE
 .idea/
 .vscode/
+
+# LcStudy user data
+.lcstudy/
