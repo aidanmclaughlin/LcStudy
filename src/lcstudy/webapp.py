@@ -135,6 +135,20 @@ def html_index() -> str:
         50% { box-shadow: 0 0 0 12px rgba(107,114,128,.6); } 
         100% { box-shadow: 0 0 0 0 rgba(107,114,128,.0); } 
       }
+      
+      /* Confetti Animation */
+      .confetti {
+        position: fixed;
+        top: -10px;
+        z-index: 9999;
+        pointer-events: none;
+        animation: confetti-fall 3s linear forwards;
+      }
+      @keyframes confetti-fall {
+        0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+      }
+      
       .pill { display:inline-flex; align-items:center; gap:8px; background: rgba(139,92,246,.12); color:#c4b5fd; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(139,92,246,.25); }
       .btn { background: linear-gradient(180deg,#8b5cf6,#7c3aed); color:#fff; border:0; padding:9px 14px; border-radius: 10px; font-weight:700; cursor:pointer; box-shadow: 0 6px 14px rgba(124,58,237,.3); }
       .btn:hover { filter:brightness(1.05); }
@@ -679,6 +693,31 @@ def html_index() -> str:
         });
       }
 
+      function createConfetti() {
+        const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd', '#98d8c8', '#f7dc6f'];
+        const confettiCount = 150;
+        
+        for (let i = 0; i < confettiCount; i++) {
+          const confetti = document.createElement('div');
+          confetti.className = 'confetti';
+          confetti.style.left = Math.random() * 100 + 'vw';
+          confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+          confetti.style.width = Math.random() * 10 + 5 + 'px';
+          confetti.style.height = confetti.style.width;
+          confetti.style.animationDelay = Math.random() * 0.5 + 's';
+          confetti.style.animationDuration = Math.random() * 2 + 2 + 's';
+          
+          document.body.appendChild(confetti);
+          
+          // Remove confetti after animation
+          setTimeout(() => {
+            if (confetti.parentNode) {
+              confetti.parentNode.removeChild(confetti);
+            }
+          }, 4000);
+        }
+      }
+
       async function playLeelaMove() {
         if (!SID) {
           console.log('*** No session ID');
@@ -786,8 +825,17 @@ def html_index() -> str:
             // Check if this move ended the game and save immediately
             if (data.status === 'finished') {
               console.log('*** Correct move resulted in game finish - saving immediately...');
+              
+              // Celebrate with confetti!
+              createConfetti();
+              
               await saveCompletedGame('finished');
               await loadGameHistory();
+              
+              // Auto-restart after a brief celebration
+              setTimeout(async () => {
+                await start();
+              }, 2500);
             }
             
             // Move feedback removed - visual feedback through board animation
@@ -1082,11 +1130,20 @@ def html_index() -> str:
         console.log('*** Game status:', data.status);
         if (data.status === 'finished') {
           console.log('*** Game finished - saving to history...');
+          
+          // Celebrate with confetti!
+          createConfetti();
+          
           // Save completed game stats
           await saveCompletedGame('finished');
           
           // Reload game history to update the chart
           await loadGameHistory();
+          
+          // Auto-restart after a brief celebration
+          setTimeout(async () => {
+            await start();
+          }, 2500);
         }
         
         const totalRefreshTime = performance.now() - refreshStart;
