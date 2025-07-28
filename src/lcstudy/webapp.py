@@ -70,10 +70,134 @@ class Session:
     maia_engine: Optional['Lc0Engine'] = None
     leela_lock: threading.Lock = field(default_factory=threading.Lock)
     maia_lock: threading.Lock = field(default_factory=threading.Lock)
+    
+    # Continuous analysis state
+    continuous_analysis_thread: Optional[threading.Thread] = None
+    stop_analysis_event: threading.Event = field(default_factory=threading.Event)
+    current_analysis_nodes: int = 0
+    current_best_move: Optional[str] = None
+    current_best_lines: list[dict] = field(default_factory=list)
+    analysis_position_fen: Optional[str] = None
+    snapshotted_best_move: Optional[str] = None  # Move frozen when user first attempts
+    position_start_time: float = 0.0
 
 
 SESSIONS: Dict[str, Session] = {}
 SESS_LOCK = threading.Lock()
+
+
+def continuous_leela_analysis(sess: Session) -> None:
+    """Run truly unlimited Leela analysis until interrupted.
+    
+    Starts unlimited analysis and updates node counts in real-time until
+    the user makes their first move attempt.
+    """
+    import time
+    import chess.engine
+    
+    current_fen = sess.analysis_position_fen
+    if not current_fen:
+        return
+        
+    analysis_result = None
+    try:
+        # Get engine instance
+        leela, _ = open_engines(sess)
+        board = chess.Board(current_fen)
+        
+        analysis_start = time.time()
+        print(f"Starting unlimited analysis for position: {current_fen[:20]}...")
+        
+        with sess.leela_lock:
+            if sess.stop_analysis_event.is_set():
+                return
+            
+            # Start unlimited analysis - no time, node, or depth limits
+            analysis_result = leela.engine.analysis(board, chess.engine.Limit(), multipv=3)
+        
+        # Process analysis info as it comes in
+        for info in analysis_result:
+            # Check if we should stop
+            if sess.stop_analysis_event.is_set() or sess.analysis_position_fen != current_fen:
+                break
+                
+            # Update session with latest analysis
+            nodes = info.get("nodes", 0)
+            sess.current_analysis_nodes = nodes
+            
+            # Convert to our line format
+            infos = [info] if isinstance(info, dict) else info
+            sess.current_best_lines = info_to_lines(infos, board.turn)
+            sess.current_best_move = sess.current_best_lines[0]['move'] if sess.current_best_lines else None
+            
+            elapsed = time.time() - analysis_start
+            print(f"Analysis update: {nodes} nodes after {elapsed:.1f}s")
+        
+        elapsed_total = time.time() - analysis_start
+        print(f"Unlimited analysis stopped after {elapsed_total:.1f}s, {sess.current_analysis_nodes} nodes")
+                
+    except Exception as e:
+        logger.warning(f"Continuous analysis thread crashed: {e}")
+    finally:
+        # Stop analysis if still running
+        if analysis_result:
+            try:
+                analysis_result.stop()
+            except Exception:
+                pass
+        # Clean up
+        sess.continuous_analysis_thread = None
+
+
+def start_continuous_analysis(sess: Session) -> None:
+    """Start continuous analysis for the current position."""
+    import time
+    
+    # Stop any existing analysis
+    stop_continuous_analysis(sess)
+    
+    current_fen = sess.board.fen()
+    sess.analysis_position_fen = current_fen
+    sess.position_start_time = time.time()
+    sess.current_analysis_nodes = 0
+    sess.current_best_move = None
+    sess.current_best_lines = []
+    sess.snapshotted_best_move = None  # Reset snapshot
+    
+    # Reset stop event
+    sess.stop_analysis_event.clear()
+    
+    # Start background analysis thread
+    sess.continuous_analysis_thread = threading.Thread(
+        target=continuous_leela_analysis,
+        args=(sess,),
+        daemon=True
+    )
+    sess.continuous_analysis_thread.start()
+    print(f"Started continuous analysis for position: {current_fen[:20]}...")
+
+
+def stop_continuous_analysis(sess: Session) -> None:
+    """Stop continuous analysis and clean up thread."""
+    if sess.continuous_analysis_thread is not None:
+        sess.stop_analysis_event.set()
+        sess.continuous_analysis_thread.join(timeout=1.0)
+        sess.continuous_analysis_thread = None
+
+
+def snapshot_best_move(sess: Session) -> Optional[str]:
+    """Snapshot the current best move when user makes first attempt.
+    
+    Returns the snapshotted move, or None if no analysis available.
+    """
+    if sess.current_best_move and not sess.snapshotted_best_move:
+        sess.snapshotted_best_move = sess.current_best_move
+        print(f"Snapshotted best move: {sess.snapshotted_best_move} (after {sess.current_analysis_nodes} nodes)")
+        
+        # Stop analysis since we've captured the target move
+        stop_continuous_analysis(sess)
+        
+    return sess.snapshotted_best_move
 
 
 
@@ -202,8 +326,11 @@ def html_index() -> str:
           <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5vh;'>
             <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Recent Moves</h2>
             <div style='display: flex; gap: 1vh; align-items: center;'>
-              <span style='color: #64748b; font-weight: 600; font-size: 0.75rem;'>Nodes: <span id='node-count'>0</span></span>
-              <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Win Prob: <span id='current-eval'>0.0%</span></span>
+              <span style='font-weight: 600; font-size: 0.75rem;' id='analysis-stats'>
+                <span style='color: #8b5cf6;'>D 0</span> 
+                <span style='color: #06b6d4;'>N 0</span> 
+                <span style='color: #10b981;'>P 0</span>
+              </span>
             </div>
           </div>
           <div id='pgn-moves' style='font-family: Georgia, serif; font-size: 0.7rem; line-height: 1.3; overflow-x: scroll; white-space: nowrap; padding: 0.5vh 0; scrollbar-width: none; -ms-overflow-style: none;'>
@@ -222,6 +349,7 @@ def html_index() -> str:
       let currentTurn = 'white';
       let leelaTopMoves = []; // Pre-fetched Leela analysis for instant validation
       let boardIsFlipped = false; // Track flip state globally
+      let analysisPollingInterval = null; // For real-time analysis updates
       
       // Game tracking data
       let gameAttempts = []; // Attempts per move
@@ -361,35 +489,8 @@ def html_index() -> str:
       }
 
       function updateStatistics(scoreTotal, currentMove) {
-        // Update current position win probability from Leela
-        const currentEvalElement = document.getElementById('current-eval');
-        const nodeCountElement = document.getElementById('node-count');
-        
-        if (currentEvalElement && leelaTopMoves.length > 0) {
-          // Extract win probability from Leela's evaluation
-          let winProb = null;
-          if (leelaTopMoves[0].wdl && leelaTopMoves[0].wdl.length >= 3) {
-            // WDL format: [win, draw, loss] probabilities
-            winProb = leelaTopMoves[0].wdl[0] * 100;
-          } else if (leelaTopMoves[0].winrate !== null && leelaTopMoves[0].winrate !== undefined) {
-            winProb = leelaTopMoves[0].winrate * 100;
-          } else if (leelaTopMoves[0].cp !== null) {
-            // Convert centipawns to win probability
-            const cp = leelaTopMoves[0].cp;
-            winProb = (1 / (1 + Math.pow(10, -cp / 400))) * 100;
-          }
-          
-          if (winProb !== null) {
-            currentEvalElement.textContent = winProb.toFixed(1) + '%';
-          }
-          
-          // Update node count
-          if (nodeCountElement && leelaTopMoves[0].nodes) {
-            const nodeCount = formatNodeCount(leelaTopMoves[0].nodes);
-            nodeCountElement.textContent = nodeCount;
-          }
-        }
-        
+        // Note: Win probability and node count are now updated by real-time polling
+        // Only update the attempts counter here
         const avgAttempts = totalAttempts > 0 ? (totalAttempts / Math.max(1, gameAttempts.length)) : 0;
         document.getElementById('avg-attempts').textContent = avgAttempts.toFixed(1);
       }
@@ -681,6 +782,67 @@ def html_index() -> str:
           return (nodes / 1e3).toFixed(1) + 'K';
         } else {
           return nodes.toString();
+        }
+      }
+
+      async function pollAnalysisUpdates() {
+        if (!SID) return;
+        
+        try {
+          const res = await fetch('/api/session/' + SID + '/analysis');
+          const data = await res.json();
+          
+          // Update D N P display
+          const analysisStatsElement = document.getElementById('analysis-stats');
+          if (analysisStatsElement) {
+            let depth = 0;
+            let nodes = 0;
+            let winProb = 50; // Default to 50% if no WDL data
+            
+            // Get depth and nodes
+            if (data.analysis_lines && data.analysis_lines.length > 0) {
+              const topLine = data.analysis_lines[0];
+              depth = Math.floor(topLine.depth || 0);
+              
+              // Get win probability from WDL or CP score
+              if (topLine.wdl && topLine.wdl.length >= 3) {
+                winProb = Math.floor(topLine.wdl[0] * 100);
+              } else if (topLine.cp !== null && topLine.cp !== undefined) {
+                // Convert centipawns to rough win probability
+                const sigmoid = 1 / (1 + Math.exp(-topLine.cp / 400));
+                winProb = Math.floor(sigmoid * 100);
+              }
+            }
+            
+            if (data.nodes) {
+              nodes = Math.floor(data.nodes);
+            }
+            
+            analysisStatsElement.innerHTML = `<span style='color: #8b5cf6;'>D ${depth}</span> <span style='color: #06b6d4;'>N ${nodes}</span> <span style='color: #10b981;'>P ${winProb}</span>`;
+          }
+          
+          // Update global state for move validation
+          leelaTopMoves = data.analysis_lines || [];
+          
+        } catch (error) {
+          console.log('Analysis polling error:', error);
+        }
+      }
+
+      function startAnalysisPolling() {
+        // Stop any existing polling
+        if (analysisPollingInterval) {
+          clearInterval(analysisPollingInterval);
+        }
+        
+        // Start polling every 500ms for real-time updates
+        analysisPollingInterval = setInterval(pollAnalysisUpdates, 500);
+      }
+
+      function stopAnalysisPolling() {
+        if (analysisPollingInterval) {
+          clearInterval(analysisPollingInterval);
+          analysisPollingInterval = null;
         }
       }
 
@@ -1068,6 +1230,7 @@ def html_index() -> str:
         
         resetGameData();
         await refresh();
+        startAnalysisPolling();
       }
 
       async function refresh() {
@@ -1082,19 +1245,19 @@ def html_index() -> str:
         leelaTopMoves = data.top_lines || [];
         const shouldFlip = data.flip || false;
         
-        // No longer tracking win probability per move
-        
         // Update board position (flip state is already set and won't change)
         updateBoardFromFen(currentFen);
         clearSelection();
         setWho(data.turn);
         
-        // Update statistics and charts
+        // Update statistics and charts (node count now handled by polling)
         updateStatistics(data.score_total || 0, data.ply || moveCounter);
         updateCharts();
         updatePGNDisplay();
         
         if (data.status === 'finished') {
+          // Stop analysis polling since game is over
+          stopAnalysisPolling();
           
           // Celebrate with confetti!
           createConfetti();
@@ -1414,62 +1577,39 @@ def api_session_new(payload: dict) -> JSONResponse:
     })
 
 
+@app.get("/api/session/{sid}/analysis")
+def api_session_analysis(sid: str) -> JSONResponse:
+    """Get real-time analysis status for continuous updates."""
+    try:
+        sess = get_session(sid)
+    except KeyError:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    
+    return JSONResponse({
+        "nodes": sess.current_analysis_nodes,
+        "best_move": sess.current_best_move,
+        "analysis_lines": sess.current_best_lines,
+        "is_analyzing": sess.continuous_analysis_thread is not None,
+        "snapshotted_move": sess.snapshotted_best_move,
+        "position_fen": sess.analysis_position_fen
+    })
+
+
 @app.get("/api/session/{sid}/state")
 def api_session_state(sid: str) -> JSONResponse:
-    """Return the current session state and cached Leela top lines."""
+    """Return the current session state and start continuous analysis."""
     try:
         sess = get_session(sid)
     except KeyError:
         raise HTTPException(404, "Session not found")
-    
-    # Smart cache: check if we have valid analysis for current position
+
     current_fen = sess.board.fen()
     
-    # Check if cache is valid for current position
-    if sess.analysis_fen == current_fen and sess.last_lines:
-        top_lines = sess.last_lines
-        top_move = top_lines[0]['move'] if top_lines else 'none'
-    elif sess.predicted_fen == current_fen and sess.predicted_lines:
-        # Predictive cache hit!
-        top_lines = sess.predicted_lines
-        top_move = top_lines[0]['move'] if top_lines else 'none'
-        # Move prediction to main cache
-        sess.last_lines = sess.predicted_lines
-        sess.analysis_fen = current_fen
-        sess.predicted_fen = None
-        sess.predicted_lines = []
-    else:
-        # Cache miss - get fresh analysis and update cache
-        
-        # Cache miss - get fresh analysis and update cache  
-        try:
-            leela, _ = open_engines(sess)
-            if sess.leela_lock.acquire(timeout=0.2):  # 200ms timeout
-                try:
-                    board = sess.board.copy()
-                    infos = leela.analyse(board, nodes=150, multipv=3)  # Quick analysis
-                    if not isinstance(infos, list):
-                        infos = [infos]
-                    top_lines = info_to_lines(infos, board.turn)
-                    
-                    # Update cache with fresh analysis for THIS position
-                    sess.last_lines = top_lines
-                    sess.analysis_fen = current_fen
-                    
-                    top_move = top_lines[0]['move'] if top_lines else 'none'
-                finally:
-                    sess.leela_lock.release()
-            else:
-                # Couldn't get lock, use fallback but don't cache it
-                board = sess.board.copy()
-                top_lines = _fallback_top_lines(board, k=3, pov=board.turn)
-                top_move = top_lines[0]['move'] if top_lines else 'none'
-        except Exception as e:
-            # Error getting analysis, use fallback
-            board = sess.board.copy()
-            top_lines = _fallback_top_lines(board, k=3, pov=board.turn)
-            top_move = top_lines[0]['move'] if top_lines else 'none'
-
+    # Start continuous analysis if this is a new position
+    if sess.analysis_position_fen != current_fen:
+        start_continuous_analysis(sess)
+    
+    # Return current analysis state (may be in progress)
     return JSONResponse(
         {
             "id": sess.id,
@@ -1479,8 +1619,10 @@ def api_session_state(sid: str) -> JSONResponse:
             "guesses": len(sess.history),
             "ply": sess.move_index,
             "status": sess.status,
-            "top_lines": top_lines,
+            "top_lines": sess.current_best_lines or [],
             "flip": sess.flip,
+            "is_analyzing": sess.continuous_analysis_thread is not None,
+            "analysis_nodes": sess.current_analysis_nodes
         }
     )
 
@@ -1582,25 +1724,44 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
 
     score = score_similarity(best_cp, your_cp, your_rank, max_rank=len(infos))
 
-    logger.debug("compare user=%s leela=%s", mv.uci(), best_move.uci())
-    if mv != best_move:
+    # Snapshot the best move on user's first attempt
+    target_move = snapshot_best_move(sess)
+    
+    # If no snapshotted move available yet, wait for analysis
+    if not target_move:
+        if sess.current_best_move:
+            target_move = sess.current_best_move
+        else:
+            # Fallback if no analysis available
+            target_move = best_move.uci() if best_move else None
+    
+    if not target_move:
+        return JSONResponse({
+            "your_move": mv.uci(),
+            "correct": False,
+            "message": "Analysis in progress. Please wait...",
+            "score_hint": 0,
+        })
+    
+    target_move_obj = chess.Move.from_uci(target_move)
+    logger.debug("compare user=%s target=%s", mv.uci(), target_move)
+    
+    if mv != target_move_obj:
         logger.debug("move rejected")
-        try:
-            restart_analysis(sess)
-        except Exception:
-            pass
         response = {
             "your_move": mv.uci(),
             "correct": False,
             "message": "Not Leela's choice. Try again.",
             "score_hint": score,
+            "target_move": target_move,
+            "nodes_analyzed": sess.current_analysis_nodes
         }
         logger.debug("rejection response: %s", response)
         return JSONResponse(response)
     
     logger.debug("move accepted")
 
-    sess.board.push(best_move)
+    sess.board.push(target_move_obj)
     sess.move_index += 1
 
     maia_move_uci: Optional[str] = None
