@@ -149,6 +149,7 @@ def html_index() -> str:
         100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
       }
       
+      #pgn-moves::-webkit-scrollbar { display: none; }
       .pill { display:inline-flex; align-items:center; gap:8px; background: rgba(139,92,246,.12); color:#c4b5fd; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(139,92,246,.25); }
       .btn { background: linear-gradient(180deg,#8b5cf6,#7c3aed); color:#fff; border:0; padding:9px 14px; border-radius: 10px; font-weight:700; cursor:pointer; box-shadow: 0 6px 14px rgba(124,58,237,.3); }
       .btn:hover { filter:brightness(1.05); }
@@ -171,37 +172,25 @@ def html_index() -> str:
       <div style='width: 25vw; min-width: 280px; display: flex; flex-direction: column; gap: 1vh; height: 100%; overflow: hidden;'>
         
         <!-- Header & Controls Combined -->
-        <div class='panel' style='padding: 1vh;'>
-          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1vh;'>
-            <h1 style='margin: 0; color: #f8fafc; font-size: 1.2rem; font-weight: 800;'>LcStudy</h1>
-            <div style='display: flex; gap: 0.5vh;'>
-              <button id='new' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap;'>New Game</button>
-              <button onclick='playLeelaMove()' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap; background: #22c55e;'>Leela</button>
-            </div>
-          </div>
-          <div>
-            <label for='maia-elo' style='display: block; margin-bottom: 0.3vh; color: var(--muted); font-size: 0.7rem;'>Maia Strength:</label>
-            <select id='maia-elo' style='width: 100%; padding: 0.3vh 0.8vh; border-radius: 0.3vh; border: 1px solid rgba(148,163,184,.3); background: rgba(17, 24, 39, .8); color: var(--ink); font-size: 0.75rem;'>
-              <option value="1100">1100 (Beginner)</option>
-              <option value="1300">1300 (Novice)</option>
-              <option value="1500" selected>1500 (Intermediate)</option>
-              <option value="1700">1700 (Advanced)</option>
-              <option value="1900">1900 (Expert)</option>
-            </select>
+        <div class='panel' style='padding: 2vh 3vh; display: flex; justify-content: space-between; align-items: center;'>
+          <h1 style='margin: 0; color: #f8fafc; font-size: 1.2rem; font-weight: 800;'>LcStudy</h1>
+          <div style='display: flex; gap: 0.5vh;'>
+            <button id='new' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap;'>New Game</button>
+            <button onclick='playLeelaMove()' class='btn' style='padding: 0.5vh 1vw; font-size: 0.8rem; white-space: nowrap; background: #22c55e;'>Leela</button>
           </div>
         </div>
         
         <!-- Accuracy Over Time Chart -->
-        <div class='panel' style='padding: 1vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
-          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5vh;'>
+        <div class='panel' style='padding: 2.5vh 3vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
+          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5vh;'>
             <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Your Accuracy Over Time</h2>
           </div>
           <canvas id='accuracy-chart' style='width: 100%; flex: 1;'></canvas>
         </div>
         
         <!-- Attempts Chart -->
-        <div class='panel' style='padding: 1vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
-          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5vh;'>
+        <div class='panel' style='padding: 2.5vh 3vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
+          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5vh;'>
             <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Attempts per Move</h2>
             <span style='color: #f59e0b; font-weight: 600; font-size: 0.75rem;'>Avg: <span id='avg-attempts'>0.0</span></span>
           </div>
@@ -209,12 +198,12 @@ def html_index() -> str:
         </div>
         
         <!-- PGN Moves (Single Line) -->
-        <div class='panel' style='padding: 2vh 2vh; flex: 0 0 auto; min-height: 8vh; display: flex; flex-direction: column; justify-content: center;'>
-          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1vh;'>
+        <div class='panel' style='padding: 2.5vh 3vh; flex: 0 0 auto; min-height: 8vh; display: flex; flex-direction: column; justify-content: center;'>
+          <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5vh;'>
             <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Recent Moves</h2>
             <span style='color: #22c55e; font-weight: 600; font-size: 0.75rem;'>Current: <span id='current-eval'>0.0%</span></span>
           </div>
-          <div id='pgn-moves' style='font-family: Georgia, serif; font-size: 0.7rem; line-height: 1.3; overflow-x: auto; white-space: nowrap; padding: 0.5vh 0;'>
+          <div id='pgn-moves' style='font-family: Georgia, serif; font-size: 0.7rem; line-height: 1.3; overflow-x: scroll; white-space: nowrap; padding: 0.5vh 0; scrollbar-width: none; -ms-overflow-style: none;'>
             <div id='move-list' class='meta'>Game not started</div>
           </div>
         </div>
@@ -487,7 +476,7 @@ def html_index() -> str:
         }
         
         const avgRetries = totalAttempts / gameAttempts.length;
-        const maiaLevel = parseInt(document.getElementById('maia-elo').value);
+        const maiaLevel = window.currentMaiaLevel || 1500; // Use the randomly selected level
         
         console.log('*** Saving game with avgRetries:', avgRetries, 'maiaLevel:', maiaLevel);
         
@@ -1071,7 +1060,9 @@ def html_index() -> str:
       }
 
       async function start() {
-        const maiaLevel = parseInt(document.getElementById('maia-elo').value);
+        const maiaLevels = [1100, 1300, 1500, 1700, 1900];
+        const maiaLevel = maiaLevels[Math.floor(Math.random() * maiaLevels.length)];
+        window.currentMaiaLevel = maiaLevel; // Store for saving later
         const playerColor = Math.random() < 0.5 ? 'white' : 'black'; // Random starting color
         const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({maia_level: maiaLevel, player_color: playerColor})});
         const data = await res.json();
