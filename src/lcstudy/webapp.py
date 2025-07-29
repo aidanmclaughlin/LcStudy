@@ -80,6 +80,7 @@ class Session:
     analysis_position_fen: Optional[str] = None
     snapshotted_best_move: Optional[str] = None  # Move frozen when user first attempts
     position_start_time: float = 0.0
+    current_move_attempts: int = 0  # Track attempts for current move (max 10)
 
 
 SESSIONS: Dict[str, Session] = {}
@@ -105,9 +106,6 @@ def continuous_leela_analysis(sess: Session) -> None:
         leela, _ = open_engines(sess)
         board = chess.Board(current_fen)
         
-        analysis_start = time.time()
-        print(f"Starting unlimited analysis for position: {current_fen[:20]}...")
-        
         with sess.leela_lock:
             if sess.stop_analysis_event.is_set():
                 return
@@ -130,12 +128,6 @@ def continuous_leela_analysis(sess: Session) -> None:
             infos = [info] if isinstance(info, dict) else info
             sess.current_best_lines = info_to_lines(infos, board.turn)
             sess.current_best_move = sess.current_best_lines[0]['move'] if sess.current_best_lines else None
-            
-            elapsed = time.time() - analysis_start
-            print(f"Analysis update: {nodes} nodes after {elapsed:.1f}s")
-        
-        elapsed_total = time.time() - analysis_start
-        print(f"Unlimited analysis stopped after {elapsed_total:.1f}s, {sess.current_analysis_nodes} nodes")
                 
     except Exception as e:
         logger.warning(f"Continuous analysis thread crashed: {e}")
@@ -164,6 +156,7 @@ def start_continuous_analysis(sess: Session) -> None:
     sess.current_best_move = None
     sess.current_best_lines = []
     sess.snapshotted_best_move = None  # Reset snapshot
+    sess.current_move_attempts = 0  # Reset attempt counter
     
     # Reset stop event
     sess.stop_analysis_event.clear()
@@ -175,14 +168,13 @@ def start_continuous_analysis(sess: Session) -> None:
         daemon=True
     )
     sess.continuous_analysis_thread.start()
-    print(f"Started continuous analysis for position: {current_fen[:20]}...")
 
 
 def stop_continuous_analysis(sess: Session) -> None:
     """Stop continuous analysis and clean up thread."""
     if sess.continuous_analysis_thread is not None:
         sess.stop_analysis_event.set()
-        sess.continuous_analysis_thread.join(timeout=1.0)
+        sess.continuous_analysis_thread.join(timeout=2.0)
         sess.continuous_analysis_thread = None
 
 
@@ -191,12 +183,17 @@ def snapshot_best_move(sess: Session) -> Optional[str]:
     
     Returns the snapshotted move, or None if no analysis available.
     """
-    if sess.current_best_move and not sess.snapshotted_best_move:
-        sess.snapshotted_best_move = sess.current_best_move
-        print(f"Snapshotted best move: {sess.snapshotted_best_move} (after {sess.current_analysis_nodes} nodes)")
-        
-        # Stop analysis since we've captured the target move
+    # Always stop analysis on first attempt, regardless of whether we have a move yet
+    if not sess.snapshotted_best_move:
+        # Stop analysis immediately to save compute
         stop_continuous_analysis(sess)
+        
+        # Snapshot current best move if available
+        if sess.current_best_move:
+            sess.snapshotted_best_move = sess.current_best_move
+            print(f"🎯 FIRST ATTEMPT: Optimal move locked at {sess.snapshotted_best_move} after {sess.current_analysis_nodes} nodes")
+        else:
+            print(f"⚠️  FIRST ATTEMPT: No optimal move available yet ({sess.current_analysis_nodes} nodes)")
         
     return sess.snapshotted_best_move
 
@@ -307,7 +304,8 @@ def html_index() -> str:
         <!-- Accuracy Over Time Chart -->
         <div class='panel' style='padding: 2.5vh 3vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
           <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5vh;'>
-            <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Your Accuracy Over Time</h2>
+            <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Avg Attempts Over Time</h2>
+            <span style='color: #f59e0b; font-weight: 600; font-size: 0.75rem;'>Current Average: <span id='avg-attempts'>0</span></span>
           </div>
           <canvas id='accuracy-chart' style='width: 100%; flex: 1;'></canvas>
         </div>
@@ -316,7 +314,7 @@ def html_index() -> str:
         <div class='panel' style='padding: 2.5vh 3vh; flex: 2; min-height: 0; display: flex; flex-direction: column;'>
           <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5vh;'>
             <h2 style='margin: 0; color: #f8fafc; font-size: 0.9rem; font-weight: 600;'>Attempts per Move</h2>
-            <span style='color: #f59e0b; font-weight: 600; font-size: 0.75rem;'>Avg: <span id='avg-attempts'>0.0</span></span>
+            <span style='color: #ef4444; font-weight: 600; font-size: 0.75rem;' id='attempts-remaining'>10 left</span>
           </div>
           <canvas id='attempts-chart' style='width: 100%; flex: 1;'></canvas>
         </div>
@@ -490,9 +488,13 @@ def html_index() -> str:
 
       function updateStatistics(scoreTotal, currentMove) {
         // Note: Win probability and node count are now updated by real-time polling
-        // Only update the attempts counter here
-        const avgAttempts = totalAttempts > 0 ? (totalAttempts / Math.max(1, gameAttempts.length)) : 0;
-        document.getElementById('avg-attempts').textContent = avgAttempts.toFixed(1);
+        // Update current average attempts
+        const currentAverageElement = document.getElementById('avg-attempts');
+        if (currentAverageElement) {
+          // Show running average of attempts across completed moves
+          const avgAttempts = gameAttempts.length > 0 ? (totalAttempts / gameAttempts.length) : 0;
+          currentAverageElement.textContent = avgAttempts.toFixed(1);
+        }
       }
 
       function updateCharts() {
@@ -818,6 +820,9 @@ def html_index() -> str:
           // Update global state for move validation
           leelaTopMoves = data.analysis_lines || [];
           
+          // Don't stop polling here - let it continue to show final node count
+          // Polling will naturally stop when game ends
+          
         } catch (error) {
           console.log('Analysis polling error:', error);
         }
@@ -837,6 +842,22 @@ def html_index() -> str:
         if (analysisPollingInterval) {
           clearInterval(analysisPollingInterval);
           analysisPollingInterval = null;
+        }
+      }
+
+      function updateAttemptsRemaining(remaining) {
+        const attemptsElement = document.getElementById('attempts-remaining');
+        if (attemptsElement) {
+          if (remaining === 0) {
+            attemptsElement.textContent = 'auto-play';
+            attemptsElement.style.color = '#dc2626'; // Darker red
+          } else if (remaining <= 3) {
+            attemptsElement.textContent = `${remaining} left`;
+            attemptsElement.style.color = '#ef4444'; // Red
+          } else {
+            attemptsElement.textContent = `${remaining} left`;
+            attemptsElement.style.color = '#f59e0b'; // Orange
+          }
         }
       }
 
@@ -905,24 +926,9 @@ def html_index() -> str:
         const fromSquare = mv.slice(0, 2);
         const toSquare = mv.slice(2, 4);
         
-        const leelaTopMove = leelaTopMoves.length > 0 ? leelaTopMoves[0].move : null;
-        const isLeelaMove = leelaTopMove === mv;
-        
-        if (isLeelaMove) {
-          currentMoveAttempts++;
-          totalAttempts++;
-          animateMove(fromSquare, toSquare);
-          flashBoard('success');
-          submitCorrectMoveToServer(mv);
-        } else if (leelaTopMove === null) {
-          animateMove(fromSquare, toSquare);
-          submitMoveToServer(mv, fromSquare, toSquare);
-        } else {
-          currentMoveAttempts++;
-          totalAttempts++;
-          flashBoard('wrong');
-          revertMove();
-        }
+        // Let server handle all validation and attempt counting
+        animateMove(fromSquare, toSquare);
+        submitMoveToServer(mv, fromSquare, toSquare);
         
         pendingMoves.delete(mv);
       }
@@ -933,9 +939,11 @@ def html_index() -> str:
           const data = await res.json();
           
           if (data.correct) {
-            // Record this move's attempt count
-            gameAttempts.push(currentMoveAttempts);
+            // Record this move's attempt count (from server)
+            const attempts = data.attempts || 1;
+            gameAttempts.push(attempts);
             currentMoveAttempts = 0;
+            totalAttempts += attempts;
             moveCounter++;
             
             // Add moves to PGN tracking
@@ -982,9 +990,6 @@ def html_index() -> str:
             if (data.error.includes('Illegal move')) {
               flashBoard('illegal');
             } else {
-              // Count this as a wrong attempt for other errors
-              currentMoveAttempts++;
-              totalAttempts++;
               flashBoard('wrong');
             }
             revertMove();
@@ -995,12 +1000,11 @@ def html_index() -> str:
           const ok = !!data.correct;
           
           if (ok) {
-            // Count this as an attempt since it was legal (even if correct)
-            currentMoveAttempts++;
-            totalAttempts++;
-            // Record this move's attempt count
-            gameAttempts.push(currentMoveAttempts);
+            // Record this move's attempt count (from server)
+            const attempts = data.attempts || 1;
+            gameAttempts.push(attempts);
             currentMoveAttempts = 0;
+            totalAttempts += attempts;
             moveCounter++;
             
             // Add moves to PGN tracking
@@ -1009,26 +1013,35 @@ def html_index() -> str:
               pgnMoves.push(data.maia_move);
             }
             
+            // Update attempts remaining display
+            updateAttemptsRemaining(10);
+            
             flashBoard('success');
             // Move feedback removed - visual feedback through board animation
             
             
             setTimeout(async () => {
               await refresh();
+              updateAttemptsRemaining(10); // Reset for next move
+              // Current average will be updated by the refresh -> updateStatistics call
             }, 600);
           } else {
-            // Count this as a wrong attempt for legal but incorrect moves
-            currentMoveAttempts++;
-            totalAttempts++;
+            // Update attempts remaining based on server response
+            const attempts = data.attempts || 1;
+            const remaining = Math.max(0, 10 - attempts);
+            updateAttemptsRemaining(remaining);
+            
+            // Current average will be updated by updateStatistics call
+            
             flashBoard('wrong');
             revertMove();
+            last.textContent = data.message || 'Not the correct move. Try again.';
           }
         } catch (e) {
-          // Count network/server errors as attempts
-          currentMoveAttempts++;
-          totalAttempts++;
+          // Network/server errors
           flashBoard('wrong');
           revertMove();
+          console.error('Move submission error:', e);
         }
       }
 
@@ -1198,6 +1211,7 @@ def html_index() -> str:
         resetGameData();
         await refresh();
         startAnalysisPolling();
+        updateAttemptsRemaining(10); // Reset to 10 attempts for new move
       }
 
       async function refresh() {
@@ -1736,16 +1750,64 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
     
     if mv != target_move_obj:
         logger.debug("move rejected")
-        response = {
-            "your_move": mv.uci(),
-            "correct": False,
-            "message": "Not Leela's choice. Try again.",
-            "score_hint": score,
-            "target_move": target_move,
-            "nodes_analyzed": sess.current_analysis_nodes
-        }
-        logger.debug("rejection response: %s", response)
-        return JSONResponse(response)
+        sess.current_move_attempts += 1
+        
+        # Hard cap: after 10 attempts, auto-play the correct move
+        if sess.current_move_attempts >= 10:
+            logger.debug("10 attempts reached, auto-playing correct move")
+            # Force the correct move to be played
+            mv = target_move_obj
+            sess.board.push(mv)
+            sess.move_index += 1
+            
+            # Continue with Maia's response (same logic as correct move)
+            import time
+            maia_move_uci: Optional[str] = None
+            try:
+                engine_start = time.time()
+                maia = get_maia_engine_only(sess)
+                engine_time = time.time() - engine_start
+                
+                with sess.maia_lock:
+                    # Use some randomness for opening variety
+                    temperature = 1.0 if sess.move_index < 10 else 0.0
+                    if temperature > 0:
+                        # MultiPV=1 (default) is optimal for lc0 performance (Maia uses lc0)
+                        infos = maia.analyse(sess.board, nodes=max(100, sess.maia_nodes))
+                        maia_move = pick_from_multipv(infos, sess.board.turn, temperature)
+                    else:
+                        maia_move = maia.bestmove(sess.board, nodes=sess.maia_nodes)
+                    sess.board.push(maia_move)
+                    sess.move_index += 1
+                    maia_move_uci = maia_move.uci()
+            except Exception as e:
+                logger.warning("Maia move failed: %s", e)
+                
+            if sess.board.is_game_over():
+                sess.status = "finished"
+                
+            return JSONResponse({
+                "your_move": mv.uci(),
+                "correct": True,
+                "message": f"10 attempts reached! Auto-played correct move: {target_move}",
+                "leela_move": target_move,
+                "maia_move": maia_move_uci,
+                "total": sess.score_total,
+                "status": sess.status,
+                "attempts": sess.current_move_attempts
+            })
+        else:
+            response = {
+                "your_move": mv.uci(),
+                "correct": False,
+                "message": f"Not Leela's choice. Try again. ({sess.current_move_attempts}/10 attempts)",
+                "score_hint": score,
+                "target_move": target_move,
+                "nodes_analyzed": sess.current_analysis_nodes,
+                "attempts": sess.current_move_attempts
+            }
+            logger.debug("rejection response: %s", response)
+            return JSONResponse(response)
     
     logger.debug("move accepted")
 
@@ -1823,6 +1885,7 @@ def api_session_predict(sid: str, payload: dict) -> JSONResponse:
         "total": sess.score_total,
         "fen": sess.board.fen(),
         "status": sess.status,
+        "attempts": sess.current_move_attempts + 1,  # Include this attempt
     })
 
 

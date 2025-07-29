@@ -172,7 +172,7 @@ def cmd_web(args: argparse.Namespace) -> int:
     except Exception:
         print("Note: engine helpers not available. Install with: pip install -e .[all]")
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 
 
@@ -198,7 +198,7 @@ def cmd_up(args: argparse.Namespace) -> int:
         except Exception:
             pass
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 
 
