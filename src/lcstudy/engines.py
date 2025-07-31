@@ -1,12 +1,5 @@
 from __future__ import annotations
 
-"""Engine utilities and thin wrappers around python-chess engines.
-
-This module standardizes where binaries and networks live, selects a sensible
-default lc0 backend, and exposes a tiny Lc0Engine helper with convenience
-methods. It also provides helpers to convert engine output to simple line
-dicts usable by the web UI.
-"""
 
 import asyncio
 import os
@@ -22,7 +15,6 @@ import chess.engine
 
 
 def home_dir() -> Path:
-    """Return the base application directory (default: ~/.lcstudy)."""
     d = os.environ.get("LCSTUDY_HOME")
     if d:
         return Path(d).expanduser()
@@ -86,18 +78,14 @@ class EngineConfig:
     def to_options(self) -> dict[str, object]:
         """Map the config to lc0 UCI option names."""
         opts: dict[str, object] = {
-            # Let backend suggest optimal configuration for everything
             "MinibatchSize": 0,  # Auto-suggest batch size
         }
-        # Only set threads if explicitly configured
         if self.threads is not None:
             opts["Threads"] = self.threads
-        # Only set backend if explicitly configured
         if self.backend:
             opts["Backend"] = self.backend
         if self.weights:
             opts["WeightsFile"] = str(self.weights)
-            opts["Weights"] = str(self.weights)
         return opts
 
 
@@ -115,14 +103,27 @@ class Lc0Engine:
         self.close()
 
     def open(self) -> None:
-        """Start the engine process and configure options."""
         if self.engine is not None:
             return
-        self.engine = chess.engine.SimpleEngine.popen_uci(str(self.cfg.exe))
+        
+        # Build command with weights argument
+        cmd = [str(self.cfg.exe)]
+        if self.cfg.weights:
+            cmd.append(f'--weights={self.cfg.weights}')
+            print(f"🎯 Starting lc0 with weights: {self.cfg.weights}")
+        else:
+            print(f"🎯 Starting lc0 with default weights")
+        
+        self.engine = chess.engine.SimpleEngine.popen_uci(cmd)
         try:
-            self.engine.configure(self.cfg.to_options())
-        except chess.engine.EngineError:
-            pass
+            options = self.cfg.to_options()
+            print(f"🔧 Configuring engine with options: {options}")
+            self.engine.configure(options)
+            print(f"✅ Engine configured successfully")
+        except chess.engine.EngineError as e:
+            print(f"❌ Engine configuration failed: {e}")
+            print(f"🔧 Attempting to continue without custom configuration...")
+            # Don't pass - we want to see if the engine will still work
 
     def close(self) -> None:
         """Shut down the engine process if running."""

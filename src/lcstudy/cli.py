@@ -1,14 +1,3 @@
-"""LcStudy command-line interface.
-
-This module provides the ``lcstudy`` console entrypoint, offering
-- environment checks (doctor)
-- installer helpers for engines and networks
-- a local web app launcher
-
-The implementation keeps a light touch: we only check for required Python
-dependencies at runtime and print clear instructions if something is missing,
-instead of attempting to modify the user's environment.
-"""
 
 import argparse
 import importlib
