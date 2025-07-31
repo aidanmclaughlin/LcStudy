@@ -773,12 +773,11 @@ function setWho(turn) {
 }
 
 async function start(customFen = null) {
-  const levelSelect = document.getElementById('maia-level');
-  const colorSelect = document.getElementById('player-color');
-  const maiaLevel = levelSelect ? parseInt(levelSelect.value) : 1500;
-  const playerColor = colorSelect ? colorSelect.value : 'white';
+  const maiaLevels = [1100, 1300, 1500, 1700, 1900];
+  const maiaLevel = maiaLevels[Math.floor(Math.random() * maiaLevels.length)];
   window.currentMaiaLevel = maiaLevel;
 
+  const playerColor = Math.random() < 0.5 ? 'white' : 'black';
   const payload = {maia_level: maiaLevel, player_color: playerColor};
   if (customFen) {
     payload.custom_fen = customFen;
