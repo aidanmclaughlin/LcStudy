@@ -12,6 +12,7 @@ from ..repositories.session_repository import SessionRepository
 from ..repositories.game_history_repository import GameHistoryRepository
 from ..exceptions import SessionNotFoundError, IllegalMoveError, GameFinishedError
 from ..config import get_settings
+from ..config.logging import get_logger
 from .engine_service import EngineService
 
 @dataclass
@@ -35,6 +36,7 @@ class GameService:
         self.history_repo = history_repo
         self.settings = get_settings()
         self.engine_service = engine_service
+        self.logger = get_logger('game_service')
     
     def create_session(
         self,
@@ -137,9 +139,18 @@ class GameService:
         expected_move_uci: Optional[str] = None
         if self.engine_service is not None:
             try:
+                t0 = time.perf_counter()
                 leela = self.engine_service.get_leela_engine(session.id)
                 best = leela.get_best_move(session.board, nodes=session.leela_nodes)
+                t1 = time.perf_counter()
                 expected_move_uci = best.uci() if best else None
+                self.logger.info(
+                    "move.engine sid=%s nodes=%s engine_ms=%.1f best=%s",
+                    session.id,
+                    session.leela_nodes,
+                    (t1 - t0) * 1000.0,
+                    expected_move_uci,
+                )
             except Exception:
                 expected_move_uci = None
 
@@ -155,15 +166,26 @@ class GameService:
             )
 
         # Evaluate guess correctness
+        overall_start = getattr(self, '_overall_start_ts', None)
         if move_str != expected_move_uci:
             session.current_move_attempts += 1
             self.session_repo.save_session(session)
-            return MoveResult(
+            result = MoveResult(
                 player_move=move_str,
                 correct=False,
                 message="Not the top move. Try again.",
                 attempts=session.current_move_attempts,
             )
+            try:
+                self.logger.info(
+                    "move.result sid=%s correct=%s attempts=%s",
+                    session.id,
+                    False,
+                    session.current_move_attempts,
+                )
+            except Exception:
+                pass
+            return result
 
         # Correct guess: apply the expected move
         session.board.push(chess.Move.from_uci(expected_move_uci))
@@ -176,7 +198,7 @@ class GameService:
             session.status = SessionStatus.FINISHED
 
         self.session_repo.save_session(session)
-        return MoveResult(
+        result = MoveResult(
             player_move=move_str,
             correct=True,
             message="Correct",
@@ -184,6 +206,16 @@ class GameService:
             maia_move=None,
             attempts=attempts_used,
         )
+        try:
+            self.logger.info(
+                "move.result sid=%s correct=%s attempts=%s",
+                session.id,
+                True,
+                attempts_used,
+            )
+        except Exception:
+            pass
+        return result
 
     def make_maia_move(self, session: GameSession) -> Optional[str]:
         """Make a single reply move for the opponent (Maia) and persist it.

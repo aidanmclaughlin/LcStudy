@@ -5,11 +5,13 @@ from typing import Optional
 
 import chess
 from fastapi import APIRouter, Depends, HTTPException
+import time
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from ..domain.validation import SessionCreateRequest, MoveRequest, SessionStateResponse, AnalysisResponse
 from ..exceptions import SessionNotFoundError, IllegalMoveError, GameFinishedError
 from .deps import get_session_repository, get_game_service, get_analysis_service
+from ..config.logging import get_logger
 
 router = APIRouter(prefix="/api/v1/session", tags=["session"])
 
@@ -97,12 +99,26 @@ def api_session_check_move(sid: str, payload: MoveRequest, game_service = Depend
 @router.post("/{sid}/predict")
 def api_session_predict(sid: str, payload: MoveRequest, game_service = Depends(get_game_service), session_repo = Depends(get_session_repository)) -> JSONResponse:
     _validate_uuid(sid)
+    logger = get_logger('predict')
+    rid = uuid.uuid4().hex[:8]
+    t0 = time.perf_counter()
+    logger.info("[%s] predict.start sid=%s move=%s client_validated=%s", rid, sid, payload.move, payload.client_validated)
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
 
     try:
+        t_before = time.perf_counter()
         result = game_service.make_move(session, payload.move, payload.client_validated)
+        t_after = time.perf_counter()
+        logger.info(
+            "[%s] predict.result sid=%s correct=%s attempts=%s service_ms=%.1f",
+            rid,
+            sid,
+            result.correct,
+            result.attempts,
+            (t_after - t_before) * 1000.0,
+        )
         maia_move_played: Optional[str] = None
         if result.correct:
             try:
@@ -122,8 +138,12 @@ def api_session_predict(sid: str, payload: MoveRequest, game_service = Depends(g
             response["leela_move"] = result.leela_move
         if maia_move_played:
             response["maia_move"] = maia_move_played
+        total_ms = (time.perf_counter() - t0) * 1000.0
+        logger.info("[%s] predict.end sid=%s total_ms=%.1f", rid, sid, total_ms)
         return JSONResponse(response)
     except (SessionNotFoundError, IllegalMoveError, GameFinishedError) as e:
+        total_ms = (time.perf_counter() - t0) * 1000.0
+        logger.info("[%s] predict.error sid=%s total_ms=%.1f msg=%s", rid, sid, total_ms, str(e))
         raise HTTPException(400, str(e))
 
 
@@ -166,4 +186,3 @@ async def api_session_analysis_stream(sid: str, analysis_service = Depends(get_a
 
     import json
     return StreamingResponse(event_gen(), media_type="text/event-stream")
-

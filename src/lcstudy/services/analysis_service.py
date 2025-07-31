@@ -31,7 +31,7 @@ class AnalysisService:
         self._lock = threading.Lock()
 
     def start_analysis(self, session: GameSession, nodes: int = 2000) -> None:
-        logger.info(f"Starting analysis for session {session.id} with {nodes} nodes")
+        logger.debug(f"Starting analysis for session {session.id} with {nodes} nodes")
         with self._lock:
             self._stop_existing_analysis(session.id)
 
@@ -51,7 +51,7 @@ class AnalysisService:
             )
             self._active_analyses[session.id] = thread
             thread.start()
-            logger.info(f"Analysis thread started for session {session.id}")
+            logger.debug(f"Analysis thread started for session {session.id}")
 
     def stop_analysis(self, session_id: str) -> None:
         with self._lock:
@@ -81,7 +81,7 @@ class AnalysisService:
     def _run_analysis(
         self, session: GameSession, nodes: int, stop_event: threading.Event
     ) -> None:
-        logger.info(f"Running analysis for session {session.id}")
+        logger.debug(f"Running analysis for session {session.id}")
         try:
             logger.debug("Getting Leela engine...")
             leela_engine = self.engine_service.get_leela_engine(session.id)
