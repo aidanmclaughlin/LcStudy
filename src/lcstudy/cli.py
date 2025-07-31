@@ -1,4 +1,14 @@
+"""LcStudy command-line interface.
 
+This module provides the ``lcstudy`` console entrypoint, offering:
+- environment checks (doctor)
+- installer helpers for engines and networks
+- local web app launchers (web, up)
+
+The implementation favors clear messages over implicit side effects. It does
+not attempt to install dependencies automatically unless the user explicitly
+invokes an install command.
+"""
 import argparse
 import importlib
 import shutil
@@ -189,6 +199,22 @@ def cmd_up(args: argparse.Namespace) -> int:
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
+
+
+def entry_up() -> int:
+    """Entry point for the ``lcstudy-up`` helper script.
+
+    This mirrors running ``lcstudy up`` with default arguments. Having a
+    dedicated entry point makes it easy to provide a one-command experience.
+    """
+    ns = argparse.Namespace(
+        host="127.0.0.1",
+        port=8000,
+        quick=False,
+        maia_level=1500,
+        no_open=False,
+    )
+    return cmd_up(ns)
 
 
 def _ensure_web_deps() -> bool:

@@ -1,0 +1,2 @@
+recursive-include src/lcstudy/templates *.html
+recursive-include src/lcstudy/static *

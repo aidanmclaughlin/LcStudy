@@ -31,6 +31,15 @@ lcstudy-up = "lcstudy.cli:entry_up"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+lcstudy = [
+  "templates/*.html",
+  "static/**/*",
+]
+
 [project.optional-dependencies]
 web = [
   "fastapi>=0.110",

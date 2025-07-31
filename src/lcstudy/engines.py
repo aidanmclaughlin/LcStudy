@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""Engine utilities and thin wrappers around python-chess engines.
+
+This module standardizes where binaries and networks live, selects a sensible
+default lc0 backend, and exposes a tiny Lc0Engine helper with convenience
+methods. It also provides helpers to convert engine output to simple line
+dicts usable by the web UI.
+"""
 
 import asyncio
 import os
@@ -10,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
+import logging
 import chess
 import chess.engine
 
@@ -105,25 +113,26 @@ class Lc0Engine:
     def open(self) -> None:
         if self.engine is not None:
             return
-        
+
+        logger = logging.getLogger("lcstudy.engines")
+
         # Build command with weights argument
         cmd = [str(self.cfg.exe)]
         if self.cfg.weights:
-            cmd.append(f'--weights={self.cfg.weights}')
-            print(f"🎯 Starting lc0 with weights: {self.cfg.weights}")
+            cmd.append(f"--weights={self.cfg.weights}")
+            logger.info("Starting lc0 with weights: %s", self.cfg.weights)
         else:
-            print(f"🎯 Starting lc0 with default weights")
-        
+            logger.info("Starting lc0 with default weights")
+
         self.engine = chess.engine.SimpleEngine.popen_uci(cmd)
         try:
             options = self.cfg.to_options()
-            print(f"🔧 Configuring engine with options: {options}")
+            logger.debug("Configuring engine with options: %s", options)
             self.engine.configure(options)
-            print(f"✅ Engine configured successfully")
+            logger.info("Engine configured successfully")
         except chess.engine.EngineError as e:
-            print(f"❌ Engine configuration failed: {e}")
-            print(f"🔧 Attempting to continue without custom configuration...")
-            # Don't pass - we want to see if the engine will still work
+            logger.warning("Engine configuration failed: %s", e)
+            logger.info("Attempting to continue without custom configuration...")
 
     def close(self) -> None:
         """Shut down the engine process if running."""

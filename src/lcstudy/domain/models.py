@@ -94,13 +94,8 @@ class GameHistoryEntry:
     session_id: Optional[str] = None
 
 @dataclass
-class EngineConfig:
-    executable_path: str
-    weights_path: Optional[str] = None
-    threads: Optional[int] = None
-    backend: Optional[str] = None
-    nodes: int = 1000
-    time_limit: Optional[float] = None
+class EngineConfigRemoved:  # deprecated placeholder (use lcstudy.engines.EngineConfig)
+    pass
 
 @dataclass
 class PlayerStatistics:

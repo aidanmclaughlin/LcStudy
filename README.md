@@ -22,9 +22,13 @@ lcstudy --help
 
 ## Structure
 - src/lcstudy: core package
-- src/lcstudy/cli.py: entry point CLI
-- lessons/: space for notebooks and guided content
-- examples/: minimal sample positions, configs
+  - config/: settings and logging
+  - controllers/: FastAPI routers and DI helpers
+  - services/: engine, analysis, and game logic
+  - repositories/: session and history persistence
+  - domain/: data models and request/response validation
+  - static/, templates/: web UI assets
+  - webapp.py: app wiring and startup/shutdown
 
 ## New: Learn-to-think-like-Leela web app
 
@@ -57,10 +61,17 @@ Notes
 - Apple Silicon is supported by preferring the Metal backend for lc0 on macOS.
 - Networks are stored in ~/.lcstudy/nets and the lc0 binary in ~/.lcstudy/bin by default.
 - You can override the storage location by setting LCSTUDY_HOME to a directory path.
-- The web UI is intentionally minimal; it shows an ASCII board and Leela's top lines, inspired by Nibbler.
 - If automatic network downloads fail (e.g., due to API/URL changes), place .pb.gz files in ~/.lcstudy/nets (names: lczero-best.pb.gz, maia-1500.pb.gz, etc.).
+- Static assets are bundled locally; the UI does not rely on external chess piece URLs.
+
+Environment variables
+- LCSTUDY_DATA_DIR: override data directory (default: ~/.lcstudy)
+- LCSTUDY_LC0_PATH: path to lc0 executable
+- LCSTUDY_DEFAULT_NODES: default analysis nodes
+- LCSTUDY_THREADS: engine threads
+- LCSTUDY_LOG_LEVEL: INFO, DEBUG, etc.
+- LCSTUDY_HOST, LCSTUDY_PORT: server bind settings
 
 ## Next steps
-- Detect and guide installation of lc0 and required backends
-- Add a lightweight web UI and interactive lessons
-- Add engines integration (UCI) and basic analysis workflows
+- Add WebSocket/SSE streaming for analysis updates (SSE endpoint available)
+- Expand lesson content and interactive exercises

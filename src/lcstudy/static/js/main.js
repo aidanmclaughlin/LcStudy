@@ -18,18 +18,18 @@ let accuracyChart = null;
 let attemptsChart = null;
 
 const pieceImages = {
-  'wK': 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg',
-  'wQ': 'https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg',
-  'wR': 'https://upload.wikimedia.org/wikipedia/commons/7/72/Chess_rlt45.svg',
-  'wB': 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Chess_blt45.svg',
-  'wN': 'https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg',
-  'wP': 'https://upload.wikimedia.org/wikipedia/commons/4/45/Chess_plt45.svg',
-  'bK': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Chess_kdt45.svg',
-  'bQ': 'https://upload.wikimedia.org/wikipedia/commons/4/47/Chess_qdt45.svg',
-  'bR': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Chess_rdt45.svg',
-  'bB': 'https://upload.wikimedia.org/wikipedia/commons/9/98/Chess_bdt45.svg',
-  'bN': 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg',
-  'bP': 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg'
+  'wK': '/static/img/pieces/wK.svg',
+  'wQ': '/static/img/pieces/wQ.svg',
+  'wR': '/static/img/pieces/wR.svg',
+  'wB': '/static/img/pieces/wB.svg',
+  'wN': '/static/img/pieces/wN.svg',
+  'wP': '/static/img/pieces/wP.svg',
+  'bK': '/static/img/pieces/bK.svg',
+  'bQ': '/static/img/pieces/bQ.svg',
+  'bR': '/static/img/pieces/bR.svg',
+  'bB': '/static/img/pieces/bB.svg',
+  'bN': '/static/img/pieces/bN.svg',
+  'bP': '/static/img/pieces/bP.svg'
 };
 
 function initializeCharts() {
@@ -205,7 +205,7 @@ function updatePGNDisplay() {
 
 async function loadGameHistory() {
   try {
-    const res = await fetch('/api/game-history');
+    const res = await fetch('/api/v1/game-history');
     const data = await res.json();
     gameHistory = data.history || [];
     
@@ -231,7 +231,7 @@ async function saveCompletedGame(result) {
   const maiaLevel = window.currentMaiaLevel || 1500;
   
   try {
-    await fetch('/api/game-history', {
+    await fetch('/api/v1/game-history', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -302,7 +302,7 @@ let pendingMoves = new Set();
 
 async function needsPromotion(mv) {
   try {
-    const res = await fetch('/api/session/' + SID + '/check-move', {
+    const res = await fetch('/api/v1/session/' + SID + '/check-move', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({move: mv})
@@ -403,7 +403,7 @@ async function pollAnalysisUpdates() {
   if (!SID) return;
   
   try {
-    const res = await fetch('/api/session/' + SID + '/analysis');
+    const res = await fetch('/api/v1/session/' + SID + '/analysis');
     const data = await res.json();
     
     const analysisStatsElement = document.getElementById('analysis-stats');
@@ -519,7 +519,7 @@ async function submitMove(mv){
   }
   
   try {
-    const legalCheckRes = await fetch('/api/session/' + SID + '/check-move', {
+    const legalCheckRes = await fetch('/api/v1/session/' + SID + '/check-move', {
       method: 'POST', 
       headers: {'Content-Type': 'application/json'}, 
       body: JSON.stringify({move: mv})
@@ -547,7 +547,7 @@ async function submitMove(mv){
 
 async function submitCorrectMoveToServer(mv) {
   try {
-    const res = await fetch('/api/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv, client_validated: true})});
+    const res = await fetch('/api/v1/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv, client_validated: true})});
     const data = await res.json();
     
     if (data.correct) {
@@ -583,7 +583,7 @@ async function submitCorrectMoveToServer(mv) {
 
 async function submitMoveToServer(mv, fromSquare, toSquare) {
   try {
-    const res = await fetch('/api/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv})});
+    const res = await fetch('/api/v1/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv})});
     const data = await res.json();
     
     const last = document.getElementById('last');
@@ -744,9 +744,8 @@ function onSquareClick(event) {
   
   if (selectedSquare === null) {
     if (piece) {
-      const playerPieceType = boardIsFlipped ? 'dt45' : 'lt45';
-      
-      if (piece.style.backgroundImage.includes(playerPieceType)) {
+      const playerColor = boardIsFlipped ? 'b' : 'w';
+      if ((piece.dataset.piece || '').startsWith(playerColor)) {
         selectedSquare = square;
         event.currentTarget.classList.add('selected');
       }
@@ -774,16 +773,17 @@ function setWho(turn) {
 }
 
 async function start(customFen = null) {
-  const maiaLevels = [1100, 1300, 1500, 1700, 1900];
-  const maiaLevel = maiaLevels[Math.floor(Math.random() * maiaLevels.length)];
+  const levelSelect = document.getElementById('maia-level');
+  const colorSelect = document.getElementById('player-color');
+  const maiaLevel = levelSelect ? parseInt(levelSelect.value) : 1500;
+  const playerColor = colorSelect ? colorSelect.value : 'white';
   window.currentMaiaLevel = maiaLevel;
-  
-  const playerColor = Math.random() < 0.5 ? 'white' : 'black';
+
   const payload = {maia_level: maiaLevel, player_color: playerColor};
   if (customFen) {
     payload.custom_fen = customFen;
   }
-  const res = await fetch('/api/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const res = await fetch('/api/v1/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
   const data = await res.json();
   SID = data.id;
   
@@ -802,7 +802,7 @@ async function start(customFen = null) {
 async function refresh() {
   if (!SID) return;
   
-  const res = await fetch('/api/session/' + SID + '/state');
+  const res = await fetch('/api/v1/session/' + SID + '/state');
   
   const data = await res.json();
   

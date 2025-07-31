@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Union
 import json
 from pathlib import Path
 from datetime import datetime
@@ -9,7 +9,7 @@ from ..exceptions import DataError, SerializationError
 
 class GameHistoryRepository(ABC):
     @abstractmethod
-    def save_game(self, average_retries: float, total_moves: int, maia_level: int, result: str) -> str:
+    def save_game(self, *args, **kwargs) -> str:
         pass
     
     @abstractmethod
@@ -29,17 +29,33 @@ class JsonGameHistoryRepository(GameHistoryRepository):
         self.file_path = file_path
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
     
-    def save_game(self, average_retries: float, total_moves: int, maia_level: int, result: str) -> str:
+    def save_game(self, *args, **kwargs) -> str:
         try:
+            # Support both structured dataclass and individual fields
+            entry_dict: dict
+            if args and isinstance(args[0], GameHistoryEntry):
+                entry: GameHistoryEntry = args[0]
+                entry_dict = {
+                    "date": entry.date,
+                    "average_retries": float(entry.average_retries),
+                    "total_moves": int(entry.total_moves),
+                    "maia_level": int(entry.maia_level),
+                    "result": entry.result.value if hasattr(entry.result, 'value') else str(entry.result),
+                    "session_id": entry.session_id,
+                }
+            else:
+                average_retries: float = float(kwargs.get("average_retries", args[0] if len(args) > 0 else 0))
+                total_moves: int = int(kwargs.get("total_moves", args[1] if len(args) > 1 else 0))
+                maia_level: int = int(kwargs.get("maia_level", args[2] if len(args) > 2 else 1500))
+                result: str = str(kwargs.get("result", args[3] if len(args) > 3 else "unknown"))
+                entry_dict = {
+                    "date": datetime.now().isoformat(),
+                    "average_retries": average_retries,
+                    "total_moves": total_moves,
+                    "maia_level": maia_level,
+                    "result": result,
+                }
             history = self._load_history()
-            
-            entry_dict = {
-                "date": datetime.now().isoformat(),
-                "average_retries": average_retries,
-                "total_moves": total_moves,
-                "maia_level": maia_level,
-                "result": result
-            }
             
             history.append(entry_dict)
             self._save_history(history)

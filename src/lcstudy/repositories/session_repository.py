@@ -37,7 +37,7 @@ class InMemorySessionRepository(SessionRepository):
         with self._lock:
             self._sessions[session.id] = session
             self._access_times[session.id] = time.time()
-    
+
     def get_session(self, session_id: str) -> Optional[GameSession]:
         with self._lock:
             if session_id not in self._sessions:
@@ -45,13 +45,13 @@ class InMemorySessionRepository(SessionRepository):
             
             self._access_times[session_id] = time.time()
             return self._sessions[session_id]
-    
+
     def delete_session(self, session_id: str) -> None:
         with self._lock:
             if session_id in self._sessions:
                 del self._sessions[session_id]
                 del self._access_times[session_id]
-    
+
     def get_all_sessions(self) -> List[GameSession]:
         with self._lock:
             return list(self._sessions.values())
@@ -70,3 +70,15 @@ class InMemorySessionRepository(SessionRepository):
                 del self._access_times[session_id]
         
         return len(expired_sessions)
+
+    # Compatibility layer for older or test-facing method names
+    # These aliases keep external code/tests working while preserving the
+    # primary interface used by the application code.
+    def create(self, session: GameSession) -> None:
+        self.save_session(session)
+
+    def get(self, session_id: str) -> Optional[GameSession]:
+        return self.get_session(session_id)
+
+    def delete(self, session_id: str) -> None:
+        self.delete_session(session_id)
