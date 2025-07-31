@@ -60,6 +60,19 @@ class LeelaEngine(EngineInterface):
             except Exception as e:
                 logger.error(f"Leela analysis failed: {e}")
                 raise EngineAnalysisError(f"Leela analysis failed: {e}")
+
+    def analyze_stream(self, board: chess.Board, nodes: int):
+        """Yield incremental analysis info dicts from the engine until done.
+
+        This provides real-time updates suitable for polling from the UI.
+        """
+        if self.engine.engine is None:
+            raise EngineAnalysisError("Engine process not started")
+        limit = chess.engine.Limit(nodes=nodes)
+        # We intentionally do not hold the lock across the entire stream
+        # acquisition to avoid deadlocks on stop. The caller manages lifecycle
+        # and interruption.
+        return self.engine.engine.analysis(board, limit)
     
     def get_best_move(self, board: chess.Board, nodes: int) -> chess.Move:
         logger.debug(f"Getting best move with {nodes} nodes for position: {board.fen()}")

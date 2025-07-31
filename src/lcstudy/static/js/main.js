@@ -17,20 +17,59 @@ let cumulativeAverages = [];
 let accuracyChart = null;
 let attemptsChart = null;
 
-const pieceImages = {
-  'wK': '/static/img/pieces/wK.svg',
-  'wQ': '/static/img/pieces/wQ.svg',
-  'wR': '/static/img/pieces/wR.svg',
-  'wB': '/static/img/pieces/wB.svg',
-  'wN': '/static/img/pieces/wN.svg',
-  'wP': '/static/img/pieces/wP.svg',
-  'bK': '/static/img/pieces/bK.svg',
-  'bQ': '/static/img/pieces/bQ.svg',
-  'bR': '/static/img/pieces/bR.svg',
-  'bB': '/static/img/pieces/bB.svg',
-  'bN': '/static/img/pieces/bN.svg',
-  'bP': '/static/img/pieces/bP.svg'
+let pieceBase = '/static/img/pieces';
+let pieceExt = 'svg';
+let useCustomPieces = false;
+const defaultPieceImages = {
+  'wK': 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg',
+  'wQ': 'https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg',
+  'wR': 'https://upload.wikimedia.org/wikipedia/commons/7/72/Chess_rlt45.svg',
+  'wB': 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Chess_blt45.svg',
+  'wN': 'https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg',
+  'wP': 'https://upload.wikimedia.org/wikipedia/commons/4/45/Chess_plt45.svg',
+  'bK': 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Chess_kdt45.svg',
+  'bQ': 'https://upload.wikimedia.org/wikipedia/commons/4/47/Chess_qdt45.svg',
+  'bR': 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Chess_rdt45.svg',
+  'bB': 'https://upload.wikimedia.org/wikipedia/commons/9/98/Chess_bdt45.svg',
+  'bN': 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg',
+  'bP': 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg'
 };
+const pieceCodes = ['wK','wQ','wR','wB','wN','wP','bK','bQ','bR','bB','bN','bP'];
+
+function getPieceUrl(code) {
+  if (useCustomPieces) {
+    return `${pieceBase}/${code}.${pieceExt}`;
+  }
+  return defaultPieceImages[code];
+}
+
+async function detectUserPieces() {
+  try {
+    // Probe user assets first (.svg then .png)
+    let probe = await fetch('/assets/pieces/wK.svg', { method: 'HEAD' });
+    if (probe.ok) {
+      pieceBase = '/assets/pieces';
+      pieceExt = 'svg';
+      useCustomPieces = true;
+      console.log('Using user-provided SVG piece set from /assets/pieces');
+      return;
+    }
+    probe = await fetch('/assets/pieces/wK.png', { method: 'HEAD' });
+    if (probe.ok) {
+      pieceBase = '/assets/pieces';
+      pieceExt = 'png';
+      useCustomPieces = true;
+      console.log('Using user-provided PNG piece set from /assets/pieces');
+      return;
+    }
+  } catch (e) {
+    // ignore
+  }
+  // Fall back to bundled SVG set
+  pieceBase = '/static/img/pieces';
+  pieceExt = 'svg';
+  useCustomPieces = false;
+}
 
 function initializeCharts() {
   const accuracyCtx = document.getElementById('accuracy-chart').getContext('2d');
@@ -595,7 +634,7 @@ async function submitMoveToServer(mv, fromSquare, toSquare) {
         flashBoard('wrong');
       }
       revertMove();
-      last.textContent = 'Error: ' + data.error;
+      if (last) last.textContent = 'Error: ' + data.error;
       return;
     }
     
@@ -628,7 +667,7 @@ async function submitMoveToServer(mv, fromSquare, toSquare) {
       
       flashBoard('wrong');
       revertMove();
-      last.textContent = data.message || 'Not the correct move. Try again.';
+      if (last) last.textContent = data.message || 'Not the correct move. Try again.';
     }
   } catch (e) {
     flashBoard('wrong');
@@ -724,7 +763,7 @@ function updateBoardFromFen(fen) {
   for (const [square, piece] of Object.entries(position)) {
     const pieceEl = document.createElement('div');
     pieceEl.className = 'piece';
-    pieceEl.style.backgroundImage = `url(${pieceImages[piece]})`;
+    pieceEl.style.backgroundImage = `url(${getPieceUrl(piece)})`;
     pieceEl.dataset.piece = piece;
     
     if (boardIsFlipped) {
@@ -783,6 +822,10 @@ async function start(customFen = null) {
     payload.custom_fen = customFen;
   }
   const res = await fetch('/api/v1/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  if (!res.ok) {
+    console.error('Failed to create session', res.status);
+    return;
+  }
   const data = await res.json();
   SID = data.id;
   
@@ -837,9 +880,20 @@ document.getElementById('new').addEventListener('click', async () => {
   await start();
 });
 
-window.addEventListener('DOMContentLoaded', async () => { 
-  initBoard(); 
+window.addEventListener('DOMContentLoaded', async () => {
+  // Allow server-provided overrides via /config.js
+  if (window.PIECE_BASE) {
+    pieceBase = window.PIECE_BASE;
+    useCustomPieces = true;
+  }
+  if (window.PIECE_EXT) {
+    pieceExt = window.PIECE_EXT;
+  }
+  if (!window.PIECE_BASE) {
+    await detectUserPieces();
+  }
+  initBoard();
   initializeCharts();
   await loadGameHistory();
-  start(); 
+  start();
 });

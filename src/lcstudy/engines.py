@@ -8,16 +8,14 @@ methods. It also provides helpers to convert engine output to simple line
 dicts usable by the web UI.
 """
 
-import asyncio
+import logging
 import os
 import platform
 import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
-import logging
 import chess
 import chess.engine
 
@@ -78,6 +76,7 @@ def find_lc0() -> Optional[Path]:
 @dataclass
 class EngineConfig:
     """Configuration for an lc0 engine instance."""
+
     exe: Path
     weights: Optional[Path] = None
     threads: Optional[int] = None  # Let backend auto-configure
@@ -99,6 +98,7 @@ class EngineConfig:
 
 class Lc0Engine:
     """Thin context-managed wrapper around an lc0 engine process."""
+
     def __init__(self, cfg: EngineConfig):
         self.cfg = cfg
         self.engine: Optional[chess.engine.SimpleEngine] = None
@@ -138,7 +138,13 @@ class Lc0Engine:
         """Shut down the engine process if running."""
         if self.engine is not None:
             try:
-                self.engine.quit()
+                try:
+                    self.engine.quit()
+                except chess.engine.EngineTerminatedError:
+                    # Engine already terminated; nothing to do
+                    logging.getLogger("lcstudy.engines").debug(
+                        "Engine already terminated before quit()"
+                    )
             finally:
                 self.engine = None
 
