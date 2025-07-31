@@ -56,14 +56,23 @@ class GameService:
         actual_player_color = player_color or chess.WHITE  # fallback
         precomputed_game_id = None
         
-        if self.precomputed_repo and self.precomputed_repo.has_games():
-            gid = self.precomputed_repo.assign_game()
-            if gid:
-                precomputed_game_id = gid
-                leela_color = self.precomputed_repo.get_leela_color(gid)
-                if leela_color is not None:
-                    # Player always plays as Leela (the strong engine)
-                    actual_player_color = leela_color
+        self.logger.info("Creating session: precomputed_repo=%s", self.precomputed_repo is not None)
+        if self.precomputed_repo:
+            has_games = self.precomputed_repo.has_games()
+            self.logger.info("Precomputed repo has_games: %s", has_games)
+            if has_games:
+                gid = self.precomputed_repo.assign_game()
+                self.logger.info("Assigned game ID: %s", gid)
+                if gid:
+                    precomputed_game_id = gid
+                    leela_color = self.precomputed_repo.get_leela_color(gid)
+                    self.logger.info("Game %s: Leela color=%s", gid, leela_color)
+                    if leela_color is not None:
+                        # Player always plays as Leela (the strong engine)
+                        actual_player_color = leela_color
+                        self.logger.info("Player will play as: %s", "WHITE" if actual_player_color == chess.WHITE else "BLACK")
+        else:
+            self.logger.warning("No precomputed repository available")
         
         flip = actual_player_color == chess.BLACK
         
@@ -82,12 +91,14 @@ class GameService:
         if precomputed_game_id:
             session.precomputed_game_id = precomputed_game_id
             session.precomputed_ply_index = 0
+            self.logger.info("Session %s assigned to precomputed game %s", session_id, precomputed_game_id)
             
             # If Leela plays black, Maia (white) should make the first move instantly
             leela_color = self.precomputed_repo.get_leela_color(precomputed_game_id)
             if leela_color == chess.BLACK and session.board.turn == chess.WHITE:
                 # Make Maia's opening move from the precomputed game
                 maia_move_uci = self.precomputed_repo.get_expected(precomputed_game_id, 0)
+                self.logger.info("Making Maia opening move: %s", maia_move_uci)
                 if maia_move_uci:
                     try:
                         move = chess.Move.from_uci(maia_move_uci)
@@ -95,8 +106,13 @@ class GameService:
                             session.board.push(move)
                             session.precomputed_ply_index = 1  # Next expected move is at ply 1
                             session.move_index += 1
-                    except (ValueError, chess.InvalidMoveError):
-                        pass
+                            self.logger.info("Maia opening move applied successfully")
+                        else:
+                            self.logger.warning("Maia opening move %s not legal", maia_move_uci)
+                    except (ValueError, chess.InvalidMoveError) as e:
+                        self.logger.warning("Failed to parse Maia opening move %s: %s", maia_move_uci, e)
+        else:
+            self.logger.warning("No precomputed game assigned to session %s", session_id)
         
         self.session_repo.save_session(session)
         
@@ -187,6 +203,7 @@ class GameService:
         if expected_move_uci is None:
             session.current_move_attempts += 1
             self.session_repo.save_session(session)
+            self.logger.warning("No expected move for game %s at ply %s", session.precomputed_game_id, session.precomputed_ply_index)
             return MoveResult(
                 player_move=move_str,
                 correct=False,

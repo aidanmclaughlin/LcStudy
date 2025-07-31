@@ -57,6 +57,11 @@ class PrecomputedRepository:
             for mv in game.mainline_moves():
                 moves.append(mv.uci())
                 board.push(mv)
+            
+            # Skip empty games (no moves)
+            if not moves:
+                return
+                
             gid = p.stem
             if gid not in self._games:
                 # Determine which color Leela (the player) played
@@ -152,3 +157,4 @@ class PrecomputedRepository:
             except Exception:
                 pass
             return True
+

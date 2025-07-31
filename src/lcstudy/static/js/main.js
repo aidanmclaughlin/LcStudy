@@ -123,7 +123,7 @@ function initializeCharts() {
       },
       scales: {
         y: {
-          beginAtZero: true,
+          min: 1,
           grid: { color: 'rgba(148,163,184,0.2)' },
           ticks: { 
             color: '#9ca3af', 
@@ -163,14 +163,14 @@ function updateCharts() {
     const currentGameData = [];
     
     for (let i = 0; i < cumulativeAverages.length; i++) {
-      labels.push(`Game ${i + 1}`);
+      labels.push('');
       historicalData.push(cumulativeAverages[i]);
       currentGameData.push(null);
     }
     
     if (gameAttempts.length > 0) {
       const currentGameAvg = totalAttempts / gameAttempts.length;
-      labels.push(`Game ${cumulativeAverages.length + 1}`);
+      labels.push('');
       historicalData.push(null);
       currentGameData.push(currentGameAvg);
     }
@@ -182,8 +182,31 @@ function updateCharts() {
   }
   
   if (attemptsChart && gameAttempts.length > 0) {
-    attemptsChart.data.labels = gameAttempts.map((_, i) => `Move ${i + 1}`);
+    attemptsChart.data.labels = gameAttempts.map(() => '');
     attemptsChart.data.datasets[0].data = gameAttempts;
+    
+    // Update bar colors based on current move index
+    // Convert move history index to user move index (attempts array index)
+    let currentUserMoveIndex = -1;
+    if (isReviewingMoves && currentMoveIndex >= 0) {
+      let userMoveCount = 0;
+      for (let i = 0; i <= currentMoveIndex && i < moveHistory.length; i++) {
+        if (moveHistory[i].isUserMove) {
+          if (i === currentMoveIndex) {
+            currentUserMoveIndex = userMoveCount;
+          }
+          userMoveCount++;
+        }
+      }
+    }
+    
+    const colors = gameAttempts.map((_, index) => {
+      const isCurrentMove = isReviewingMoves && currentUserMoveIndex === index;
+      return isCurrentMove ? '#10b981' : '#f59e0b'; // green for current, amber for others
+    });
+    attemptsChart.data.datasets[0].backgroundColor = colors;
+    attemptsChart.data.datasets[0].borderColor = colors.map(color => color === '#10b981' ? '#059669' : '#d97706');
+    
     attemptsChart.update('none');
   }
 }
@@ -202,15 +225,38 @@ function updatePGNDisplay() {
     const moveNum = Math.floor(i / 2) + 1;
     const whiteMove = pgnMoves[i] || '';
     const blackMove = pgnMoves[i + 1] || '';
-    pgnText += `<span style="color: #f8fafc; font-weight: 600;">${moveNum}.</span> ${whiteMove}`;
-    if (blackMove) pgnText += ` ${blackMove}`;
+    
+    // Check if this is the current move being reviewed
+    const isWhiteHighlighted = isReviewingMoves && currentMoveIndex === i;
+    const isBlackHighlighted = isReviewingMoves && currentMoveIndex === i + 1;
+    
+    pgnText += `<span style="color: #f8fafc; font-weight: 600;">${moveNum}.</span> `;
+    
+    // Highlight white move if it's current
+    if (whiteMove) {
+      if (isWhiteHighlighted) {
+        pgnText += `<span style="background-color: #10b981; color: #000; padding: 2px 4px; border-radius: 3px;">${whiteMove}</span>`;
+      } else {
+        pgnText += whiteMove;
+      }
+    }
+    
+    // Highlight black move if it's current
+    if (blackMove) {
+      pgnText += ' ';
+      if (isBlackHighlighted) {
+        pgnText += `<span style="background-color: #10b981; color: #000; padding: 2px 4px; border-radius: 3px;">${blackMove}</span>`;
+      } else {
+        pgnText += blackMove;
+      }
+    }
+    
     pgnText += ' ';
   }
   pgnElement.innerHTML = pgnText;
   
-  setTimeout(() => {
-    pgnContainer.scrollLeft = pgnContainer.scrollWidth;
-  }, 10);
+  // Instant PGN scroll - no delay needed
+  pgnContainer.scrollLeft = pgnContainer.scrollWidth;
 }
 
 async function loadGameHistory() {
@@ -298,14 +344,16 @@ function flashBoard(result) {
   } else if (result === 'illegal') {
     className = 'board-flash-gray';
   } else {
-    className = 'board-flash-red';
+    className = 'board-shake';
   }
-  boardEl.classList.remove('board-flash-green', 'board-flash-red', 'board-flash-gray');
+  boardEl.classList.remove('board-flash-green', 'board-shake', 'board-flash-gray');
   boardEl.offsetHeight;
   boardEl.classList.add(className);
+  // Animation duration
+  const duration = className === 'board-shake' ? 400 : 300;
   setTimeout(() => {
     boardEl.classList.remove(className);
-  }, 300);
+  }, duration);
 }
 
 let pendingMoves = new Set();
@@ -522,9 +570,8 @@ async function submitCorrectMoveToServer(mv) {
         }, 2500);
       }
       
-      setTimeout(async () => {
-        await refresh();
-      }, 600);
+      // Instant refresh - no delay needed
+      await refresh();
     }
   } catch (e) {
     
@@ -574,16 +621,15 @@ async function submitMoveToServer(mv, fromSquare, toSquare) {
       
       flashBoard('success');
       
-      setTimeout(async () => {
-        await refresh();
-        updateAttemptsRemaining(10);
-        
-        // Add Maia's move to history if it was made
-        if (data.maia_move) {
-          const maiaMoveSAN = data.maia_move;
-          addMoveToHistory(liveFen, maiaMoveSAN, false);
-        }
-      }, 600);
+      // Instant refresh - no delay needed with precomputed moves
+      await refresh();
+      updateAttemptsRemaining(10);
+      
+      // Add Maia's move to history if it was made
+      if (data.maia_move) {
+        const maiaMoveSAN = data.maia_move;
+        addMoveToHistory(liveFen, maiaMoveSAN, false);
+      }
     } else {
       const attempts = data.attempts || 1;
       const remaining = Math.max(0, 10 - attempts);
@@ -611,9 +657,8 @@ function animateMove(fromSquare, toSquare) {
     }
     toEl.appendChild(piece);
     piece.classList.add('animate');
-    setTimeout(() => {
-      piece.classList.remove('animate');
-    }, 150);
+    // Instant piece animation - no delay needed
+    piece.classList.remove('animate');
   }
 }
 
@@ -675,8 +720,10 @@ function setBoardFlip(flip) {
   boardIsFlipped = flip;
   if (flip) {
     board.style.transform = 'rotate(180deg)';
+    board.style.setProperty('--board-rotation', '180deg');
   } else {
     board.style.transform = 'none';
+    board.style.setProperty('--board-rotation', '0deg');
   }
 }
 
@@ -897,6 +944,10 @@ function updateNavigationUI() {
     boardEl.classList.remove('reviewing-moves');
     console.log('Back to live position');
   }
+  
+  // Update charts and PGN display to reflect current move highlighting
+  updateCharts();
+  updatePGNDisplay();
 }
 
 function addMoveToHistory(fen, san, isUserMove) {
