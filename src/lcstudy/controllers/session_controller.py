@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import uuid
+import threading
 from typing import Optional
 
 import chess
@@ -8,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 import time
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
-from ..domain.validation import SessionCreateRequest, MoveRequest, SessionStateResponse, AnalysisResponse
+from ..domain.validation import SessionCreateRequest, MoveRequest, SessionStateResponse
 from ..exceptions import SessionNotFoundError, IllegalMoveError, GameFinishedError
-from .deps import get_session_repository, get_game_service, get_analysis_service
+from .deps import get_session_repository, get_game_service
 from ..config.logging import get_logger
 
 router = APIRouter(prefix="/api/v1/session", tags=["session"])
@@ -27,7 +28,7 @@ def _validate_uuid(sid: str) -> None:
 def api_session_new(payload: SessionCreateRequest, game_service = Depends(get_game_service)) -> JSONResponse:
     session = game_service.create_session(
         maia_level=payload.maia_level,
-        player_color=chess.WHITE if payload.player_color == "white" else chess.BLACK,
+        player_color=chess.WHITE if payload.player_color == "white" else chess.BLACK if payload.player_color else None,
         custom_fen=payload.custom_fen,
     )
     # If player is black, let Maia move first
@@ -36,41 +37,20 @@ def api_session_new(payload: SessionCreateRequest, game_service = Depends(get_ga
             game_service.make_maia_move(session)
     except Exception:
         pass
+    # Engines are used in background generation only; no warm-up needed here.
     return JSONResponse({"id": session.id, "flip": session.flip, "fen": session.board.fen()})
 
 
-@router.get("/{sid}/analysis", response_model=AnalysisResponse)
-def api_session_analysis(sid: str, analysis_service = Depends(get_analysis_service), session_repo = Depends(get_session_repository)):
-    _validate_uuid(sid)
-    session = session_repo.get_session(sid)
-    if not session:
-        raise HTTPException(404, "Session not found")
-
-    result = analysis_service.get_analysis_result(sid)
-    is_analyzing = analysis_service.is_analyzing(sid)
-    return {
-        "nodes": result.nodes if result else 0,
-        "best_move": result.best_move if result else None,
-        "analysis_lines": result.lines if result else [],
-        "is_analyzing": is_analyzing,
-        "snapshotted_move": None,
-        "position_fen": session.board.fen(),
-    }
 
 
 @router.get("/{sid}/state", response_model=SessionStateResponse)
-def api_session_state(sid: str, analysis_service = Depends(get_analysis_service), session_repo = Depends(get_session_repository)):
+def api_session_state(sid: str, session_repo = Depends(get_session_repository)):
     _validate_uuid(sid)
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
 
-    # Avoid re-analysis when we already have a result for this position
-    result = analysis_service.get_analysis_result(sid)
-    if not result or result.position_fen != session.board.fen():
-        analysis_service.start_analysis(session, nodes=session.leela_nodes)
-
-    result = analysis_service.get_analysis_result(sid)
+    # No analysis needed for precomputed games
     return {
         "id": session.id,
         "fen": session.board.fen(),
@@ -79,10 +59,7 @@ def api_session_state(sid: str, analysis_service = Depends(get_analysis_service)
         "guesses": len(session.history),
         "ply": session.move_index,
         "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
-        "top_lines": result.lines if result else [],
         "flip": session.flip,
-        "is_analyzing": analysis_service.is_analyzing(sid),
-        "analysis_nodes": result.nodes if result else 0,
     }
 
 
@@ -119,25 +96,27 @@ def api_session_predict(sid: str, payload: MoveRequest, game_service = Depends(g
             result.attempts,
             (t_after - t_before) * 1000.0,
         )
-        maia_move_played: Optional[str] = None
         if result.correct:
+            # Make Maia's response move immediately (precomputed, so it's fast)
             try:
-                maia_move_played = game_service.make_maia_move(session)
+                maia_move = game_service.make_maia_move(session)
+                if maia_move:
+                    response["maia_move"] = maia_move
             except Exception:
                 pass
+        # Get the current FEN after any Maia move
+        current_fen = session.board.fen()
         response = {
             "your_move": result.player_move,
             "correct": result.correct,
             "message": result.message,
             "total": session.score_total,
-            "fen": session.board.fen(),
+            "fen": current_fen,
             "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
             "attempts": result.attempts,
         }
         if result.leela_move:
             response["leela_move"] = result.leela_move
-        if maia_move_played:
-            response["maia_move"] = maia_move_played
         total_ms = (time.perf_counter() - t0) * 1000.0
         logger.info("[%s] predict.end sid=%s total_ms=%.1f", rid, sid, total_ms)
         return JSONResponse(response)
@@ -157,32 +136,3 @@ def api_session_pgn(sid: str, game_service = Depends(get_game_service), session_
     return PlainTextResponse(pgn_text, media_type="text/plain; charset=utf-8")
 
 
-@router.get("/{sid}/analysis/stream")
-async def api_session_analysis_stream(sid: str, analysis_service = Depends(get_analysis_service), session_repo = Depends(get_session_repository)):
-    _validate_uuid(sid)
-    session = session_repo.get_session(sid)
-    if not session:
-        raise HTTPException(404, "Session not found")
-
-    analysis_service.start_analysis(session, nodes=session.leela_nodes)
-
-    async def event_gen():
-        # simple polling to stream a single event when ready
-        for _ in range(60):  # up to ~30s at 0.5s interval
-            result = analysis_service.get_analysis_result(sid)
-            if result and result.position_fen == session.board.fen():
-                payload = {
-                    "nodes": result.nodes,
-                    "best_move": result.best_move,
-                    "analysis_lines": result.lines,
-                }
-                data = json.dumps(payload)
-                yield f"event: analysis\n"
-                yield f"data: {data}\n\n"
-                return
-            await asyncio.sleep(0.5)
-        # timeout event
-        yield "event: timeout\ndata: {}\n\n"
-
-    import json
-    return StreamingResponse(event_gen(), media_type="text/event-stream")

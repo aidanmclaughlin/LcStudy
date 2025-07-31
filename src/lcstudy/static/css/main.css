@@ -201,3 +201,25 @@ h1 {
 .btn:hover { 
     filter:brightness(1.05); 
 }
+
+/* Move navigation styling */
+.reviewing-moves {
+  border: 3px solid #f59e0b !important;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5) !important;
+}
+
+.reviewing-moves::after {
+  content: 'REVIEWING MOVES - Use ← → arrows to navigate';
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(245, 158, 11, 0.9);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+  z-index: 10;
+}

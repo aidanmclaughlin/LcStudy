@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Optional, List, Tuple
 from dataclasses import dataclass
 import uuid
-import time
 import chess
 import chess.pgn
 from datetime import datetime
@@ -13,7 +12,7 @@ from ..repositories.game_history_repository import GameHistoryRepository
 from ..exceptions import SessionNotFoundError, IllegalMoveError, GameFinishedError
 from ..config import get_settings
 from ..config.logging import get_logger
-from .engine_service import EngineService
+from ..repositories.precomputed_repository import PrecomputedRepository
 
 @dataclass
 class MoveResult:
@@ -30,18 +29,18 @@ class GameService:
         self, 
         session_repo: SessionRepository,
         history_repo: GameHistoryRepository,
-        engine_service: Optional[EngineService] = None,
+        precomputed_repo: PrecomputedRepository,
     ):
         self.session_repo = session_repo
         self.history_repo = history_repo
         self.settings = get_settings()
-        self.engine_service = engine_service
+        self.precomputed_repo = precomputed_repo
         self.logger = get_logger('game_service')
     
     def create_session(
         self,
         maia_level: int,
-        player_color: chess.Color,
+        player_color: Optional[chess.Color] = None,  # Will be overridden by precomputed game
         custom_fen: Optional[str] = None
     ) -> GameSession:
         session_id = str(uuid.uuid4())
@@ -53,19 +52,51 @@ class GameService:
             except ValueError:
                 board = chess.Board()
         
-        flip = player_color == chess.BLACK
+        # Assign a precomputed game and determine player color from it
+        actual_player_color = player_color or chess.WHITE  # fallback
+        precomputed_game_id = None
+        
+        if self.precomputed_repo and self.precomputed_repo.has_games():
+            gid = self.precomputed_repo.assign_game()
+            if gid:
+                precomputed_game_id = gid
+                leela_color = self.precomputed_repo.get_leela_color(gid)
+                if leela_color is not None:
+                    # Player always plays as Leela (the strong engine)
+                    actual_player_color = leela_color
+        
+        flip = actual_player_color == chess.BLACK
         
         session = GameSession(
             id=session_id,
             board=board,
             status=SessionStatus.PLAYING,
-            player_color=player_color,
+            player_color=actual_player_color,
             maia_level=maia_level,
             score_total=0.0,
             move_index=0,
             history=[],
             flip=flip
         )
+        
+        if precomputed_game_id:
+            session.precomputed_game_id = precomputed_game_id
+            session.precomputed_ply_index = 0
+            
+            # If Leela plays black, Maia (white) should make the first move instantly
+            leela_color = self.precomputed_repo.get_leela_color(precomputed_game_id)
+            if leela_color == chess.BLACK and session.board.turn == chess.WHITE:
+                # Make Maia's opening move from the precomputed game
+                maia_move_uci = self.precomputed_repo.get_expected(precomputed_game_id, 0)
+                if maia_move_uci:
+                    try:
+                        move = chess.Move.from_uci(maia_move_uci)
+                        if move in session.board.legal_moves:
+                            session.board.push(move)
+                            session.precomputed_ply_index = 1  # Next expected move is at ply 1
+                            session.move_index += 1
+                    except (ValueError, chess.InvalidMoveError):
+                        pass
         
         self.session_repo.save_session(session)
         
@@ -101,6 +132,7 @@ class GameService:
             return False, False
         except Exception:
             return False, False
+
     
     def make_move(self, session: GameSession, move_str: str, client_validated: bool = False) -> MoveResult:
         if session.status != SessionStatus.PLAYING:
@@ -135,40 +167,76 @@ class GameService:
                 attempts=1,
             )
 
-        # Compute Leela's expected best move for this position
+        # Precomputed expected move
         expected_move_uci: Optional[str] = None
-        if self.engine_service is not None:
-            try:
-                t0 = time.perf_counter()
-                leela = self.engine_service.get_leela_engine(session.id)
-                best = leela.get_best_move(session.board, nodes=session.leela_nodes)
-                t1 = time.perf_counter()
-                expected_move_uci = best.uci() if best else None
-                self.logger.info(
-                    "move.engine sid=%s nodes=%s engine_ms=%.1f best=%s",
-                    session.id,
-                    session.leela_nodes,
-                    (t1 - t0) * 1000.0,
-                    expected_move_uci,
-                )
-            except Exception:
-                expected_move_uci = None
+        if not self.precomputed_repo or not session.precomputed_game_id:
+            # No precomputed game available; cannot grade without engine
+            session.current_move_attempts += 1
+            self.session_repo.save_session(session)
+            return MoveResult(
+                player_move=move_str,
+                correct=False,
+                message="No precomputed game available",
+                attempts=session.current_move_attempts,
+            )
+        expected_move_uci = self.precomputed_repo.get_expected(
+            session.precomputed_game_id, session.precomputed_ply_index
+        )
 
-        # If engine is not available, we cannot meaningfully grade; treat as incorrect
+        # If no next expected move, treat as finished or incorrect
         if expected_move_uci is None:
             session.current_move_attempts += 1
             self.session_repo.save_session(session)
             return MoveResult(
                 player_move=move_str,
                 correct=False,
-                message="Engine unavailable to validate move",
+                message="No expected move (end of precomputed game)",
                 attempts=session.current_move_attempts,
             )
 
         # Evaluate guess correctness
-        overall_start = getattr(self, '_overall_start_ts', None)
         if move_str != expected_move_uci:
             session.current_move_attempts += 1
+            
+            # Auto-play after 10 failed attempts
+            if session.current_move_attempts >= 10:
+                # Make the correct move automatically
+                session.board.push(chess.Move.from_uci(expected_move_uci))
+                session.move_index += 1
+                session.score_total += 0.0  # No points for auto-played moves
+                session.current_move_attempts = 0
+                session.precomputed_ply_index += 1
+                
+                if session.board.is_game_over():
+                    session.status = SessionStatus.FINISHED
+                    # Delete completed game so it's never played again
+                    if self.precomputed_repo and session.precomputed_game_id:
+                        try:
+                            self.precomputed_repo.consume_game(session.precomputed_game_id)
+                            self.logger.info("Consumed auto-played game: %s", session.precomputed_game_id)
+                        except Exception as e:
+                            self.logger.warning("Failed to consume game %s: %s", session.precomputed_game_id, e)
+                
+                self.session_repo.save_session(session)
+                result = MoveResult(
+                    player_move=expected_move_uci,  # Return the correct move
+                    correct=True,
+                    message="Auto-played after 10 attempts.",
+                    leela_move=expected_move_uci,
+                    attempts=10,
+                )
+                try:
+                    self.logger.info(
+                        "move.result sid=%s auto-played=%s attempts=%s",
+                        session.id,
+                        expected_move_uci,
+                        10,
+                    )
+                except Exception:
+                    pass
+                return result
+            
+            # Regular incorrect move handling
             self.session_repo.save_session(session)
             result = MoveResult(
                 player_move=move_str,
@@ -187,15 +255,23 @@ class GameService:
                 pass
             return result
 
-        # Correct guess: apply the expected move
+        # Correct guess: apply the expected move and advance precomputed index
         session.board.push(chess.Move.from_uci(expected_move_uci))
         session.move_index += 1
         session.score_total += 1.0
         attempts_used = session.current_move_attempts + 1
         session.current_move_attempts = 0
+        session.precomputed_ply_index += 1
 
         if session.board.is_game_over():
             session.status = SessionStatus.FINISHED
+            # Delete completed game so it's never played again
+            if self.precomputed_repo and session.precomputed_game_id:
+                try:
+                    self.precomputed_repo.consume_game(session.precomputed_game_id)
+                    self.logger.info("Consumed completed game: %s", session.precomputed_game_id)
+                except Exception as e:
+                    self.logger.warning("Failed to consume game %s: %s", session.precomputed_game_id, e)
 
         self.session_repo.save_session(session)
         result = MoveResult(
@@ -218,10 +294,10 @@ class GameService:
         return result
 
     def make_maia_move(self, session: GameSession) -> Optional[str]:
-        """Make a single reply move for the opponent (Maia) and persist it.
+        """Make a single reply move from the precomputed game and persist it.
 
-        Prefer the Maia engine via EngineService when available; otherwise
-        fall back to the first legal move so tests and offline usage still work.
+        No live engine calls; if no next precomputed move exists, the game is
+        marked finished and the precomputed game is consumed from the DB.
         """
         if session.status != SessionStatus.PLAYING:
             return None
@@ -232,32 +308,43 @@ class GameService:
             return None
 
         move = None
-        # Prefer real Maia via engine when available
-        if self.engine_service is not None:
-            try:
-                engine = self.engine_service.get_maia_engine(session.maia_level)
-                mv_obj = engine.get_best_move(session.board, nodes=session.maia_nodes)
-                move = mv_obj
-            except Exception:
-                move = None
-        # Fallback to a deterministic first legal move
-        if move is None:
-            try:
-                move = next(iter(session.board.legal_moves), None)
-            except Exception:
-                move = None
+        # Use precomputed next move if available
+        if self.precomputed_repo and session.precomputed_game_id:
+            expected_next = self.precomputed_repo.get_expected(
+                session.precomputed_game_id, session.precomputed_ply_index
+            )
+            if expected_next:
+                move = chess.Move.from_uci(expected_next)
 
         if move is None:
+            # End of precomputed game: finish and consume
             session.status = SessionStatus.FINISHED
+            if self.precomputed_repo and session.precomputed_game_id:
+                try:
+                    self.precomputed_repo.consume_game(session.precomputed_game_id)
+                except Exception:
+                    pass
+                session.precomputed_game_id = None
+                session.precomputed_ply_index = 0
             self.session_repo.save_session(session)
             return None
 
         session.board.push(move)
         session.move_index += 1
+        session.precomputed_ply_index += 1
         # Do not change score_total here; score_total is for user attempts
 
         if session.board.is_game_over():
             session.status = SessionStatus.FINISHED
+            # Delete completed game so it's never played again
+            if self.precomputed_repo and session.precomputed_game_id:
+                try:
+                    self.precomputed_repo.consume_game(session.precomputed_game_id)
+                    self.logger.info("Consumed completed game after Maia move: %s", session.precomputed_game_id)
+                except Exception as e:
+                    self.logger.warning("Failed to consume game %s: %s", session.precomputed_game_id, e)
+                session.precomputed_game_id = None
+                session.precomputed_ply_index = 0
 
         self.session_repo.save_session(session)
         return move.uci()

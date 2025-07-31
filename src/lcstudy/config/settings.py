@@ -15,6 +15,8 @@ class DatabaseSettings:
 class EngineSettings:
     lc0_executable: Optional[str] = None
     default_nodes: int = 2000
+    # Low-cost nodes for correctness validation (fast path)
+    validation_nodes: int = 150
     default_threads: Optional[int] = None
     timeout_seconds: float = 30.0
     backend: Optional[str] = None

@@ -9,7 +9,7 @@ class PlayerColor(str, Enum):
 
 class SessionCreateRequest(BaseModel):
     maia_level: int = Field(ge=1100, le=1900)
-    player_color: PlayerColor
+    player_color: Optional[PlayerColor] = None
     custom_fen: Optional[str] = None
     
     @validator('maia_level')
@@ -35,13 +35,6 @@ class GameHistoryEntry(BaseModel):
     maia_level: int = Field(ge=1100, le=1900)
     result: str
 
-class AnalysisResponse(BaseModel):
-    nodes: int
-    best_move: Optional[str]
-    analysis_lines: List[dict]
-    is_analyzing: bool
-    snapshotted_move: Optional[str]
-    position_fen: Optional[str]
 
 class SessionStateResponse(BaseModel):
     id: str
@@ -51,7 +44,4 @@ class SessionStateResponse(BaseModel):
     guesses: int
     ply: int
     status: str
-    top_lines: List[dict]
     flip: bool
-    is_analyzing: bool
-    analysis_nodes: int

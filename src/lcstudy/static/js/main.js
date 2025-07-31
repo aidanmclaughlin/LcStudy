@@ -4,7 +4,6 @@ let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 let currentTurn = 'white';
 let leelaTopMoves = [];
 let boardIsFlipped = false;
-let analysisPollingInterval = null;
 
 let gameAttempts = [];
 let totalAttempts = 0;
@@ -14,12 +13,15 @@ let pgnMoves = [];
 let gameHistory = [];
 let cumulativeAverages = [];
 
+// Move navigation state
+let moveHistory = []; // Array of {fen, san, isUserMove} objects
+let currentMoveIndex = -1; // -1 means at current/live position
+let isReviewingMoves = false;
+let liveFen = ''; // The actual current game position
+
 let accuracyChart = null;
 let attemptsChart = null;
 
-let pieceBase = '/static/img/pieces';
-let pieceExt = 'svg';
-let useCustomPieces = false;
 const defaultPieceImages = {
   'wK': 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg',
   'wQ': 'https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg',
@@ -36,40 +38,9 @@ const defaultPieceImages = {
 };
 const pieceCodes = ['wK','wQ','wR','wB','wN','wP','bK','bQ','bR','bB','bN','bP'];
 
-function getPieceUrl(code) {
-  if (useCustomPieces) {
-    return `${pieceBase}/${code}.${pieceExt}`;
-  }
-  return defaultPieceImages[code];
-}
+function getPieceUrl(code) { return defaultPieceImages[code]; }
 
-async function detectUserPieces() {
-  try {
-    // Probe user assets first (.svg then .png)
-    let probe = await fetch('/assets/pieces/wK.svg', { method: 'HEAD' });
-    if (probe.ok) {
-      pieceBase = '/assets/pieces';
-      pieceExt = 'svg';
-      useCustomPieces = true;
-      console.log('Using user-provided SVG piece set from /assets/pieces');
-      return;
-    }
-    probe = await fetch('/assets/pieces/wK.png', { method: 'HEAD' });
-    if (probe.ok) {
-      pieceBase = '/assets/pieces';
-      pieceExt = 'png';
-      useCustomPieces = true;
-      console.log('Using user-provided PNG piece set from /assets/pieces');
-      return;
-    }
-  } catch (e) {
-    // ignore
-  }
-  // Fall back to bundled SVG set
-  pieceBase = '/static/img/pieces';
-  pieceExt = 'svg';
-  useCustomPieces = false;
-}
+// No user-provided pieces; use fixed Wikipedia URLs.
 
 function initializeCharts() {
   const accuracyCtx = document.getElementById('accuracy-chart').getContext('2d');
@@ -438,70 +409,8 @@ function showPromotionDialog() {
   });
 }
 
-async function pollAnalysisUpdates() {
-  if (!SID) return;
-  
-  try {
-    const res = await fetch('/api/v1/session/' + SID + '/analysis');
-    const data = await res.json();
-    
-    const analysisStatsElement = document.getElementById('analysis-stats');
-    if (analysisStatsElement) {
-      let depth = 0;
-      let nodes = 0;
-      let winProb = 50;
-      
-      if (data.analysis_lines && data.analysis_lines.length > 0) {
-        const topLine = data.analysis_lines[0];
-        depth = Math.floor(topLine.depth || 0);
-        
-        if (topLine.wdl && topLine.wdl.length >= 3) {
-          winProb = Math.floor(topLine.wdl[0] * 100);
-        } else if (topLine.cp !== null && topLine.cp !== undefined) {
-          const sigmoid = 1 / (1 + Math.exp(-topLine.cp / 400));
-          winProb = Math.floor(sigmoid * 100);
-        }
-      }
-      
-      if (data.nodes) {
-        nodes = Math.floor(data.nodes);
-      }
-      
-      let formattedNodes;
-      if (nodes >= 1e9) {
-        formattedNodes = Math.floor(nodes / 1e9) + 'B';
-      } else if (nodes >= 1e6) {
-        formattedNodes = Math.floor(nodes / 1e6) + 'M';
-      } else if (nodes >= 1e3) {
-        formattedNodes = Math.floor(nodes / 1e3) + 'K';
-      } else {
-        formattedNodes = nodes.toString();
-      }
-      
-      analysisStatsElement.innerHTML = `<span style='color: #8b5cf6;'>D ${depth}</span> <span style='color: #06b6d4;'>N ${formattedNodes}</span> <span style='color: #10b981;'>P ${winProb}</span>`;
-    }
-    
-    leelaTopMoves = data.analysis_lines || [];
-    
-  } catch (error) {
-    console.log('Analysis polling error:', error);
-  }
-}
 
-function startAnalysisPolling() {
-  if (analysisPollingInterval) {
-    clearInterval(analysisPollingInterval);
-  }
-  
-  analysisPollingInterval = setInterval(pollAnalysisUpdates, 500);
-}
 
-function stopAnalysisPolling() {
-  if (analysisPollingInterval) {
-    clearInterval(analysisPollingInterval);
-    analysisPollingInterval = null;
-  }
-}
 
 function updateAttemptsRemaining(remaining) {
   const attemptsElement = document.getElementById('attempts-remaining');
@@ -602,11 +511,13 @@ async function submitCorrectMoveToServer(mv) {
       }
       
       if (data.status === 'finished') {
+        console.log('Game finished! Starting new game in 2.5s...');
         createConfetti();
         await saveCompletedGame('finished');
         await loadGameHistory();
         
         setTimeout(async () => {
+          console.log('Starting new game now...');
           await start();
         }, 2500);
       }
@@ -647,9 +558,16 @@ async function submitMoveToServer(mv, fromSquare, toSquare) {
       totalAttempts += attempts;
       moveCounter++;
       
+      // Track the user's move in history
+      if (data.leela_move) {
+        const userMoveSAN = data.leela_move; // This should ideally be SAN notation
+        addMoveToHistory(currentFen, userMoveSAN, true);
+      }
+      
       pgnMoves.push(data.leela_move);
       if (data.maia_move) {
         pgnMoves.push(data.maia_move);
+        // Note: We'll add Maia's move to history after refresh when we get the new FEN
       }
       
       updateAttemptsRemaining(10);
@@ -659,6 +577,12 @@ async function submitMoveToServer(mv, fromSquare, toSquare) {
       setTimeout(async () => {
         await refresh();
         updateAttemptsRemaining(10);
+        
+        // Add Maia's move to history if it was made
+        if (data.maia_move) {
+          const maiaMoveSAN = data.maia_move;
+          addMoveToHistory(liveFen, maiaMoveSAN, false);
+        }
       }, 600);
     } else {
       const attempts = data.attempts || 1;
@@ -778,6 +702,12 @@ function updateBoardFromFen(fen) {
 }
 
 function onSquareClick(event) {
+  // Don't allow moves when reviewing past positions
+  if (isReviewingMoves) {
+    console.log('Cannot make moves while reviewing. Use arrow keys to return to current position.');
+    return;
+  }
+  
   const square = event.currentTarget.dataset.square;
   const piece = event.currentTarget.querySelector('.piece');
   
@@ -816,8 +746,8 @@ async function start(customFen = null) {
   const maiaLevel = maiaLevels[Math.floor(Math.random() * maiaLevels.length)];
   window.currentMaiaLevel = maiaLevel;
 
-  const playerColor = Math.random() < 0.5 ? 'white' : 'black';
-  const payload = {maia_level: maiaLevel, player_color: playerColor};
+  // Color will be determined by the precomputed game on the backend
+  const payload = {maia_level: maiaLevel};
   if (customFen) {
     payload.custom_fen = customFen;
   }
@@ -836,8 +766,8 @@ async function start(customFen = null) {
   updateBoardFromFen(sessionFen);
   
   resetGameData();
+  resetMoveHistory();
   await refresh();
-  startAnalysisPolling();
   updateAttemptsRemaining(10);
 }
 
@@ -848,12 +778,16 @@ async function refresh() {
   
   const data = await res.json();
   
-  currentFen = data.fen;
+  // Update live position
+  updateLiveFen(data.fen);
   currentTurn = data.turn;
   leelaTopMoves = data.top_lines || [];
   const shouldFlip = data.flip || false;
   
-  updateBoardFromFen(currentFen);
+  // Only update board display if we're at live position
+  if (!isReviewingMoves) {
+    updateBoardFromFen(data.fen);
+  }
   clearSelection();
   setWho(data.turn);
   
@@ -862,8 +796,7 @@ async function refresh() {
   updatePGNDisplay();
   
   if (data.status === 'finished') {
-    stopAnalysisPolling();
-    
+    console.log('Game finished! Starting new game in 2.5s...');
     createConfetti();
     
     await saveCompletedGame('finished');
@@ -871,6 +804,7 @@ async function refresh() {
     await loadGameHistory();
     
     setTimeout(async () => {
+      console.log('Starting new game now...');
       await start();
     }, 2500);
   }
@@ -880,20 +814,120 @@ document.getElementById('new').addEventListener('click', async () => {
   await start();
 });
 
+function handleKeyPress(event) {
+  // Only handle arrow keys
+  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    return;
+  }
+  
+  event.preventDefault();
+  
+  if (event.key === 'ArrowLeft') {
+    // Left arrow = go back in time (earlier moves)
+    navigateToMove(currentMoveIndex - 1);
+  } else if (event.key === 'ArrowRight') {
+    // Right arrow = go forward in time (later moves)
+    navigateToMove(currentMoveIndex + 1);
+  }
+}
+
+function navigateToMove(targetIndex) {
+  const maxIndex = moveHistory.length - 1;
+  
+  console.log(`Navigate: current=${currentMoveIndex}, target=${targetIndex}, maxIndex=${maxIndex}`);
+  
+  // Handle navigation from live position
+  if (currentMoveIndex === -1) {
+    if (targetIndex === -2) {
+      // Left arrow from live position: go to most recent move (maxIndex)
+      targetIndex = maxIndex;
+    } else if (targetIndex === 0) {
+      // Right arrow from live position: stay at live position
+      return;
+    }
+  }
+  
+  // Valid navigation range:
+  // -1 = live position (current game state)
+  // 0 to maxIndex = historical moves
+  
+  // Clamp targetIndex to valid range
+  if (targetIndex < 0 && targetIndex !== -1) {
+    // Trying to go before first move - stay at first move
+    targetIndex = 0;
+  } else if (targetIndex > maxIndex) {
+    // If trying to go past last historical move, return to live position  
+    targetIndex = -1;
+  }
+  
+  if (targetIndex === currentMoveIndex) {
+    console.log('No change needed');
+    return; // No change
+  }
+  
+  console.log(`Moving to index ${targetIndex}`);
+  currentMoveIndex = targetIndex;
+  isReviewingMoves = currentMoveIndex !== -1;
+  
+  if (isReviewingMoves) {
+    // Show historical position
+    const move = moveHistory[currentMoveIndex];
+    console.log(`Showing historical move ${currentMoveIndex}: ${move.san}`);
+    updateBoardFromFen(move.fen);
+    updateNavigationUI();
+  } else {
+    // Return to live position
+    console.log('Returning to live position');
+    updateBoardFromFen(liveFen);
+    updateNavigationUI();
+  }
+  
+  clearSelection();
+}
+
+function updateNavigationUI() {
+  // Add visual indicator when reviewing moves
+  const boardEl = document.getElementById('board');
+  if (isReviewingMoves) {
+    boardEl.classList.add('reviewing-moves');
+    // Show move info
+    const move = moveHistory[currentMoveIndex];
+    console.log(`Reviewing move ${currentMoveIndex + 1}/${moveHistory.length}: ${move.san}`);
+  } else {
+    boardEl.classList.remove('reviewing-moves');
+    console.log('Back to live position');
+  }
+}
+
+function addMoveToHistory(fen, san, isUserMove) {
+  moveHistory.push({
+    fen: fen,
+    san: san,
+    isUserMove: isUserMove
+  });
+}
+
+function resetMoveHistory() {
+  moveHistory = [];
+  currentMoveIndex = -1;
+  isReviewingMoves = false;
+  liveFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+}
+
+function updateLiveFen(fen) {
+  liveFen = fen;
+  // If we're at live position, update the display
+  if (!isReviewingMoves) {
+    currentFen = fen;
+  }
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
-  // Allow server-provided overrides via /config.js
-  if (window.PIECE_BASE) {
-    pieceBase = window.PIECE_BASE;
-    useCustomPieces = true;
-  }
-  if (window.PIECE_EXT) {
-    pieceExt = window.PIECE_EXT;
-  }
-  if (!window.PIECE_BASE) {
-    await detectUserPieces();
-  }
   initBoard();
   initializeCharts();
   await loadGameHistory();
   start();
+  
+  // Add keyboard event listener
+  document.addEventListener('keydown', handleKeyPress);
 });

@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 import chess
 
 from ..domain.validation import SessionCreateRequest, MoveRequest
-from .deps import get_game_service, get_session_repository, get_analysis_service, get_history_repository
+from .deps import get_game_service, get_session_repository, get_history_repository
 
 router = APIRouter(tags=["compat"])  # legacy, for backward compatibility
 
@@ -26,7 +26,7 @@ def compat_session_new(payload: dict, game_service = Depends(get_game_service)) 
 
     session = game_service.create_session(
         maia_level=req.maia_level,
-        player_color=chess.WHITE if req.player_color == "white" else chess.BLACK,
+        player_color=chess.WHITE if req.player_color == "white" else chess.BLACK if req.player_color else None,
         custom_fen=req.custom_fen,
     )
     try:
@@ -37,32 +37,13 @@ def compat_session_new(payload: dict, game_service = Depends(get_game_service)) 
     return JSONResponse({"id": session.id, "flip": session.flip, "fen": session.board.fen()})
 
 
-@router.get("/api/session/{sid}/analysis")
-def compat_session_analysis(sid: str, analysis_service = Depends(get_analysis_service), session_repo = Depends(get_session_repository)) -> JSONResponse:
-    session = session_repo.get_session(sid)
-    if not session:
-        raise HTTPException(404, "Session not found")
-    result = analysis_service.get_analysis_result(sid)
-    is_analyzing = analysis_service.is_analyzing(sid)
-    return JSONResponse({
-        "nodes": result.nodes if result else 0,
-        "best_move": result.best_move if result else None,
-        "analysis_lines": result.lines if result else [],
-        "is_analyzing": is_analyzing,
-        "snapshotted_move": None,
-        "position_fen": session.board.fen(),
-    })
 
 
 @router.get("/api/session/{sid}/state")
-def compat_session_state(sid: str, analysis_service = Depends(get_analysis_service), session_repo = Depends(get_session_repository)) -> JSONResponse:
+def compat_session_state(sid: str, session_repo = Depends(get_session_repository)) -> JSONResponse:
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
-    result = analysis_service.get_analysis_result(sid)
-    if not result or result.position_fen != session.board.fen():
-        analysis_service.start_analysis(session, nodes=session.leela_nodes)
-    result = analysis_service.get_analysis_result(sid)
     return JSONResponse({
         "id": session.id,
         "fen": session.board.fen(),
@@ -71,10 +52,7 @@ def compat_session_state(sid: str, analysis_service = Depends(get_analysis_servi
         "guesses": len(session.history),
         "ply": session.move_index,
         "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
-        "top_lines": result.lines if result else [],
         "flip": session.flip,
-        "is_analyzing": analysis_service.is_analyzing(sid),
-        "analysis_nodes": result.nodes if result else 0,
     })
 
 
