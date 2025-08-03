@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import argparse
 import random
+import shutil
+import sys
 import time
 import uuid
 from pathlib import Path
-import sys
-import shutil
 from typing import List
 
 import chess
 import chess.pgn
 
-from ..config.logging import setup_logging, get_logger
 from ..config import get_settings
+from ..config.logging import get_logger, setup_logging
 from ..controllers.deps import get_engine_service
 from ..engines import pick_from_multipv
 
@@ -61,7 +61,9 @@ class TerminalUI:
         header = f"LcStudy Seed Generator | out={self.out_dir} | Leela nodes={self.leela_nodes}"
         print(header[:cols])
         print(self.progress_bar(game_index - 1, self.total_games))
-        print(f"Generating game {game_index}/{self.total_games}  (plies={plies}, Maia {maia_level})")
+        print(
+            f"Generating game {game_index}/{self.total_games}  (plies={plies}, Maia {maia_level})"
+        )
         print()
         # Board area
         print(board)
@@ -74,6 +76,7 @@ class TerminalUI:
 
     def close(self) -> None:
         self.show_cursor()
+
 
 def generate_game(
     out_dir: Path,
@@ -100,12 +103,12 @@ def generate_game(
 
     game = chess.pgn.Game()
     game.headers["Event"] = "LcStudy Training Game"
-    
+
     # Coin flip to determine Leela's color (50/50 split)
     leela_is_white = random.random() < 0.5
-    
+
     if leela_is_white:
-        game.headers["White"] = f"Leela (PLAYER)"
+        game.headers["White"] = "Leela (PLAYER)"
         game.headers["Black"] = f"Maia {maia_level} (AUTO)"
         player_engine = leela
         opponent_engine = maia
@@ -113,22 +116,31 @@ def generate_game(
         opponent_nodes = maia_nodes
     else:
         game.headers["White"] = f"Maia {maia_level} (AUTO)"
-        game.headers["Black"] = f"Leela (PLAYER)"
+        game.headers["Black"] = "Leela (PLAYER)"
         player_engine = leela
         opponent_engine = maia
         player_nodes = leela_nodes
         opponent_nodes = maia_nodes
-    
+
     game.headers["Site"] = "LcStudy"
     game.headers["Result"] = "*"
     node = game
 
     if ui:
-        ui.render(game_index=game_index, board=board, last_san="", last_uci="", plies=0, maia_level=maia_level)
+        ui.render(
+            game_index=game_index,
+            board=board,
+            last_san="",
+            last_uci="",
+            plies=0,
+            maia_level=maia_level,
+        )
     elif show_board:
         leela_color = "White" if leela_is_white else "Black"
         maia_color = "Black" if leela_is_white else "White"
-        print(f"\n=== New game: Leela ({leela_color}) vs Maia {maia_level} ({maia_color}) ===")
+        print(
+            f"\n=== New game: Leela ({leela_color}) vs Maia {maia_level} ({maia_color}) ==="
+        )
         print(board)
         sys.stdout.flush()
 
@@ -136,7 +148,9 @@ def generate_game(
     while not board.is_game_over() and plies < max_plies:
         try:
             # Determine which engine plays based on current turn and color assignment
-            if (board.turn == chess.WHITE and leela_is_white) or (board.turn == chess.BLACK and not leela_is_white):
+            if (board.turn == chess.WHITE and leela_is_white) or (
+                board.turn == chess.BLACK and not leela_is_white
+            ):
                 # Leela's turn
                 mv = player_engine.get_best_move(board, nodes=player_nodes)
                 san = board.san(mv)
@@ -184,7 +198,9 @@ def generate_game(
     name = f"seed_{int(time.time())}_{uuid.uuid4().hex[:8]}.pgn"
     out_path = out_dir / name
     with open(out_path, "w", encoding="utf-8") as f:
-        exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
+        exporter = chess.pgn.StringExporter(
+            headers=True, variations=False, comments=False
+        )
         f.write(game.accept(exporter))
     if ui:
         ui.render(
@@ -201,12 +217,31 @@ def generate_game(
 
 
 def main(argv: List[str] | None = None, setup_logs: bool = True) -> int:
-    parser = argparse.ArgumentParser(description="Generate Leela vs Maia seed PGNs (writes to ~/.lcstudy/precomputed/games or static/pgn)")
-    parser.add_argument("--count", type=int, default=25, help="Number of games to generate")
-    parser.add_argument("--leela-nodes", type=int, default=1000, help="Nodes for Leela moves (hardcoded at runtime to 1000)")
-    parser.add_argument("--daemon", action="store_true", help="Run continuously, generating games forever into the user data directory")
+    parser = argparse.ArgumentParser(
+        description="Generate Leela vs Maia seed PGNs (writes to ~/.lcstudy/precomputed/games or static/pgn)"
+    )
+    parser.add_argument(
+        "--count", type=int, default=25, help="Number of games to generate"
+    )
+    parser.add_argument(
+        "--leela-nodes",
+        type=int,
+        default=1000,
+        help="Nodes for Leela moves (hardcoded at runtime to 1000)",
+    )
+    parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run continuously, generating games into the user data directory",
+    )
+    parser.add_argument(
+        "--max-seeds",
+        type=int,
+        default=25,
+        help="Maximum number of seed PGNs to keep in the precomputed directory; in daemon mode generation idles when this cap is reached",
+    )
     args = parser.parse_args(argv)
-    
+
     # Only set up logging if not in daemon mode (background generation)
     if setup_logs and not args.daemon:
         setup_logging()
@@ -225,6 +260,24 @@ def main(argv: List[str] | None = None, setup_logs: bool = True) -> int:
         ui = TerminalUI(total_games=999999, leela_nodes=1000, out_dir=out_dir)
         try:
             while True:
+                # Respect cap on number of precomputed games
+                try:
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    pass
+                try:
+                    current = len(list(out_dir.glob("*.pgn")))
+                except Exception:
+                    current = 0
+                if current >= max(0, int(args.max_seeds)):
+                    # Idle to save compute and check again later
+                    log.info(
+                        "Max seeds reached (%d >= %d); idling background generation",
+                        current,
+                        args.max_seeds,
+                    )
+                    time.sleep(60.0)
+                    continue
                 i += 1
                 lvl = random.choice(levels)
                 try:

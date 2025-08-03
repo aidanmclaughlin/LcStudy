@@ -69,11 +69,13 @@ Module: lcstudy.scripts.generate_seeds
 - Leela move search: fixed small node budget (default ~1000 nodes) to keep generation reasonably fast.
 - Maia move search: very small node count (1 by default) with temperature sampling from MultiPV during the opening plies to diversify positions.
 - Color: Each game flips a coin to decide whether Leela is White or Black; the session always lets you play as Leela.
+- Background cap: In daemon mode, generation idles when the precomputed directory has 25 or more PGN files (configurable via --max-seeds). This avoids unnecessary compute once you have a healthy seed pool.
 
 Running manually
 ```bash
 python -m lcstudy.scripts.generate_seeds --count 25    # generate 25 games
-python -m lcstudy.scripts.generate_seeds --daemon      # keep generating forever
+python -m lcstudy.scripts.generate_seeds --daemon      # keep generating; idles once 25 seeds exist
+python -m lcstudy.scripts.generate_seeds --daemon --max-seeds 50  # change the cap
 ```
 
 Extending or swapping agents
@@ -96,4 +98,3 @@ Data locations and limits
 Notes and limits
 - If engines/networks are not installed, the app still runs, but grading requires precomputed games. Use lcstudy up and give the generator time to create a library, or copy PGNs into the precomputed folder.
 - Engine processes are cached and reused by EngineService; the web request path avoids engine calls to keep latency low.
-
