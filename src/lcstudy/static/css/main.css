@@ -70,6 +70,7 @@ h1 {
     border: 1px solid rgba(148,163,184,.2); 
     border-radius: 12px; 
     overflow:hidden; 
+    position: relative;
     display: grid; 
     grid-template-columns: repeat(8, 1fr); 
     grid-template-rows: repeat(8, 1fr); 
@@ -200,6 +201,85 @@ h1 {
 
 .btn:hover { 
     filter:brightness(1.05); 
+}
+
+/* Success ring pulse on destination square */
+.square .hit {
+  position: absolute;
+  width: 80%;
+  height: 80%;
+  border-radius: 10px;
+  border: 3px solid rgba(234, 179, 8, 0.95); /* amber-500 */
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.8);
+  animation: hitPulse 380ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes hitPulse {
+  0% { transform: scale(0.8); opacity: 0.0; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1.0); opacity: 0; }
+}
+
+/* Local confetti burst for correct moves */
+.confetti-burst {
+  position: fixed;
+  z-index: 10000;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  pointer-events: none;
+  animation: confetti-burst-move 650ms cubic-bezier(.2,.8,.2,1) forwards;
+}
+
+@keyframes confetti-burst-move {
+  from { transform: translate(0,0) scale(1); opacity: 1; }
+  to { transform: translate(var(--dx, 0px), var(--dy, 0px)) rotate(360deg) scale(0.9); opacity: 0; }
+}
+
+/* Gold shimmer overlay for jackpot moments */
+.shimmer-overlay {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  background: linear-gradient(110deg, rgba(234,179,8,0.0) 0%, rgba(234,179,8,0.2) 40%, rgba(250,204,21,0.35) 50%, rgba(234,179,8,0.2) 60%, rgba(234,179,8,0.0) 100%);
+  transform: translateX(-120%);
+  animation: shimmerSweep 520ms ease-out forwards;
+}
+
+@keyframes shimmerSweep {
+  to { transform: translateX(120%); opacity: 0; }
+}
+
+/* Streak pill */
+.streak-pill {
+  display: none;
+  background: rgba(234,179,8,.14);
+  color: #fde68a;
+  border: 0; /* match button border for identical height */
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.streak-pill.show { display: inline-flex; align-items: center; gap: 6px; }
+
+.streak-pop {
+  animation: streakPop 300ms ease-out;
+}
+
+@keyframes streakPop {
+  0% { transform: scale(0.9); opacity: .6; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* Bounce for numbers */
+.num-bounce { animation: numBounce 260ms ease-out; }
+@keyframes numBounce {
+  0% { transform: translateY(-2px) scale(0.98); }
+  60% { transform: translateY(0) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
 }
 
 /* Move navigation styling */

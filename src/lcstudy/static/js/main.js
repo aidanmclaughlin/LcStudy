@@ -21,6 +21,26 @@ let liveFen = ''; // The actual current game position
 
 let accuracyChart = null;
 let attemptsChart = null;
+let soundEnabled = true; // always on
+let correctStreak = 0;
+let sfxCtx = null;
+
+function getAudioContext() {
+  if (!sfxCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) sfxCtx = new AC();
+  }
+  return sfxCtx;
+}
+
+function unlockAudio() {
+  try {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state !== 'running') {
+      ctx.resume().catch(() => {});
+    }
+  } catch (e) {}
+}
 
 const defaultPieceImages = {
   'wK': 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg',
@@ -97,6 +117,26 @@ function initializeCharts() {
       plugins: {
         legend: { 
           display: false
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const dsIndex = context.datasetIndex;
+              const idx = context.dataIndex;
+              const value = context.formattedValue;
+              if (dsIndex === 0) {
+                const ds = context.chart.data.datasets[0] || {};
+                const minIdx = ds.customMinIndex;
+                if (minIdx !== undefined && minIdx !== null && idx === minIdx) {
+                  return `Lowest Retries: ${value}`;
+                }
+                return `Average Retries: ${value}`;
+              } else if (dsIndex === 1) {
+                return `Current Game: ${value}`;
+              }
+              return value;
+            }
+          }
         }
       }
     }
@@ -148,11 +188,128 @@ function initializeCharts() {
   });
 }
 
+// ----- Tasteful feedback utilities -----
+function initUXToggles() {
+  // Always-on sound; clear any persisted mute flag if present
+  soundEnabled = true;
+  try { localStorage.removeItem('lcstudy_sound'); } catch (e) {}
+}
+
+function playSuccessChime() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state !== 'running') { try { ctx.resume(); } catch (e) {} }
+    const now = ctx.currentTime;
+    const o1 = ctx.createOscillator();
+    const g1 = ctx.createGain();
+    o1.type = 'sine';
+    o1.frequency.setValueAtTime(880, now);
+    g1.gain.setValueAtTime(0.0001, now);
+    g1.gain.exponentialRampToValueAtTime(0.2, now + 0.01);
+    g1.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    o1.connect(g1).connect(ctx.destination);
+    o1.start(now);
+    o1.stop(now + 0.2);
+
+    const o2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(1320, now + 0.12);
+    g2.gain.setValueAtTime(0.0001, now + 0.12);
+    g2.gain.exponentialRampToValueAtTime(0.15, now + 0.14);
+    g2.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+    o2.connect(g2).connect(ctx.destination);
+    o2.start(now + 0.12);
+    o2.stop(now + 0.34);
+  } catch (e) {}
+}
+
+function vibrateSuccess() {
+  if (navigator.vibrate) {
+    try { navigator.vibrate([18, 10, 18]); } catch (e) {}
+  }
+}
+
+function showStreakPill() {
+  const pill = document.getElementById('streak-pill');
+  if (!pill) return;
+  if (correctStreak >= 2) {
+    pill.textContent = `Streak x${correctStreak}`;
+    pill.classList.add('show', 'streak-pop');
+    setTimeout(() => pill.classList.remove('streak-pop'), 320);
+  } else {
+    pill.classList.remove('show');
+  }
+}
+
+function successPulseAtSquare(square) {
+  const el = document.querySelector(`[data-square="${square}"]`);
+  if (!el) return;
+  const hit = document.createElement('div');
+  hit.className = 'hit';
+  el.appendChild(hit);
+  setTimeout(() => { try { el.removeChild(hit); } catch (e) {} }, 420);
+}
+
+function createConfettiBurstAt(x, y, count = 16) {
+  const colors = ['#f59e0b', '#fbbf24', '#f87171', '#34d399', '#60a5fa', '#a78bfa'];
+  for (let i = 0; i < count; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti-burst';
+    c.style.left = (x - 4) + 'px';
+    c.style.top = (y - 4) + 'px';
+    c.style.backgroundColor = colors[Math.floor(Math.random()*colors.length)];
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 60 + Math.random() * 70;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist;
+    c.style.setProperty('--dx', dx + 'px');
+    c.style.setProperty('--dy', dy + 'px');
+    document.body.appendChild(c);
+    setTimeout(() => { try { document.body.removeChild(c); } catch (e) {} }, 700);
+  }
+}
+
+function shimmerJackpotOnBoard() {
+  const board = document.getElementById('board');
+  if (!board) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'shimmer-overlay';
+  board.appendChild(overlay);
+  setTimeout(() => { try { board.removeChild(overlay); } catch (e) {} }, 560);
+}
+
+function celebrateSuccess(toSquare) {
+  successPulseAtSquare(toSquare);
+  const el = document.querySelector(`[data-square="${toSquare}"]`);
+  if (el) {
+    const r = el.getBoundingClientRect();
+    createConfettiBurstAt(r.left + r.width/2, r.top + r.height/2, 16);
+  }
+  playSuccessChime();
+  vibrateSuccess();
+  if (Math.random() < 0.07) {
+    shimmerJackpotOnBoard();
+    if (el) {
+      const r = el.getBoundingClientRect();
+      createConfettiBurstAt(r.left + r.width/2, r.top + r.height/2, 24);
+    }
+  }
+}
+
 function updateStatistics(scoreTotal, currentMove) {
   const currentAverageElement = document.getElementById('avg-attempts');
   if (currentAverageElement) {
     const avgAttempts = gameAttempts.length > 0 ? (totalAttempts / gameAttempts.length) : 0;
-    currentAverageElement.textContent = avgAttempts.toFixed(1);
+    const prev = parseFloat(currentAverageElement.textContent || '0') || 0;
+    const next = parseFloat(avgAttempts.toFixed(1));
+    if (next !== prev) {
+      currentAverageElement.textContent = next.toFixed(1);
+      currentAverageElement.classList.add('num-bounce');
+      setTimeout(() => currentAverageElement.classList.remove('num-bounce'), 260);
+    }
   }
 }
 
@@ -161,11 +318,22 @@ function updateCharts() {
     const labels = [];
     const historicalData = [];
     const currentGameData = [];
+    // Per-point style arrays for highlighting the minimum value
+    const pointBgColors = [];
+    const pointBdColors = [];
+    const pointRadii = [];
+    const pointHoverRadii = [];
+    const pointBorderWidths = [];
     
     for (let i = 0; i < cumulativeAverages.length; i++) {
       labels.push('');
       historicalData.push(cumulativeAverages[i]);
       currentGameData.push(null);
+      pointBgColors.push('#8b5cf6');
+      pointBdColors.push('#8b5cf6');
+      pointRadii.push(0); // hide most points
+      pointHoverRadii.push(0);
+      pointBorderWidths.push(0);
     }
     
     if (gameAttempts.length > 0) {
@@ -173,11 +341,66 @@ function updateCharts() {
       labels.push('');
       historicalData.push(null);
       currentGameData.push(currentGameAvg);
+      pointBgColors.push('#8b5cf6');
+      pointBdColors.push('#8b5cf6');
+      pointRadii.push(0);
+      pointHoverRadii.push(0);
+      pointBorderWidths.push(0);
     }
-    
+    // Determine and highlight the all-time lowest historical average
+    let minIdxForTooltip = null;
+    if (cumulativeAverages.length > 0) {
+      let minVal = cumulativeAverages[0];
+      let minIdx = 0;
+      for (let i = 1; i < cumulativeAverages.length; i++) {
+        if (cumulativeAverages[i] < minVal) {
+          minVal = cumulativeAverages[i];
+          minIdx = i;
+        }
+      }
+      // Apply red styling and a larger point radius to the min point
+      pointBgColors[minIdx] = '#e11d48';
+      // Use a white border ring for contrast against the filled area
+      pointBdColors[minIdx] = '#ffffff';
+      pointRadii[minIdx] = 5;  // slightly smaller
+      pointHoverRadii[minIdx] = 7;
+      pointBorderWidths[minIdx] = 2;
+      minIdxForTooltip = minIdx;
+    }
+
     accuracyChart.data.labels = labels;
     accuracyChart.data.datasets[0].data = historicalData;
     accuracyChart.data.datasets[1].data = currentGameData;
+    // Update per-point style to highlight the minimum
+    accuracyChart.data.datasets[0].pointBackgroundColor = pointBgColors;
+    accuracyChart.data.datasets[0].pointBorderColor = pointBdColors;
+    accuracyChart.data.datasets[0].pointRadius = pointRadii;
+    accuracyChart.data.datasets[0].pointHoverRadius = pointHoverRadii;
+    accuracyChart.data.datasets[0].pointBorderWidth = pointBorderWidths;
+    // Dynamically tighten Y axis to data range with ±0.5 padding
+    const yVals = [];
+    for (let i = 0; i < cumulativeAverages.length; i++) {
+      const v = cumulativeAverages[i];
+      if (typeof v === 'number' && !isNaN(v)) yVals.push(v);
+    }
+    if (gameAttempts.length > 0) {
+      const currentGameAvg = totalAttempts / gameAttempts.length;
+      if (typeof currentGameAvg === 'number' && !isNaN(currentGameAvg)) yVals.push(currentGameAvg);
+    }
+    if (yVals.length > 0) {
+      let minY = yVals[0];
+      let maxY = yVals[0];
+      for (let i = 1; i < yVals.length; i++) {
+        if (yVals[i] < minY) minY = yVals[i];
+        if (yVals[i] > maxY) maxY = yVals[i];
+      }
+      const pad = 0.2;
+      accuracyChart.options.scales.y.min = minY - pad;
+      accuracyChart.options.scales.y.max = maxY + pad;
+    }
+
+    // Expose min index for tooltip labeling
+    accuracyChart.data.datasets[0].customMinIndex = minIdxForTooltip;
     accuracyChart.update('none');
   }
   
@@ -618,9 +841,14 @@ async function submitMoveToServer(mv, fromSquare, toSquare) {
       }
       
       updateAttemptsRemaining(10);
-      
+
       flashBoard('success');
-      
+      // Celebrate at the destination square of the user's move
+      try { celebrateSuccess(toSquare); } catch (e) {}
+      // Update streak and UI
+      correctStreak = (correctStreak || 0) + 1;
+      showStreakPill();
+
       // Instant refresh - no delay needed with precomputed moves
       await refresh();
       updateAttemptsRemaining(10);
@@ -638,6 +866,9 @@ async function submitMoveToServer(mv, fromSquare, toSquare) {
       flashBoard('wrong');
       revertMove();
       if (last) last.textContent = data.message || 'Not the correct move. Try again.';
+      // Reset streak on incorrect guess
+      correctStreak = 0;
+      showStreakPill();
     }
   } catch (e) {
     flashBoard('wrong');
@@ -749,6 +980,8 @@ function updateBoardFromFen(fen) {
 }
 
 function onSquareClick(event) {
+  // Ensure audio context is unlocked by user interaction
+  try { unlockAudio(); } catch (e) {}
   // Don't allow moves when reviewing past positions
   if (isReviewingMoves) {
     console.log('Cannot make moves while reviewing. Use arrow keys to return to current position.');
@@ -814,6 +1047,14 @@ async function start(customFen = null) {
   
   resetGameData();
   resetMoveHistory();
+  initUXToggles();
+  // Unlock WebAudio on first user interaction
+  try {
+    window.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
+    window.addEventListener('keydown', unlockAudio, { once: true, passive: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+    window.addEventListener('click', unlockAudio, { once: true, passive: true });
+  } catch (e) {}
   await refresh();
   updateAttemptsRemaining(10);
 }
@@ -858,6 +1099,7 @@ async function refresh() {
 }
 
 document.getElementById('new').addEventListener('click', async () => {
+  try { unlockAudio(); } catch (e) {}
   await start();
 });
 
