@@ -7,15 +7,12 @@ retrieves network weights for Leela and Maia into the app's data directory.
 """
 
 import io
-import json
 import os
 import platform
 import re
 import shutil
-import sys
 import tarfile
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -23,21 +20,25 @@ import httpx
 
 from .engines import bin_dir, ensure_dirs, nets_dir
 
-
 GITHUB_API = "https://api.github.com"
 
 
 def _http_get(url: str, follow_redirects: bool = True) -> httpx.Response:
     """HTTP GET with a small default timeout and a custom UA."""
     headers = {"User-Agent": "lcstudy-installer"}
-    resp = httpx.get(url, headers=headers, follow_redirects=follow_redirects, timeout=60.0)
+    resp = httpx.get(
+        url, headers=headers, follow_redirects=follow_redirects, timeout=60.0
+    )
     resp.raise_for_status()
     return resp
 
 
 def _is_macos_arm() -> bool:
     """True if running on macOS arm64 (Apple Silicon)."""
-    return platform.system().lower() == "darwin" and platform.machine().lower() in {"arm64", "aarch64"}
+    return platform.system().lower() == "darwin" and platform.machine().lower() in {
+        "arm64",
+        "aarch64",
+    }
 
 
 def fetch_latest_lc0_release_asset_url() -> Optional[tuple[str, str]]:
@@ -112,8 +113,11 @@ def install_lc0() -> Path:
     if not found:
         if platform.system().lower() == "darwin":
             try:
-                print("No macOS lc0 release asset found; attempting 'brew install lc0'...")
+                print(
+                    "No macOS lc0 release asset found; attempting 'brew install lc0'..."
+                )
                 import subprocess
+
                 subprocess.run(["brew", "install", "lc0"], check=True)
                 exe = shutil.which("lc0")
                 if exe:
@@ -144,14 +148,25 @@ MAIA_REPOS = [
     ("facebookresearch", "maia-chess"),
 ]
 
-MAIA_LEVELS = [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900]
+# Supported Maia levels (networks expected under ~/.lcstudy/nets as maia-<level>.pb.gz)
+MAIA_LEVELS = [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2200]
+
+# Some networks may be published outside official release assets. Provide
+# direct URLs for those known cases as a fallback.
+MAIA_DIRECT_URLS: dict[int, str] = {
+    2200: "https://github.com/CallOn84/LeelaNets/raw/refs/heads/main/Nets/Maia%202200/maia-2200.pb.gz",
+}
 
 
 def find_maia_asset(level: int) -> Optional[tuple[str, str]]:
-    """Return (asset_name, url) for a Maia network at the given level."""
+    """Return (asset_name, url) for a Maia network at the given level.
+
+    Tries known GitHub release assets first; falls back to any hardcoded
+    direct URL for the requested level.
+    """
     filename_patterns = [
-        re.compile(fr"maia[-_]?{level}.*\.pb(\.gz)?$", re.I),
-        re.compile(fr"maia[-_]?{level}.*weights.*\.gz$", re.I),
+        re.compile(rf"maia[-_]?{level}.*\.pb(\.gz)?$", re.I),
+        re.compile(rf"maia[-_]?{level}.*weights.*\.gz$", re.I),
     ]
     for owner, repo in MAIA_REPOS:
         try:
@@ -164,6 +179,10 @@ def find_maia_asset(level: int) -> Optional[tuple[str, str]]:
                         return name, a.get("browser_download_url")
         except Exception:
             continue
+    # Fallback: direct URL mapping for networks not in official releases
+    if level in MAIA_DIRECT_URLS:
+        url = MAIA_DIRECT_URLS[level]
+        return (f"maia-{level}.pb.gz", url)
     return None
 
 

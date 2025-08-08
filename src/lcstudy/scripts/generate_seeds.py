@@ -224,6 +224,15 @@ def main(argv: List[str] | None = None, setup_logs: bool = True) -> int:
         "--count", type=int, default=25, help="Number of games to generate"
     )
     parser.add_argument(
+        "-L",
+        "--levels",
+        type=str,
+        help=(
+            "Comma-separated Maia levels to sample from (e.g. '1500,1700,2200'). "
+            "If omitted, defaults to 1100,1300,1500,1700,1900,2200."
+        ),
+    )
+    parser.add_argument(
         "--leela-nodes",
         type=int,
         default=1000,
@@ -247,7 +256,29 @@ def main(argv: List[str] | None = None, setup_logs: bool = True) -> int:
         setup_logging()
 
     log = get_logger("seedgen")
-    levels = [1100, 1300, 1500, 1700, 1900]
+    # Sample Maia levels to create a variety of seeds (can be overridden by CLI)
+    default_levels = [1100, 1300, 1500, 1700, 1900, 2200]
+    levels = default_levels
+    if args.levels:
+        try:
+            requested = [int(x) for x in args.levels.replace(" ", "").split(",") if x]
+        except ValueError:
+            log.error("Invalid --levels value: %s", args.levels)
+            return 2
+        # Validate against supported set
+        supported = set(default_levels)
+        bad = [x for x in requested if x not in supported]
+        if bad:
+            log.error(
+                "Unsupported Maia levels requested: %s (supported: %s)",
+                ", ".join(map(str, bad)),
+                ", ".join(map(str, sorted(supported))),
+            )
+            return 2
+        if not requested:
+            log.error("--levels provided but no valid levels parsed")
+            return 2
+        levels = requested
 
     settings = get_settings()
     # Background/default output: user database
@@ -285,6 +316,7 @@ def main(argv: List[str] | None = None, setup_logs: bool = True) -> int:
                         out_dir,
                         leela_nodes=1000,
                         maia_level=lvl,
+                        maia_temperature=random.random(),
                         ui=ui,
                         game_index=i,
                     )
@@ -303,6 +335,7 @@ def main(argv: List[str] | None = None, setup_logs: bool = True) -> int:
                         out_dir,
                         leela_nodes=1000,
                         maia_level=lvl,
+                        maia_temperature=random.random(),
                         ui=ui,
                         game_index=i + 1,
                     )

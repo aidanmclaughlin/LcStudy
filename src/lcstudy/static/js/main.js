@@ -92,7 +92,8 @@ function initializeCharts() {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: 15
+        // Reduce left/right padding further so the plot area renders ~5% wider
+        padding: { left: 6, right: 6, top: 12, bottom: 8 }
       },
       scales: {
         y: {
@@ -163,7 +164,7 @@ function initializeCharts() {
       },
       scales: {
         y: {
-          min: 1,
+          min: 0,
           grid: { color: 'rgba(148,163,184,0.2)' },
           ticks: { 
             color: '#9ca3af', 

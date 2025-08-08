@@ -26,7 +26,11 @@ class PrecomputedRepository:
 
     def __init__(self, seeds_dir: Optional[Path] = None, user_dir: Optional[Path] = None):
         if seeds_dir is None:
-            seeds_dir = Path(__file__).resolve().parents[2] / "lcstudy" / "static" / "pgn"
+            # Package static PGNs live under src/lcstudy/static/pgn
+            # This file is at src/lcstudy/repositories/precomputed_repository.py
+            # so package_dir = parent.parent
+            package_dir = Path(__file__).resolve().parent.parent
+            seeds_dir = package_dir / "static" / "pgn"
         self._seeds_dir = seeds_dir
         # User-generated (background) games directory
         from ..config.settings import Settings
@@ -157,4 +161,3 @@ class PrecomputedRepository:
             except Exception:
                 pass
             return True
-

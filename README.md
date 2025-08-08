@@ -22,6 +22,11 @@ lcstudy up
 lcstudy --help
 ```
 
+First run behavior
+- Single command: `lcstudy up` is all you need. It ensures lc0 and networks are installed if missing, launches the web app, and starts the background seed generator.
+- Immediate play: the app bundles a small set of precomputed PGNs so you can start right away without waiting for generation.
+- Background top-up: a generator process fills `~/.lcstudy/precomputed/games` (idles once a healthy pool exists). You can keep playing while it generates.
+
 ## What you get
 
 - Local web app to practice “predict Leela’s move” against Maia (human-like) engines
@@ -43,7 +48,7 @@ See AGENTS.md for the engine/agent model, data locations, and generation details
 # Install helpers
 lcstudy install lc0         # download latest lc0 binary
 lcstudy install bestnet     # download the current best LcZero network
-lcstudy install maia        # download Maia networks (1100..1900)
+lcstudy install maia        # download Maia networks (1100..2200)
 # Or everything at once
 lcstudy install all
 
