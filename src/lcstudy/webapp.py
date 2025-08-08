@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 import subprocess
+from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -20,8 +21,6 @@ setup_logging()
 logger = get_logger("webapp")
 
 # Track the seed generator subprocess if/when started
-from typing import Optional
-
 _seed_proc: Optional[subprocess.Popen] = None
 
 app = FastAPI(title="LcStudy")
