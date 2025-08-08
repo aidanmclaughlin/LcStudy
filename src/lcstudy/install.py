@@ -13,7 +13,7 @@ import shutil
 import tarfile
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, ContextManager
 
 import httpx
 import time
@@ -54,8 +54,12 @@ def _http_get(url: str, follow_redirects: bool = True) -> httpx.Response:
     raise last_err
 
 
-def _http_stream(url: str, follow_redirects: bool = True) -> httpx.Response:
-    """HTTP GET as a stream with timeout and custom UA (no retries)."""
+def _http_stream(url: str, follow_redirects: bool = True) -> ContextManager[httpx.Response]:
+    """HTTP GET as a stream with timeout and custom UA (no retries).
+
+    Returns a context manager yielding an httpx.Response suitable for use in
+    a "with" block.
+    """
     headers = {"User-Agent": "lcstudy-installer"}
     resp = httpx.stream(
         "GET",
