@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+import time
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -17,6 +18,9 @@ from .controllers.session_controller import router as session_router
 
 setup_logging()
 logger = get_logger("webapp")
+
+# Track the seed generator subprocess if/when started
+_seed_proc = None  # type: ignore[var-annotated]
 
 app = FastAPI(title="LcStudy")
 
@@ -64,25 +68,72 @@ def _cleanup_loop():
         _stop_cleanup.wait(interval)
 
 
+def _seed_watchdog_loop():
+    """Start the seed generator once the Leela network is present.
+
+    This avoids launching and exiting immediately when running `lcstudy up`
+    with a fresh cache where networks are being downloaded in the background.
+    """
+    try:
+        from .engines import nets_dir
+    except Exception:
+        # If engines helpers aren't available, just don't attempt to start.
+        return
+
+    global _seed_proc
+    check_interval = 5.0
+    announced_wait = False
+
+    while not _stop_cleanup.is_set():
+        try:
+            nd = nets_dir()
+            best = nd / "lczero-best.pb.gz"
+            bt4 = nd / "BT4-1740.pb.gz"
+            ready = best.exists() or bt4.exists()
+            running = (
+                "_seed_proc" in globals()
+                and _seed_proc
+                and getattr(_seed_proc, "poll", lambda: None)() is None
+            )
+            if ready and not running:
+                try:
+                    import subprocess
+                    import sys
+
+                    _seed_proc = subprocess.Popen(
+                        [
+                            sys.executable,
+                            "-m",
+                            "lcstudy.scripts.generate_seeds",
+                            "--daemon",
+                        ]
+                    )
+                    logger.info(
+                        "Started seed generator subprocess (pid=%s)",
+                        getattr(_seed_proc, "pid", "?"),
+                    )
+                except Exception as e:
+                    logger.warning("Seed generator failed to start: %s", e)
+                finally:
+                    announced_wait = False
+            elif not ready and not announced_wait:
+                logger.info(
+                    "Seed generator waiting for Leela network file in %s...",
+                    nd,
+                )
+                announced_wait = True
+        except Exception:
+            pass
+        # Sleep or exit if shutdown requested
+        if _stop_cleanup.wait(check_interval):
+            break
+
+
 @app.on_event("startup")
 async def on_startup():
-    t = threading.Thread(target=_cleanup_loop, daemon=True)
-    t.start()
-    # Start background seed generation as a subprocess
-    try:
-        import subprocess
-        import sys
-
-        global _seed_proc
-        _seed_proc = subprocess.Popen(
-            [sys.executable, "-m", "lcstudy.scripts.generate_seeds", "--daemon"]
-        )
-        logger.info(
-            "Started seed generator subprocess (pid=%s)",
-            getattr(_seed_proc, "pid", "?"),
-        )
-    except Exception as e:
-        logger.warning("Seed generator failed to start: %s", e)
+    threading.Thread(target=_cleanup_loop, daemon=True).start()
+    # Start a watchdog that launches the seed generator once weights exist
+    threading.Thread(target=_seed_watchdog_loop, daemon=True).start()
 
 
 @app.on_event("shutdown")

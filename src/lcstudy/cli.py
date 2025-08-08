@@ -14,6 +14,7 @@ import argparse
 import importlib
 import shutil
 import subprocess
+import threading
 import sys
 from typing import Optional
 
@@ -196,13 +197,17 @@ def cmd_up(args: argparse.Namespace) -> int:
     if not _ensure_web_deps():
         return 1
 
-    try:
-        _ensure_installed(quick=bool(args.quick), maia_level=int(args.maia_level))
-    except Exception as e:
-        print(f"Setup warning: {e}")
-        print(
-            "Proceeding to launch the web app in fallback mode. You can still explore the UI."
-        )
+    # Start installs in the background so the site opens immediately.
+    def _bg_install() -> None:
+        try:
+            _ensure_installed(quick=bool(args.quick), maia_level=int(args.maia_level))
+        except Exception as e:
+            print(f"Setup warning: {e}")
+            print(
+                "Proceeding to launch the web app in fallback mode. You can still explore the UI."
+            )
+
+    threading.Thread(target=_bg_install, name="lcstudy-install", daemon=True).start()
 
     import uvicorn
 
