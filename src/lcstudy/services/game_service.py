@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any, cast
 
 import chess
 import chess.pgn
@@ -441,7 +441,7 @@ class GameService:
         game.headers["Black"] = f"Maia {session.maia_level}"
         game.headers["Date"] = time.strftime("%Y.%m.%d")
 
-        node = game
+        node: Any = cast(Any, game)
         tmp = chess.Board()
         for mv in session.board.move_stack:
             node = node.add_variation(mv)

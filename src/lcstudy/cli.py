@@ -175,7 +175,7 @@ def cmd_install_all(_: argparse.Namespace) -> int:
 def cmd_web(args: argparse.Namespace) -> int:
     if not _ensure_web_deps():
         return 1
-    import uvicorn  # type: ignore
+    import uvicorn
 
     from .webapp import app
 
@@ -203,7 +203,7 @@ def cmd_up(args: argparse.Namespace) -> int:
             "Proceeding to launch the web app in fallback mode. You can still explore the UI."
         )
 
-    import uvicorn  # type: ignore
+    import uvicorn
 
     from .webapp import app
 

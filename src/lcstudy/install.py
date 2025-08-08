@@ -118,9 +118,9 @@ def install_lc0() -> Path:
                 import subprocess
 
                 subprocess.run(["brew", "install", "lc0"], check=True)
-                exe = shutil.which("lc0")
-                if exe:
-                    return Path(exe)
+                exe_str = shutil.which("lc0")
+                if exe_str:
+                    return Path(exe_str)
             except Exception as e:
                 raise RuntimeError(
                     "Failed to install lc0 via Homebrew. Please install lc0 manually (brew install lc0)"

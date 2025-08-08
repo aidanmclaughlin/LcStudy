@@ -14,7 +14,7 @@ import platform
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Mapping, Union
 
 import chess
 import chess.engine
@@ -81,9 +81,9 @@ class EngineConfig:
     threads: Optional[int] = None  # Let backend auto-configure
     backend: Optional[str] = None  # Let lc0 auto-detect optimal backend
 
-    def to_options(self) -> dict[str, object]:
+    def to_options(self) -> Mapping[str, Optional[Union[str, int, bool]]]:
         """Map the config to lc0 UCI option names."""
-        opts: dict[str, object] = {
+        opts: dict[str, Optional[Union[str, int, bool]]] = {
             "MinibatchSize": 0,  # Auto-suggest batch size
         }
         if self.threads is not None:

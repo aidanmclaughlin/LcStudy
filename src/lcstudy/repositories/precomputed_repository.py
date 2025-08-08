@@ -49,7 +49,7 @@ class PrecomputedRepository:
         self._ids: List[str] = []
         self._lock = threading.Lock()
         self._rr_index = 0
-        self._loaded_paths = set()
+        self._loaded_paths: set[Path] = set()
         self._load_all()
 
     def _load_path(self, p: Path) -> None:
@@ -163,7 +163,7 @@ class PrecomputedRepository:
             try:
                 if p and self._user_dir and p.is_file() and self._user_dir in p.parents:
                     # Best effort delete; ignore errors
-                    p.unlink()  # type: ignore[arg-type]
+                    p.unlink()
             except Exception:
                 pass
             return True
