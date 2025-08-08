@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-import time
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse

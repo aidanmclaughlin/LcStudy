@@ -95,7 +95,6 @@ def _download_to_file_with_progress(url: str, dest: Path, label: Optional[str] =
     dest.parent.mkdir(parents=True, exist_ok=True)
     temp = dest.with_suffix(dest.suffix + ".part")
     prefix = label or f"Downloading {dest.name}"
-    last_err: Optional[Exception] = None
     for attempt in range(1, HTTP_RETRIES + 1):
         try:
             with _http_stream(url) as resp:
@@ -115,7 +114,6 @@ def _download_to_file_with_progress(url: str, dest: Path, label: Optional[str] =
                         _print_progress(prefix, downloaded, total)
             break
         except Exception as e:  # timeouts, connection resets, etc.
-            last_err = e
             if attempt < HTTP_RETRIES:
                 sleep_s = HTTP_BACKOFF ** (attempt - 1)
                 print(f"Network hiccup downloading {url} (attempt {attempt}/{HTTP_RETRIES}): {e}. Retrying in {sleep_s:.1f}s...")
