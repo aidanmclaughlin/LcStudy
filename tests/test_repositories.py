@@ -4,10 +4,8 @@ from pathlib import Path
 import chess
 
 from src.lcstudy.domain.models import GameSession, SessionStatus
-from src.lcstudy.repositories.game_history_repository import \
-    JsonGameHistoryRepository
-from src.lcstudy.repositories.session_repository import \
-    InMemorySessionRepository
+from src.lcstudy.repositories.game_history_repository import JsonGameHistoryRepository
+from src.lcstudy.repositories.session_repository import InMemorySessionRepository
 
 
 def test_in_memory_session_repository():

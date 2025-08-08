@@ -34,6 +34,7 @@ class GameMove:
     attempts: List[MoveAttempt]
     final_attempt_count: int
     is_human_move: bool
+    analysis_snapshot: Optional["AnalysisLine"] = None
 
 
 @dataclass
@@ -78,3 +79,16 @@ class PlayerStatistics:
     win_rate: float
     average_game_length: int
     improvement_trend: float
+
+
+@dataclass
+class AnalysisLine:
+    multipv: int
+    move: str
+    cp: Optional[int]
+    mate: Optional[int]
+    wdl: Optional[int]
+    nps: Optional[int]
+    nodes: Optional[int]
+    depth: Optional[int]
+    seldepth: Optional[int]

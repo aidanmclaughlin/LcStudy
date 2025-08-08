@@ -1,7 +1,6 @@
 import chess
 
-from src.lcstudy.domain.models import (AnalysisLine, GameMove, GameSession,
-                                       SessionStatus)
+from src.lcstudy.domain.models import AnalysisLine, GameMove, GameSession, SessionStatus
 
 
 def test_game_session_creation():

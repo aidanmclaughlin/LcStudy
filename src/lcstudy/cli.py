@@ -69,6 +69,7 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     try:
         from .engines import find_lc0, nets_dir
     except Exception:
+
         def nets_dir():  # type: ignore
             return None
 
@@ -259,8 +260,12 @@ def _ensure_web_deps() -> bool:
 def _ensure_installed(quick: bool = False, maia_level: int = 1500) -> None:
     """Ensure lc0 and required networks exist, installing if missing."""
     from .engines import find_lc0, nets_dir
-    from .install import (install_lc0, install_lczero_best_network,
-                          install_maia, install_maia_all)
+    from .install import (
+        install_lc0,
+        install_lczero_best_network,
+        install_maia,
+        install_maia_all,
+    )
 
     if not find_lc0():
         print("Installing lc0 (latest release)...")

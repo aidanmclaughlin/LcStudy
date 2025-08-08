@@ -7,7 +7,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
-from typing import List, Any, cast
+from typing import Any, List, cast
 
 import chess
 import chess.pgn
@@ -162,7 +162,9 @@ def generate_game(
                 decay_factor = max(0.0, (10 - (fullmove - 1)) / 10)
                 temp_eff = maia_temperature * decay_factor
                 if temp_eff > 1e-6 and maia_multipv > 1:
-                    infos = opponent_engine.engine.analyse(board, nodes=opponent_nodes, multipv=maia_multipv)
+                    infos = opponent_engine.engine.analyse(
+                        board, nodes=opponent_nodes, multipv=maia_multipv
+                    )
                     mv = pick_from_multipv(infos, board.turn, temperature=temp_eff)
                     try:
                         san = board.san(mv)

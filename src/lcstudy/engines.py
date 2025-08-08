@@ -14,7 +14,7 @@ import platform
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Optional, Mapping, Union
+from typing import Iterable, Mapping, Optional, Union
 
 import chess
 import chess.engine

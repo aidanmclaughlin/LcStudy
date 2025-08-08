@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import threading
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -74,7 +74,9 @@ async def on_startup():
         import sys
 
         global _seed_proc
-        _seed_proc = subprocess.Popen([sys.executable, "-m", "lcstudy.scripts.generate_seeds", "--daemon"]) 
+        _seed_proc = subprocess.Popen(
+            [sys.executable, "-m", "lcstudy.scripts.generate_seeds", "--daemon"]
+        )
         logger.info(
             "Started seed generator subprocess (pid=%s)",
             getattr(_seed_proc, "pid", "?"),

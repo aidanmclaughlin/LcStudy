@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional, Tuple, Any, cast
+from typing import Any, Optional, Tuple, cast
 
 import chess
 import chess.pgn
