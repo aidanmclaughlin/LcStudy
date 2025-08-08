@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ..domain.validation import MoveRequest, SessionCreateRequest
-from .deps import get_game_service, get_history_repository, get_session_repository
+from .deps import (get_game_service, get_history_repository,
+                   get_session_repository)
 
 router = APIRouter(tags=["compat"])  # legacy, for backward compatibility
 

@@ -33,12 +33,16 @@ class GameService:
         self,
         session_repo: SessionRepository,
         history_repo: GameHistoryRepository,
-        precomputed_repo: PrecomputedRepository,
+        precomputed_repo: Optional[PrecomputedRepository] = None,
     ):
         self.session_repo = session_repo
         self.history_repo = history_repo
         self.settings = get_settings()
-        self.precomputed_repo = precomputed_repo
+        self.precomputed_repo = (
+            precomputed_repo
+            if precomputed_repo is not None
+            else PrecomputedRepository()
+        )
         self.logger = get_logger("game_service")
 
     def create_session(

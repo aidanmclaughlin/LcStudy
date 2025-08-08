@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from src.lcstudy.domain.validation import MoveRequest, PlayerColor, SessionCreateRequest
+from src.lcstudy.domain.validation import (MoveRequest, PlayerColor,
+                                           SessionCreateRequest)
 
 
 def test_session_create_request_valid():

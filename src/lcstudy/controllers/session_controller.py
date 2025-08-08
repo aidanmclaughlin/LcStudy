@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ..config.logging import get_logger
-from ..domain.validation import MoveRequest, SessionCreateRequest, SessionStateResponse
-from ..exceptions import GameFinishedError, IllegalMoveError, SessionNotFoundError
+from ..domain.validation import (MoveRequest, SessionCreateRequest,
+                                 SessionStateResponse)
+from ..exceptions import (GameFinishedError, IllegalMoveError,
+                          SessionNotFoundError)
 from .deps import get_game_service, get_session_repository
 
 router = APIRouter(prefix="/api/v1/session", tags=["session"])

@@ -9,7 +9,8 @@ import chess.engine
 
 from ..config import get_settings
 from ..config.logging import get_logger
-from ..engines import EngineConfig, Lc0Engine, find_lc0, info_to_lines, nets_dir
+from ..engines import (EngineConfig, Lc0Engine, find_lc0, info_to_lines,
+                       nets_dir)
 from ..exceptions import EngineAnalysisError, EngineNotFoundError
 
 logger = get_logger("engine_service")

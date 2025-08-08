@@ -3,13 +3,8 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from ..exceptions import (
-    DataError,
-    EngineNotFoundError,
-    GameFinishedError,
-    IllegalMoveError,
-    SessionNotFoundError,
-)
+from ..exceptions import (DataError, EngineNotFoundError, GameFinishedError,
+                          IllegalMoveError, SessionNotFoundError)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
