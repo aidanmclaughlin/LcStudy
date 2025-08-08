@@ -288,6 +288,24 @@ def main(argv: List[str] | None = None, setup_logs: bool = True) -> int:
     out_dir = user_out
 
     if args.daemon:
+        # Pre-flight: ensure BT4/lczero-best exists to avoid noisy failures
+        try:
+            from ..engines import nets_dir
+
+            nets = nets_dir()
+            best = nets / "lczero-best.pb.gz"
+            bt4 = nets / "BT4-1740.pb.gz"
+            has_weights = best.exists() or bt4.exists()
+            if not has_weights:
+                log.warning(
+                    "No Leela network found in %s. Seed generation daemon will exit. "
+                    "Install with: lcstudy install bestnet (downloads BT4-1740)",
+                    nets,
+                )
+                return 0
+        except Exception:
+            # If check fails for any reason, continue and let engine creation handle errors
+            pass
         # Infinite generator mode
         i = 0
         ui = TerminalUI(total_games=999999, leela_nodes=1000, out_dir=out_dir)

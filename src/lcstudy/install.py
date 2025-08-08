@@ -211,25 +211,30 @@ def install_maia_all() -> list[Path]:
     return paths
 
 
+CONTRIB_BT4_URL = (
+    "https://storage.lczero.org/files/networks-contrib/big-transformers/BT4-1740.pb.gz"
+)
+
+
 def install_lczero_best_network() -> Path:
-    """Download and save the current best LcZero network to nets directory."""
+    """Download the BT4-1740 transformer and use it as the Leela network.
+
+    Saves as both 'lczero-best.pb.gz' (for compatibility) and 'BT4-1740.pb.gz'.
+    """
     ensure_dirs()
-    urls = [
-        "https://lczero.org/get_network?best=true",
-        "https://lczero.org/api/best-network",
-    ]
-    last_err: Optional[Exception] = None
-    for url in urls:
-        try:
-            resp = _http_get(url)
-            content = resp.content
-            out = nets_dir() / "lczero-best.pb.gz"
-            out.write_bytes(content)
-            return out
-        except Exception as e:
-            last_err = e
-            continue
-    raise RuntimeError(
-        f"Failed to download best LcZero network automatically. Error: {last_err}. "
-        "Please download a .pb.gz network and place it at ~/.lcstudy/nets/lczero-best.pb.gz"
-    )
+    resp = _http_get(CONTRIB_BT4_URL)
+    content = resp.content
+    out_best = nets_dir() / "lczero-best.pb.gz"
+    out_bt4 = nets_dir() / "BT4-1740.pb.gz"
+    out_best.write_bytes(content)
+    out_bt4.write_bytes(content)
+    return out_best
+
+
+def install_lczero_bt4_transformer() -> Path:
+    """Download the BT4-1740 transformer network (explicit helper)."""
+    ensure_dirs()
+    resp = _http_get(CONTRIB_BT4_URL)
+    out = nets_dir() / "BT4-1740.pb.gz"
+    out.write_bytes(resp.content)
+    return out

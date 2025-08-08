@@ -176,11 +176,19 @@ class EngineService:
         logger.info(f"Looking for Leela network at: {best_net}")
 
         if not best_net.exists():
-            logger.error(f"Leela network file not found: {best_net}")
-            logger.info(
-                f"Available files in {nets}: {list(nets.glob('*.pb.gz')) if nets.exists() else 'Directory does not exist'}"
-            )
-            raise EngineNotFoundError("Leela network not found")
+            # Accept canonical BT4 filename as equivalent
+            bt4 = nets / "BT4-1740.pb.gz"
+            if bt4.exists():
+                best_net = bt4
+                logger.info("Using BT4-1740 network file: %s", bt4)
+            else:
+                logger.error("Leela network file not found: %s or %s", best_net, bt4)
+                logger.info(
+                    f"Available files in {nets}: {list(nets.glob('*.pb.gz')) if nets.exists() else 'Directory does not exist'}"
+                )
+                raise EngineNotFoundError(
+                    "Leela network not found (expected lczero-best.pb.gz or BT4-1740.pb.gz)"
+                )
 
         config = EngineConfig(
             exe=lc0_path,

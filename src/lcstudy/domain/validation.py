@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class PlayerColor(str, Enum):
@@ -16,7 +16,7 @@ class SessionCreateRequest(BaseModel):
     player_color: Optional[PlayerColor] = None
     custom_fen: Optional[str] = None
 
-    @validator("maia_level")
+    @field_validator("maia_level")
     def validate_maia_level(cls, v):
         valid_levels = [1100, 1300, 1500, 1700, 1900, 2200]
         if v not in valid_levels:
@@ -28,7 +28,7 @@ class MoveRequest(BaseModel):
     move: str = Field(min_length=4, max_length=5)
     client_validated: bool = False
 
-    @validator("move")
+    @field_validator("move")
     def validate_move_format(cls, v):
         if len(v) not in [4, 5]:
             raise ValueError("move must be 4 or 5 characters (UCI format)")

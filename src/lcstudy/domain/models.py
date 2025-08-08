@@ -67,11 +67,6 @@ class GameHistoryEntry:
 
 
 @dataclass
-class EngineConfigRemoved:  # deprecated placeholder (use lcstudy.engines.EngineConfig)
-    pass
-
-
-@dataclass
 class PlayerStatistics:
     total_games: int
     average_attempts_per_move: float

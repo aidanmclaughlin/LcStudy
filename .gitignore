@@ -13,6 +13,10 @@ dist/
 .venv/
 venv/
 .DS_Store
+.python-version
+.env
+.env.*
+.coverage.*
 
 # Coverage
 .coverage
