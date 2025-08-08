@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-import threading
-import io
+from typing import Dict, List, Optional
 
 import chess
 import chess.pgn
@@ -24,7 +23,9 @@ class PrecomputedRepository:
     UCI move lists and serve expected moves by game id and ply index.
     """
 
-    def __init__(self, seeds_dir: Optional[Path] = None, user_dir: Optional[Path] = None):
+    def __init__(
+        self, seeds_dir: Optional[Path] = None, user_dir: Optional[Path] = None
+    ):
         if seeds_dir is None:
             # Package static PGNs live under src/lcstudy/static/pgn
             # This file is at src/lcstudy/repositories/precomputed_repository.py
@@ -33,9 +34,10 @@ class PrecomputedRepository:
             seeds_dir = package_dir / "static" / "pgn"
         self._seeds_dir = seeds_dir
         # User-generated (background) games directory
-        from ..config.settings import Settings
+
         try:
             from ..config import get_settings
+
             settings = get_settings()
             user_dir = settings.data_dir / "precomputed" / "games"
         except Exception:
@@ -61,17 +63,17 @@ class PrecomputedRepository:
             for mv in game.mainline_moves():
                 moves.append(mv.uci())
                 board.push(mv)
-            
+
             # Skip empty games (no moves)
             if not moves:
                 return
-                
+
             gid = p.stem
             if gid not in self._games:
                 # Determine which color Leela (the player) played
                 white_player = game.headers.get("White", "")
                 black_player = game.headers.get("Black", "")
-                
+
                 # Look for "PLAYER" marker in headers to identify Leela's color
                 if "PLAYER" in white_player:
                     leela_color = chess.WHITE
@@ -79,9 +81,13 @@ class PrecomputedRepository:
                     leela_color = chess.BLACK
                 else:
                     # Fallback: assume Leela is mentioned in the header
-                    leela_color = chess.WHITE if "Leela" in white_player else chess.BLACK
-                
-                self._games[gid] = PrecomputedGame(id=gid, moves_uci=moves, leela_color=leela_color)
+                    leela_color = (
+                        chess.WHITE if "Leela" in white_player else chess.BLACK
+                    )
+
+                self._games[gid] = PrecomputedGame(
+                    id=gid, moves_uci=moves, leela_color=leela_color
+                )
                 self._ids.append(gid)
                 self._paths[gid] = p
             self._loaded_paths.add(p)
@@ -134,7 +140,7 @@ class PrecomputedRepository:
     def game_length(self, gid: str) -> int:
         g = self._games.get(gid)
         return len(g.moves_uci) if g else 0
-    
+
     def get_leela_color(self, gid: str) -> Optional[chess.Color]:
         """Return the color that Leela played in this game."""
         g = self._games.get(gid)

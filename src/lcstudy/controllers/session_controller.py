@@ -1,18 +1,18 @@
 from __future__ import annotations
-import asyncio
+
+import time
 import uuid
-import threading
-from typing import Optional
 
 import chess
 from fastapi import APIRouter, Depends, HTTPException
-import time
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
-from ..domain.validation import SessionCreateRequest, MoveRequest, SessionStateResponse
-from ..exceptions import SessionNotFoundError, IllegalMoveError, GameFinishedError
-from .deps import get_session_repository, get_game_service
 from ..config.logging import get_logger
+from ..domain.validation import (MoveRequest, SessionCreateRequest,
+                                 SessionStateResponse)
+from ..exceptions import (GameFinishedError, IllegalMoveError,
+                          SessionNotFoundError)
+from .deps import get_game_service, get_session_repository
 
 router = APIRouter(prefix="/api/v1/session", tags=["session"])
 
@@ -25,10 +25,16 @@ def _validate_uuid(sid: str) -> None:
 
 
 @router.post("/new")
-def api_session_new(payload: SessionCreateRequest, game_service = Depends(get_game_service)) -> JSONResponse:
+def api_session_new(
+    payload: SessionCreateRequest, game_service=Depends(get_game_service)
+) -> JSONResponse:
     session = game_service.create_session(
         maia_level=payload.maia_level,
-        player_color=chess.WHITE if payload.player_color == "white" else chess.BLACK if payload.player_color else None,
+        player_color=(
+            chess.WHITE
+            if payload.player_color == "white"
+            else chess.BLACK if payload.player_color else None
+        ),
         custom_fen=payload.custom_fen,
     )
     # If player is black, let Maia move first
@@ -38,13 +44,13 @@ def api_session_new(payload: SessionCreateRequest, game_service = Depends(get_ga
     except Exception:
         pass
     # Engines are used in background generation only; no warm-up needed here.
-    return JSONResponse({"id": session.id, "flip": session.flip, "fen": session.board.fen()})
-
-
+    return JSONResponse(
+        {"id": session.id, "flip": session.flip, "fen": session.board.fen()}
+    )
 
 
 @router.get("/{sid}/state", response_model=SessionStateResponse)
-def api_session_state(sid: str, session_repo = Depends(get_session_repository)):
+def api_session_state(sid: str, session_repo=Depends(get_session_repository)):
     _validate_uuid(sid)
     session = session_repo.get_session(sid)
     if not session:
@@ -58,13 +64,22 @@ def api_session_state(sid: str, session_repo = Depends(get_session_repository)):
         "score_total": session.score_total,
         "guesses": len(session.history),
         "ply": session.move_index,
-        "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
+        "status": (
+            session.status.value
+            if hasattr(session.status, "value")
+            else str(session.status)
+        ),
         "flip": session.flip,
     }
 
 
 @router.post("/{sid}/check-move")
-def api_session_check_move(sid: str, payload: MoveRequest, game_service = Depends(get_game_service), session_repo = Depends(get_session_repository)) -> JSONResponse:
+def api_session_check_move(
+    sid: str,
+    payload: MoveRequest,
+    game_service=Depends(get_game_service),
+    session_repo=Depends(get_session_repository),
+) -> JSONResponse:
     _validate_uuid(sid)
     session = session_repo.get_session(sid)
     if not session:
@@ -74,12 +89,23 @@ def api_session_check_move(sid: str, payload: MoveRequest, game_service = Depend
 
 
 @router.post("/{sid}/predict")
-def api_session_predict(sid: str, payload: MoveRequest, game_service = Depends(get_game_service), session_repo = Depends(get_session_repository)) -> JSONResponse:
+def api_session_predict(
+    sid: str,
+    payload: MoveRequest,
+    game_service=Depends(get_game_service),
+    session_repo=Depends(get_session_repository),
+) -> JSONResponse:
     _validate_uuid(sid)
-    logger = get_logger('predict')
+    logger = get_logger("predict")
     rid = uuid.uuid4().hex[:8]
     t0 = time.perf_counter()
-    logger.info("[%s] predict.start sid=%s move=%s client_validated=%s", rid, sid, payload.move, payload.client_validated)
+    logger.info(
+        "[%s] predict.start sid=%s move=%s client_validated=%s",
+        rid,
+        sid,
+        payload.move,
+        payload.client_validated,
+    )
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
@@ -96,15 +122,14 @@ def api_session_predict(sid: str, payload: MoveRequest, game_service = Depends(g
             result.attempts,
             (t_after - t_before) * 1000.0,
         )
+        # If correct, make Maia's response immediately (precomputed)
+        maia_move = None
         if result.correct:
-            # Make Maia's response move immediately (precomputed, so it's fast)
             try:
                 maia_move = game_service.make_maia_move(session)
-                if maia_move:
-                    response["maia_move"] = maia_move
             except Exception:
                 pass
-        # Get the current FEN after any Maia move
+        # Build response after any Maia move
         current_fen = session.board.fen()
         response = {
             "your_move": result.player_move,
@@ -112,27 +137,37 @@ def api_session_predict(sid: str, payload: MoveRequest, game_service = Depends(g
             "message": result.message,
             "total": session.score_total,
             "fen": current_fen,
-            "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
+            "status": (
+                session.status.value
+                if hasattr(session.status, "value")
+                else str(session.status)
+            ),
             "attempts": result.attempts,
         }
         if result.leela_move:
             response["leela_move"] = result.leela_move
+        if maia_move:
+            response["maia_move"] = maia_move
         total_ms = (time.perf_counter() - t0) * 1000.0
         logger.info("[%s] predict.end sid=%s total_ms=%.1f", rid, sid, total_ms)
         return JSONResponse(response)
     except (SessionNotFoundError, IllegalMoveError, GameFinishedError) as e:
         total_ms = (time.perf_counter() - t0) * 1000.0
-        logger.info("[%s] predict.error sid=%s total_ms=%.1f msg=%s", rid, sid, total_ms, str(e))
+        logger.info(
+            "[%s] predict.error sid=%s total_ms=%.1f msg=%s", rid, sid, total_ms, str(e)
+        )
         raise HTTPException(400, str(e))
 
 
 @router.get("/{sid}/pgn")
-def api_session_pgn(sid: str, game_service = Depends(get_game_service), session_repo = Depends(get_session_repository)) -> PlainTextResponse:
+def api_session_pgn(
+    sid: str,
+    game_service=Depends(get_game_service),
+    session_repo=Depends(get_session_repository),
+) -> PlainTextResponse:
     _validate_uuid(sid)
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
     pgn_text = game_service.export_pgn(session)
     return PlainTextResponse(pgn_text, media_type="text/plain; charset=utf-8")
-
-

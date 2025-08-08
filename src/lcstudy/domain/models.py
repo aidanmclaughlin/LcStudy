@@ -1,13 +1,17 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional, List, Dict
+
+from dataclasses import dataclass
 from enum import Enum
+from typing import List, Optional
+
 import chess
+
 
 class SessionStatus(Enum):
     PLAYING = "playing"
     FINISHED = "finished"
     PAUSED = "paused"
+
 
 class GameResult(Enum):
     FINISHED = "finished"
@@ -22,6 +26,7 @@ class MoveAttempt:
     attempt_number: int
     timestamp: float
 
+
 @dataclass
 class GameMove:
     move_uci: str
@@ -29,6 +34,7 @@ class GameMove:
     attempts: List[MoveAttempt]
     final_attempt_count: int
     is_human_move: bool
+
 
 @dataclass
 class GameSession:
@@ -41,12 +47,13 @@ class GameSession:
     move_index: int
     history: List[GameMove]
     flip: bool
-    
+
     current_move_attempts: int = 0
 
     # Precomputed game tracking (when using pregenerated Leela vs Maia games)
     precomputed_game_id: Optional[str] = None
     precomputed_ply_index: int = 0
+
 
 @dataclass
 class GameHistoryEntry:
@@ -57,9 +64,11 @@ class GameHistoryEntry:
     result: GameResult
     session_id: Optional[str] = None
 
+
 @dataclass
 class EngineConfigRemoved:  # deprecated placeholder (use lcstudy.engines.EngineConfig)
     pass
+
 
 @dataclass
 class PlayerStatistics:

@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
 
 @dataclass
 class DatabaseSettings:
@@ -11,7 +13,8 @@ class DatabaseSettings:
     pool_size: int = 10
     max_overflow: int = 20
 
-@dataclass  
+
+@dataclass
 class EngineSettings:
     lc0_executable: Optional[str] = None
     default_nodes: int = 2000
@@ -21,6 +24,7 @@ class EngineSettings:
     timeout_seconds: float = 30.0
     backend: Optional[str] = None
 
+
 @dataclass
 class ServerSettings:
     host: str = "127.0.0.1"
@@ -29,17 +33,20 @@ class ServerSettings:
     reload: bool = False
     workers: int = 1
 
+
 @dataclass
 class LoggingSettings:
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     file_path: Optional[str] = None
 
+
 @dataclass
 class SessionSettings:
     default_timeout: int = 3600
     cleanup_interval: int = 300
     max_sessions: int = 1000
+
 
 @dataclass
 class Settings:
@@ -48,46 +55,48 @@ class Settings:
     server: ServerSettings = field(default_factory=ServerSettings)
     logging: LoggingSettings = field(default_factory=LoggingSettings)
     session: SessionSettings = field(default_factory=SessionSettings)
-    
+
     data_dir: Path = field(default_factory=lambda: Path.home() / ".lcstudy")
     networks_dir: Optional[Path] = None
-    
+
     @classmethod
     def from_env(cls) -> Settings:
         settings = cls()
-        
+
         if db_url := os.getenv("LCSTUDY_DATABASE_URL"):
             settings.database.url = db_url
-            
+
         if debug := os.getenv("LCSTUDY_DEBUG"):
             settings.server.debug = debug.lower() in ("true", "1", "yes")
-            
+
         if host := os.getenv("LCSTUDY_HOST"):
             settings.server.host = host
-            
+
         if port := os.getenv("LCSTUDY_PORT"):
             settings.server.port = int(port)
-            
+
         if log_level := os.getenv("LCSTUDY_LOG_LEVEL"):
             settings.logging.level = log_level.upper()
-            
+
         if data_dir := os.getenv("LCSTUDY_DATA_DIR"):
             settings.data_dir = Path(data_dir)
-            
+
         if lc0_path := os.getenv("LCSTUDY_LC0_PATH"):
             settings.engine.lc0_executable = lc0_path
-            
+
         if nodes := os.getenv("LCSTUDY_DEFAULT_NODES"):
             settings.engine.default_nodes = int(nodes)
-            
+
         if threads := os.getenv("LCSTUDY_THREADS"):
             settings.engine.default_threads = int(threads)
-            
+
         settings.networks_dir = settings.data_dir / "networks"
-        
+
         return settings
 
+
 _settings: Optional[Settings] = None
+
 
 def get_settings() -> Settings:
     global _settings

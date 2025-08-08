@@ -1,16 +1,20 @@
 from __future__ import annotations
+
+import chess
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
-import chess
 
-from ..domain.validation import SessionCreateRequest, MoveRequest
-from .deps import get_game_service, get_session_repository, get_history_repository
+from ..domain.validation import MoveRequest, SessionCreateRequest
+from .deps import (get_game_service, get_history_repository,
+                   get_session_repository)
 
 router = APIRouter(tags=["compat"])  # legacy, for backward compatibility
 
 
 @router.post("/api/session/new")
-def compat_session_new(payload: dict, game_service = Depends(get_game_service)) -> JSONResponse:
+def compat_session_new(
+    payload: dict, game_service=Depends(get_game_service)
+) -> JSONResponse:
     # Accept legacy dict payload with same keys
     try:
         req = SessionCreateRequest(**payload)
@@ -26,7 +30,11 @@ def compat_session_new(payload: dict, game_service = Depends(get_game_service)) 
 
     session = game_service.create_session(
         maia_level=req.maia_level,
-        player_color=chess.WHITE if req.player_color == "white" else chess.BLACK if req.player_color else None,
+        player_color=(
+            chess.WHITE
+            if req.player_color == "white"
+            else chess.BLACK if req.player_color else None
+        ),
         custom_fen=req.custom_fen,
     )
     try:
@@ -34,30 +42,43 @@ def compat_session_new(payload: dict, game_service = Depends(get_game_service)) 
             game_service.make_maia_move(session)
     except Exception:
         pass
-    return JSONResponse({"id": session.id, "flip": session.flip, "fen": session.board.fen()})
-
-
+    return JSONResponse(
+        {"id": session.id, "flip": session.flip, "fen": session.board.fen()}
+    )
 
 
 @router.get("/api/session/{sid}/state")
-def compat_session_state(sid: str, session_repo = Depends(get_session_repository)) -> JSONResponse:
+def compat_session_state(
+    sid: str, session_repo=Depends(get_session_repository)
+) -> JSONResponse:
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
-    return JSONResponse({
-        "id": session.id,
-        "fen": session.board.fen(),
-        "turn": "white" if session.board.turn else "black",
-        "score_total": session.score_total,
-        "guesses": len(session.history),
-        "ply": session.move_index,
-        "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
-        "flip": session.flip,
-    })
+    return JSONResponse(
+        {
+            "id": session.id,
+            "fen": session.board.fen(),
+            "turn": "white" if session.board.turn else "black",
+            "score_total": session.score_total,
+            "guesses": len(session.history),
+            "ply": session.move_index,
+            "status": (
+                session.status.value
+                if hasattr(session.status, "value")
+                else str(session.status)
+            ),
+            "flip": session.flip,
+        }
+    )
 
 
 @router.post("/api/session/{sid}/check-move")
-def compat_session_check_move(sid: str, payload: dict, game_service = Depends(get_game_service), session_repo = Depends(get_session_repository)) -> JSONResponse:
+def compat_session_check_move(
+    sid: str,
+    payload: dict,
+    game_service=Depends(get_game_service),
+    session_repo=Depends(get_session_repository),
+) -> JSONResponse:
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
@@ -70,7 +91,12 @@ def compat_session_check_move(sid: str, payload: dict, game_service = Depends(ge
 
 
 @router.post("/api/session/{sid}/predict")
-def compat_session_predict(sid: str, payload: dict, game_service = Depends(get_game_service), session_repo = Depends(get_session_repository)) -> JSONResponse:
+def compat_session_predict(
+    sid: str,
+    payload: dict,
+    game_service=Depends(get_game_service),
+    session_repo=Depends(get_session_repository),
+) -> JSONResponse:
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
@@ -88,7 +114,11 @@ def compat_session_predict(sid: str, payload: dict, game_service = Depends(get_g
         "message": result.message,
         "total": session.score_total,
         "fen": session.board.fen(),
-        "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
+        "status": (
+            session.status.value
+            if hasattr(session.status, "value")
+            else str(session.status)
+        ),
         "attempts": result.attempts,
     }
     if result.leela_move:
@@ -99,23 +129,30 @@ def compat_session_predict(sid: str, payload: dict, game_service = Depends(get_g
 
 
 @router.get("/api/session/{sid}/pgn")
-def compat_session_pgn(sid: str, game_service = Depends(get_game_service), session_repo = Depends(get_session_repository)) -> PlainTextResponse:
+def compat_session_pgn(
+    sid: str,
+    game_service=Depends(get_game_service),
+    session_repo=Depends(get_session_repository),
+) -> PlainTextResponse:
     session = session_repo.get_session(sid)
     if not session:
         raise HTTPException(404, "Session not found")
-    return PlainTextResponse(game_service.export_pgn(session), media_type="text/plain; charset=utf-8")
+    return PlainTextResponse(
+        game_service.export_pgn(session), media_type="text/plain; charset=utf-8"
+    )
 
 
 @router.get("/api/game-history")
-def compat_get_history(repo = Depends(get_history_repository)) -> JSONResponse:
+def compat_get_history(repo=Depends(get_history_repository)) -> JSONResponse:
     return JSONResponse({"history": repo.get_all_games()})
 
 
 @router.post("/api/game-history")
-def compat_post_history(payload: dict, repo = Depends(get_history_repository)) -> JSONResponse:
+def compat_post_history(
+    payload: dict, repo=Depends(get_history_repository)
+) -> JSONResponse:
     try:
         gid = repo.save_game(**payload)
         return JSONResponse({"success": True, "game_id": gid})
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
-

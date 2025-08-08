@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-import os
+import threading
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -9,8 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .config.logging import get_logger, setup_logging
-from .controllers.deps import (get_engine_service,
-                               get_session_repository)
+from .controllers.deps import get_engine_service, get_session_repository
 from .controllers.errors import register_exception_handlers
 from .controllers.health_controller import router as health_router
 from .controllers.history_controller import router as history_router
@@ -49,9 +48,6 @@ app.include_router(session_router)
 register_exception_handlers(app)
 
 
-# Background session cleanup
-import threading
-
 _stop_cleanup = threading.Event()
 
 
@@ -74,10 +70,15 @@ async def on_startup():
     t.start()
     # Start background seed generation as a subprocess
     try:
-        import subprocess, sys
+        import subprocess
+        import sys
+
         global _seed_proc
         _seed_proc = subprocess.Popen([sys.executable, "-m", "lcstudy.scripts.generate_seeds", "--daemon"])  # type: ignore[var-annotated]
-        logger.info("Started seed generator subprocess (pid=%s)", getattr(_seed_proc, 'pid', '?'))
+        logger.info(
+            "Started seed generator subprocess (pid=%s)",
+            getattr(_seed_proc, "pid", "?"),
+        )
     except Exception as e:
         logger.warning("Seed generator failed to start: %s", e)
 
@@ -89,7 +90,11 @@ async def on_shutdown():
     get_engine_service().shutdown_all()
     # Stop subprocess if running
     try:
-        if '_seed_proc' in globals() and _seed_proc and getattr(_seed_proc, 'poll', lambda: None)() is None:
+        if (
+            "_seed_proc" in globals()
+            and _seed_proc
+            and getattr(_seed_proc, "poll", lambda: None)() is None
+        ):
             _seed_proc.terminate()
     except Exception:
         pass

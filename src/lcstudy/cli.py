@@ -69,8 +69,11 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     try:
         from .engines import find_lc0, nets_dir
     except Exception:
-        nets_dir = lambda: None  # type: ignore
-        find_lc0 = lambda: None  # type: ignore
+        def nets_dir():  # type: ignore
+            return None
+
+        def find_lc0():  # type: ignore
+            return None
 
     lc0_path = which("lc0") or (str(find_lc0() or "") if find_lc0 else "")
     if lc0_path:

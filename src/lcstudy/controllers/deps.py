@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 from functools import lru_cache
 
 from ..config import get_settings
-from ..repositories.session_repository import InMemorySessionRepository
 from ..repositories.game_history_repository import JsonGameHistoryRepository
 from ..repositories.precomputed_repository import PrecomputedRepository
+from ..repositories.session_repository import InMemorySessionRepository
 from ..services.engine_service import EngineService
 from ..services.game_service import GameService
 
@@ -32,8 +33,6 @@ def get_game_service() -> GameService:
         get_history_repository(),
         get_precomputed_repository(),
     )
-
-
 
 
 @lru_cache(maxsize=1)

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Engine utilities and thin wrappers around python-chess engines.
 
 This module standardizes where binaries and networks live, selects a sensible
@@ -7,6 +5,8 @@ default lc0 backend, and exposes a tiny Lc0Engine helper with convenience
 methods. It also provides helpers to convert engine output to simple line
 dicts usable by the web UI.
 """
+
+from __future__ import annotations
 
 import logging
 import os
@@ -49,7 +49,6 @@ def default_backend() -> Optional[str]:
     macOS prefers Metal, others let lc0 decide unless overridden.
     """
     sysname = platform.system().lower()
-    machine = platform.machine().lower()
     if sysname == "darwin":
         return "metal"
     if sysname == "linux":
@@ -305,7 +304,7 @@ def pick_from_multipv(
 
     max_cp = max(scores)
     logits = [(s - max_cp) / max(temperature, 1e-6) for s in scores]
-    exps = [math.exp(l) for l in logits]
+    exps = [math.exp(val) for val in logits]
     total = sum(exps)
     if total <= 0:
         return moves[scores.index(max(scores))]

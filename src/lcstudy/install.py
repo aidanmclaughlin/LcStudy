@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 """Install helpers for lc0 and networks.
 
 This module downloads a suitable lc0 binary for the current platform and
 retrieves network weights for Leela and Maia into the app's data directory.
 """
+
+from __future__ import annotations
 
 import io
 import os
@@ -55,7 +55,6 @@ def fetch_latest_lc0_release_asset_url() -> Optional[tuple[str, str]]:
         ]
     else:
         sysname = platform.system().lower()
-        arch = platform.machine().lower()
         if sysname == "darwin":
             preferred_patterns = [re.compile(r"darwin.*\.(zip|tar\.gz)$", re.I)]
         elif sysname == "linux":
@@ -128,7 +127,7 @@ def install_lc0() -> Path:
                 ) from e
         raise RuntimeError("No suitable lc0 release asset found for this platform.")
     name, url = found
-    tmpdir = bins_tmp = bin_dir() / "_lc0_download"
+    tmpdir = bin_dir() / "_lc0_download"
     if tmpdir.exists():
         shutil.rmtree(tmpdir, ignore_errors=True)
     tmpdir.mkdir(parents=True, exist_ok=True)
