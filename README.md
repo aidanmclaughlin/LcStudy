@@ -18,12 +18,13 @@ pip install -e .[all]
 # One-command setup (install lc0 + networks if missing) and launch the app
 lcstudy up
 
-# Or just inspect the CLI
+# Inspect the CLI
 lcstudy --help
 ```
 
 First run behavior
 - Single command: `lcstudy up` is all you need. It ensures lc0 and networks are installed if missing, launches the web app, and starts the background seed generator.
+- Disable background generation at runtime with `lcstudy up --no-seeds` (or via env `LCSTUDY_DISABLE_SEEDS=1`).
 - Immediate play: the app bundles a small set of precomputed PGNs so you can start right away without waiting for generation.
 - Background top-up: a generator process fills `~/.lcstudy/precomputed/games` (idles once a healthy pool exists). You can keep playing while it generates.
 
@@ -45,18 +46,11 @@ See AGENTS.md for the engine/agent model, data locations, and generation details
 ## Install and run
 
 ```bash
-# Install helpers
-lcstudy install lc0         # download latest lc0 binary
-lcstudy install bestnet     # download the current best LcZero network
-lcstudy install maia        # download Maia networks (1100..2200)
-# Or everything at once
-lcstudy install all
-
 # Launch the web app (installs if missing, then starts FastAPI/uvicorn)
 lcstudy up
 
-# Alternatively, run without the auto-install step
-lcstudy web --host 127.0.0.1 --port 8000
+# Disable background seed generation
+lcstudy up --no-seeds
 ```
 
 Notes
@@ -67,11 +61,8 @@ Notes
 
 ## CLI cheatsheet
 
-- lcstudy version — print package version
-- lcstudy doctor — check your environment (lc0 and networks)
-- lcstudy install lc0|bestnet|maia|all — install helpers and networks
-- lcstudy web — run the web app (no auto-install)
-- lcstudy up — ensure installs exist, optionally open a browser, and run the app
+- lcstudy up — ensure installs exist and run the app
+- lcstudy up --no-seeds — run the app without background seed generation
 
 ## Project layout
 
@@ -94,6 +85,7 @@ Environment variables
 - LCSTUDY_THREADS: engine threads
 - LCSTUDY_LOG_LEVEL: INFO, DEBUG, etc.
 - LCSTUDY_HOST, LCSTUDY_PORT: server bind settings
+- LCSTUDY_DISABLE_SEEDS=1 (or LCSTUDY_ENABLE_SEEDS=0): disable background seed generator
 
 Data locations
 - Binaries: ~/.lcstudy/bin

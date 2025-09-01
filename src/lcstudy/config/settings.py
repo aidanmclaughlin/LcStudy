@@ -58,6 +58,8 @@ class Settings:
 
     data_dir: Path = field(default_factory=lambda: Path.home() / ".lcstudy")
     networks_dir: Optional[Path] = None
+    # Controls background seed (auto-game) generation watchdog in web runtime
+    enable_seed_generator: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -89,6 +91,14 @@ class Settings:
 
         if threads := os.getenv("LCSTUDY_THREADS"):
             settings.engine.default_threads = int(threads)
+
+        # Background seed generation toggle (default: enabled)
+        if enable := os.getenv("LCSTUDY_ENABLE_SEEDS"):
+            settings.enable_seed_generator = enable.lower() in ("1", "true", "yes", "on")
+        if disable := os.getenv("LCSTUDY_DISABLE_SEEDS"):
+            # Explicit disable takes precedence if set truthy
+            if disable.lower() in ("1", "true", "yes", "on"):
+                settings.enable_seed_generator = False
 
         settings.networks_dir = settings.data_dir / "networks"
 

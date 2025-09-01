@@ -134,7 +134,15 @@ def _seed_watchdog_loop():
 async def on_startup():
     threading.Thread(target=_cleanup_loop, daemon=True).start()
     # Start a watchdog that launches the seed generator once weights exist
-    threading.Thread(target=_seed_watchdog_loop, daemon=True).start()
+    try:
+        settings = get_settings()
+        if settings.enable_seed_generator:
+            threading.Thread(target=_seed_watchdog_loop, daemon=True).start()
+        else:
+            logger.info("Background seed generation disabled by settings")
+    except Exception:
+        # If settings are unavailable, default to starting the watchdog
+        threading.Thread(target=_seed_watchdog_loop, daemon=True).start()
 
 
 @app.on_event("shutdown")
