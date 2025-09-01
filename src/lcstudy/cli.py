@@ -11,11 +11,14 @@ invokes an install command.
 """
 
 import argparse
+import os
 import importlib
 import shutil
 import subprocess
 import threading
 import sys
+import time
+import webbrowser
 from typing import Optional
 
 from . import __version__
@@ -174,23 +177,17 @@ def cmd_install_all(_: argparse.Namespace) -> int:
     return 0 if code == 0 else 1
 
 
+def _apply_runtime_flags(args: argparse.Namespace) -> None:
+    """Apply global/runtime flags to environment before starting the app."""
+    if getattr(args, "no_seeds", False):
+        os.environ["LCSTUDY_DISABLE_SEEDS"] = "1"
+
+
 def cmd_web(args: argparse.Namespace) -> int:
-    if not _ensure_web_deps():
-        return 1
-    import uvicorn
-
-    from .webapp import app
-
-    try:
-        from .engines import find_lc0
-
-        if not find_lc0():
-            print("Warning: lc0 not found. Install with: lcstudy install lc0")
-    except Exception:
-        print("Note: engine helpers not available. Install with: pip install -e .[all]")
-
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
-    return 0
+    """Deprecated: use 'lcstudy up' instead."""
+    print("'lcstudy web' is deprecated. Use: lcstudy up")
+    # Fall back to up for compatibility
+    return cmd_up(args)
 
 
 def cmd_up(args: argparse.Namespace) -> int:
@@ -200,7 +197,8 @@ def cmd_up(args: argparse.Namespace) -> int:
     # Start installs in the background so the site opens immediately.
     def _bg_install() -> None:
         try:
-            _ensure_installed(quick=bool(args.quick), maia_level=int(args.maia_level))
+            # Use default strategy: ensure lc0, best net, and all Maia nets.
+            _ensure_installed(quick=False, maia_level=1500)
         except Exception as e:
             print(f"Setup warning: {e}")
             print(
@@ -209,21 +207,34 @@ def cmd_up(args: argparse.Namespace) -> int:
 
     threading.Thread(target=_bg_install, name="lcstudy-install", daemon=True).start()
 
-    import uvicorn
+    # Apply flags BEFORE importing webapp so settings reflect env at import time
+    _apply_runtime_flags(args)
 
+    from .config import get_settings
+    import uvicorn
     from .webapp import app
 
-    url = f"http://{args.host}:{args.port}"
+    settings = get_settings()
+    host = settings.server.host or "127.0.0.1"
+    port = int(settings.server.port or 8000)
+    url = f"http://{host}:{port}"
+    # When binding to 0.0.0.0/::, open localhost in the browser
+    open_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    open_url = f"http://{open_host}:{port}"
     print(f"Launching web app at {url}")
-    if not args.no_open:
-        try:
-            import webbrowser
 
-            webbrowser.open(url)
+    # Open the browser shortly after starting, without blocking
+    def _open_browser_later() -> None:
+        try:
+            time.sleep(0.8)
+            webbrowser.open(open_url, new=2)
         except Exception:
+            # Best-effort: ignore failures to open a browser
             pass
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    threading.Thread(target=_open_browser_later, name="lcstudy-browser", daemon=True).start()
+
+    uvicorn.run(app, host=host, port=port, log_level="warning")
     return 0
 
 
@@ -233,13 +244,7 @@ def entry_up() -> int:
     This mirrors running ``lcstudy up`` with default arguments. Having a
     dedicated entry point makes it easy to provide a one-command experience.
     """
-    ns = argparse.Namespace(
-        host="127.0.0.1",
-        port=8000,
-        quick=False,
-        maia_level=1500,
-        no_open=False,
-    )
+    ns = argparse.Namespace(no_seeds=False)
     return cmd_up(ns)
 
 
@@ -296,67 +301,195 @@ def _ensure_installed(quick: bool = False, maia_level: int = 1500) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     """Create the top-level argument parser for the CLI."""
+
+    class HelpFormatter(
+        argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter
+    ):
+        pass
+
     parser = argparse.ArgumentParser(
         prog="lcstudy",
-        description="LcStudy - learn and experiment with LcZero",
+        description=(
+            "LcStudy – practice predicting Leela's moves and explore Maia models.\n"
+            "Commands cover quick web launch, environment checks, and installers."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  lcstudy up\n"
+            "  lcstudy up --no-seeds\n"
+            "  lcstudy doctor\n"
+            "  lcstudy install lc0\n"
+            "  lcstudy install maia --level 1500\n"
+            "  lcstudy install all\n"
+            "\nData dirs: ~/.lcstudy/bin (binaries), ~/.lcstudy/nets (networks)"
+        ),
+        formatter_class=HelpFormatter,
     )
-    sub = parser.add_subparsers(dest="command", required=True)
 
-    p_ver = sub.add_parser("version", help="Show version and exit")
-    p_ver.set_defaults(func=cmd_version)
+    # Common top-level flags
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=__version__,
+        help="Show version and exit",
+    )
 
-    p_hello = sub.add_parser("hello", help="Say hello")
-    p_hello.add_argument("name", nargs="?", help="Name to greet")
-    p_hello.set_defaults(func=cmd_hello)
+    sub = parser.add_subparsers(title="Commands", dest="command", required=True)
 
+    # up: main entry to run the web app (with background install)
+    p_up = sub.add_parser(
+        "up",
+        help="Ensure engines/nets exist and launch the web app",
+        description=(
+            "Launch the local FastAPI app and open a browser.\n"
+            "Performs best-effort setup in the background (lc0 + networks)."
+        ),
+        formatter_class=HelpFormatter,
+    )
+    p_up.add_argument(
+        "--no-seeds",
+        action="store_true",
+        help="Disable background auto-generation of training games",
+    )
+    p_up.set_defaults(func=cmd_up)
+
+    # web: deprecated alias to up (kept for discoverability)
+    p_web = sub.add_parser(
+        "web",
+        help="[Deprecated] Alias for 'up'",
+        description="Deprecated: use 'lcstudy up' instead."
+        " This command forwards to 'up'.",
+        formatter_class=HelpFormatter,
+    )
+    p_web.add_argument(
+        "--no-seeds",
+        action="store_true",
+        help="Disable background auto-generation of training games",
+    )
+    p_web.set_defaults(func=cmd_web)
+
+    # doctor: environment checks
     p_doc = sub.add_parser(
-        "doctor", help="Check local environment and lc0 availability"
+        "doctor",
+        help="Check local environment and report missing pieces",
+        description=(
+            "Run a quick diagnostic to check Python, lc0, and networks.\n"
+            "Provides tips for installing missing components."
+        ),
+        formatter_class=HelpFormatter,
     )
     p_doc.set_defaults(func=cmd_doctor)
 
-    p_inst = sub.add_parser("install", help="Install engines and networks")
-    inst_sub = p_inst.add_subparsers(dest="what", required=True)
-
-    p_lc0 = inst_sub.add_parser("lc0", help="Install latest lc0 binary")
-    p_lc0.set_defaults(func=cmd_install_lc0)
-
-    p_net = inst_sub.add_parser("bestnet", help="Download best LcZero network")
-    p_net.set_defaults(func=cmd_install_bestnet)
-
-    p_maia = inst_sub.add_parser("maia", help="Download Maia networks")
-    p_maia.add_argument(
-        "level", nargs="?", type=int, help="Maia level e.g. 1500; omit to download all"
+    # install group with subcommands
+    p_install = sub.add_parser(
+        "install",
+        help="Install engines or networks",
+        description=(
+            "Download and set up required components.\n\n"
+            "Subcommands:\n"
+            "  lc0       Install LcZero engine binary\n"
+            "  bestnet   Download recommended LcZero network\n"
+            "  maia      Download a Maia network (or all)\n"
+            "  all       Install lc0 + bestnet + maia"
+        ),
+        formatter_class=HelpFormatter,
     )
-    p_maia.set_defaults(func=cmd_install_maia)
-
-    p_all = inst_sub.add_parser("all", help="Install lc0, best net, and all Maia nets")
-    p_all.set_defaults(func=cmd_install_all)
-
-    p_web = sub.add_parser("web", help="Run local web app")
-    p_web.add_argument("--host", default="127.0.0.1")
-    p_web.add_argument("--port", type=int, default=8000)
-    p_web.set_defaults(func=cmd_web)
-
-    p_up = sub.add_parser(
-        "up", help="Install engines/nets if missing and launch the web app"
+    sub_install = p_install.add_subparsers(
+        title="Install Commands", dest="install_cmd", required=True
     )
-    p_up.add_argument("--host", default="127.0.0.1")
-    p_up.add_argument("--port", type=int, default=8000)
-    p_up.add_argument(
-        "--quick",
-        action="store_true",
-        help="Only ensure Maia 1500 instead of all levels",
+
+    # install lc0
+    p_i_lc0 = sub_install.add_parser(
+        "lc0",
+        help="Install LcZero engine binary",
+        description="Install the latest lc0 binary to ~/.lcstudy/bin.",
+        formatter_class=HelpFormatter,
     )
-    p_up.add_argument(
-        "--maia-level",
+    p_i_lc0.set_defaults(func=cmd_install_lc0)
+
+    # install bestnet
+    p_i_best = sub_install.add_parser(
+        "bestnet",
+        help="Download the recommended LcZero network",
+        description="Download the recommended LcZero network to ~/.lcstudy/nets.",
+        formatter_class=HelpFormatter,
+    )
+    p_i_best.set_defaults(func=cmd_install_bestnet)
+
+    # install maia
+    p_i_maia = sub_install.add_parser(
+        "maia",
+        help="Download Maia network(s)",
+        description=(
+            "Download a Maia network by level (e.g., 1100..2200).\n"
+            "If no level is specified, all standard levels are downloaded."
+        ),
+        formatter_class=HelpFormatter,
+    )
+    p_i_maia.add_argument(
+        "--level",
         type=int,
-        default=1500,
-        help="Maia level to ensure when using --quick",
+        help="Specific Maia level to download (e.g., 1500). If omitted, download all.",
     )
-    p_up.add_argument(
-        "--no-open", action="store_true", help="Do not open the browser automatically"
+    p_i_maia.set_defaults(func=cmd_install_maia)
+
+    # install all
+    p_i_all = sub_install.add_parser(
+        "all",
+        help="Install lc0 + bestnet + all Maia networks",
+        description="Install lc0 and download bestnet and all Maia networks.",
+        formatter_class=HelpFormatter,
     )
-    p_up.set_defaults(func=cmd_up)
+    p_i_all.set_defaults(func=cmd_install_all)
+
+    # Top-level convenience aliases so `-h` lists everything explicitly
+    p_ilc0 = sub.add_parser(
+        "install-lc0",
+        help="Alias of 'install lc0'",
+        description="Alias for: lcstudy install lc0",
+        formatter_class=HelpFormatter,
+    )
+    p_ilc0.set_defaults(func=cmd_install_lc0)
+
+    p_ibest = sub.add_parser(
+        "install-bestnet",
+        help="Alias of 'install bestnet'",
+        description="Alias for: lcstudy install bestnet",
+        formatter_class=HelpFormatter,
+    )
+    p_ibest.set_defaults(func=cmd_install_bestnet)
+
+    p_imaia = sub.add_parser(
+        "install-maia",
+        help="Alias of 'install maia'",
+        description="Alias for: lcstudy install maia",
+        formatter_class=HelpFormatter,
+    )
+    p_imaia.add_argument(
+        "--level",
+        type=int,
+        help="Specific Maia level to download (e.g., 1500). If omitted, download all.",
+    )
+    p_imaia.set_defaults(func=cmd_install_maia)
+
+    p_iall = sub.add_parser(
+        "install-all",
+        help="Alias of 'install all'",
+        description="Alias for: lcstudy install all",
+        formatter_class=HelpFormatter,
+    )
+    p_iall.set_defaults(func=cmd_install_all)
+
+    # hello: quick smoke test
+    p_hello = sub.add_parser(
+        "hello",
+        help="Print a friendly greeting (for quick smoke testing)",
+        description="Print a friendly greeting; useful to verify CLI wiring.",
+        formatter_class=HelpFormatter,
+    )
+    p_hello.add_argument("--name", help="Name to greet", default=None)
+    p_hello.set_defaults(func=cmd_hello)
 
     return parser
 
