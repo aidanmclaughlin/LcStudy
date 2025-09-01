@@ -12,8 +12,8 @@ Development quickstart
 
 Common tasks
 - Run CLI: lcstudy --help
-- Launch web app: lcstudy web --host 127.0.0.1 --port 8000
-- One-command up (ensure engines/nets): lcstudy up
+- Launch web app (installs if missing): lcstudy up
+- Launch without background seeds: lcstudy up --no-seeds  # or set LCSTUDY_DISABLE_SEEDS=1
 - Run tests: pytest
 
 Project layout
@@ -32,6 +32,7 @@ Environment variables
 - LCSTUDY_THREADS: engine threads
 - LCSTUDY_LOG_LEVEL: INFO, DEBUG, etc.
 - LCSTUDY_HOST, LCSTUDY_PORT: server bind settings
+- LCSTUDY_DISABLE_SEEDS=1 (or LCSTUDY_ENABLE_SEEDS=0): disable background seed generator
 
 Conventional commits
 - Please use conventional commit messages (feat:, fix:, docs:, refactor:, test:, chore:, etc.).
@@ -39,4 +40,3 @@ Conventional commits
 Code style
 - Black, isort, ruff linters enabled via pre-commit.
 - mypy for type checking is encouraged for new/changed code.
-
