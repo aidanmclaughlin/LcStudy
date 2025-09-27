@@ -4,6 +4,8 @@ let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 let currentTurn = 'white';
 let leelaTopMoves = [];
 let boardIsFlipped = false;
+let boardObserver = null;
+let isRebuildingBoard = false;
 
 let gameAttempts = [];
 let totalAttempts = 0;
@@ -899,8 +901,32 @@ function revertMove() {
 }
 
 function initBoard() {
+  const boardEl = document.getElementById('board');
+  if (!boardEl) return;
+
   createBoardHTML();
   updateBoardFromFen(currentFen);
+
+  if (boardObserver) {
+    try { boardObserver.disconnect(); } catch (e) {}
+  }
+
+  boardObserver = new MutationObserver(() => {
+    if (isRebuildingBoard) return;
+    if (!boardEl.hasChildNodes()) {
+      try {
+        isRebuildingBoard = true;
+        createBoardHTML();
+        updateBoardFromFen(currentFen);
+      } finally {
+        isRebuildingBoard = false;
+      }
+    }
+  });
+
+  try {
+    boardObserver.observe(boardEl, { childList: true });
+  } catch (e) {}
 }
 
 function createBoardHTML() {
