@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "../public/legacy/css/main.css";
 import { Providers } from "@/components/providers";
-import { clsx } from "clsx";
 
 export const metadata: Metadata = {
   title: "LcStudy",
@@ -19,12 +19,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body
-        className={clsx(
-          "bg-background text-slate-100",
-          "min-h-screen"
-        )}
-      >
+      <body>
         <Providers>{children}</Providers>
       </body>
     </html>

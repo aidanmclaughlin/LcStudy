@@ -1,0 +1,14 @@
+[Event "LcStudy Training Game"]
+[Site "LcStudy"]
+[Date "????.??.??"]
+[Round "?"]
+[White "Leela (PLAYER)"]
+[Black "Maia 2200 (AUTO)"]
+[Result "*"]
+
+1. d4 d5 2. c4 e6 3. Nf3 c5 4. cxd5 cxd4 5. dxe6 fxe6 6. Qxd4 Qxd4 7. Nxd4 Bc5
+8. Nb3 Bb4+ 9. Bd2 Nc6 10. g3 Nge7 11. Bg2 O-O 12. O-O Bxd2 13. N1xd2 e5 14.
+Rfc1 Be6 15. Nc5 Bd5 16. Bxd5+ Nxd5 17. e3 b6 18. Ne6 Rf6 19. Rxc6 Re8 20. e4
+Nb4 21. Rc4 Nd3 22. Nc7 Ref8 23. f3 Nxb2 24. Rc2 Nd3 25. Nd5 R6f7 26. Rc6 Nc5
+27. Rd1 Rd7 28. Nc4 Rxf3 29. Nxe5 Nxe4 30. Nxd7 Rf2 31. Re1 Rxa2 32. Rxe4 h6
+33. Re8+ Kf7 34. Rf8# *

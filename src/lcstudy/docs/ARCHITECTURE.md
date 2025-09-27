@@ -3,69 +3,67 @@
 ## High-Level Flow
 
 1. **Authentication**
-   - Users sign in with Google via NextAuth.
-   - Sessions are stored using JWTs (default NextAuth strategy) making the solution serverless-friendly.
+   - Google Sign-In via NextAuth (JWT strategy) protects all gameplay APIs.
+   - The Next.js layout simply mounts the legacy HTML once the session is valid.
 
-2. **Game Retrieval**
-   - A curated set of precomputed Leela vs Maia games lives in `data/games.json`.
-   - The Next.js API picks the next unplayed game for the signed-in user.
-   - Games are tracked in `user_games` to prevent duplicates until the pool resets.
+2. **Precomputed Game Store**
+   - Original Leela vs Maia PGNs live under `data/pgn/*.pgn` (same files that shipped with the CLI version).
+   - On first access the server parses them with `chess.js`, recording SAN + UCI move lists and Leela’s colour.
+   - `pickPrecomputedGame()` avoids repeats by consulting the `user_games` table; it falls back to the full set once a player exhausts the pool.
 
-3. **Gameplay Loop**
-   - The client renders the current board via `react-chessboard` and handles move attempts with `chess.js`.
-   - When the user submits the correct prediction (or exhausts attempts), the client posts results to `/api/games/complete`.
+3. **Session Lifecycle**
+   - `/api/v1/session/new` creates a row in `sessions`, storing the live FEN, ply index, attempts, and SAN history. Sessions survive across serverless invocations.
+   - `/api/v1/session/{id}/check-move` validates legality (and promotions) against the stored FEN.
+   - `/api/v1/session/{id}/predict` compares the submitted UCI to the precomputed move. On success it advances the board, auto-plays Maia’s reply, logs attempts, and, when the game ends, records aggregates in `user_games`.
+   - Legacy JS polls `/api/v1/session/{id}/state` for fresh FEN/turn data to keep the board, PGN display, and charts in sync.
 
-4. **Stats & Analytics**
-   - Aggregate metrics (win rate over time, average attempts, total solves) are derived with SQL and served via `/api/stats/summary`.
-   - Charts are rendered client-side using `react-chartjs-2`.
+4. **History & Stats**
+   - `/api/v1/game-history` returns the legacy payload (`average_retries`, `total_moves`, `maia_level`, etc.) straight from `user_games`.
+   - `/api/v1/stats` reuses the same data for win-rate streak charts (compatible with the old JSON storage).
 
-## Key Components
+## Key Modules
 
-- `app/page.tsx` & `components/*` provide the responsive UI.
-- `lib/auth.ts` defines NextAuth config and helper guards.
-- `lib/db.ts` centralises Postgres access using `@vercel/postgres`.
-- `lib/games.ts` exposes helpers for picking and parsing precomputed games.
-- `app/api/**/*` exports route handlers for gameplay, completion, and stats.
+- `public/legacy/` – the untouched HTML/CSS/JS from the FastAPI app (confetti, streak pill, keyboard nav, etc.).
+- `lib/precomputed.ts` – PGN loader + in-memory cache.
+- `lib/sessions.ts` – session/state machine logic ported from the Python `GameService`.
+- `lib/db.ts` – Postgres helpers for users, sessions, and aggregated history.
+- `app/api/v1/**` – Next.js route handlers mirroring the original `/api/v1` endpoints.
 
-## Database Schema
+## Database Notes
 
 ```sql
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT UNIQUE NOT NULL,
-  name TEXT,
-  image TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game_id TEXT NOT NULL,
+  fen TEXT NOT NULL,
+  ply INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'playing',
+  current_attempts INTEGER NOT NULL DEFAULT 0,
+  attempts_history JSONB NOT NULL DEFAULT '[]',
+  move_history JSONB NOT NULL DEFAULT '[]',
+  score_total NUMERIC NOT NULL DEFAULT 0,
+  flip BOOLEAN NOT NULL DEFAULT FALSE,
+  maia_level INTEGER NOT NULL DEFAULT 1500,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS games (
-  id TEXT PRIMARY KEY,
-  source jsonb NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS user_games (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  solved BOOLEAN NOT NULL DEFAULT false,
-  accuracy NUMERIC,
-  played_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (user_id, game_id)
-);
+ALTER TABLE user_games
+  ADD COLUMN IF NOT EXISTS total_moves INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS average_retries NUMERIC,
+  ADD COLUMN IF NOT EXISTS maia_level INTEGER DEFAULT 1500;
 ```
 
-The `games.source` column stores the JSON payload for parity with `data/games.json`. Most read operations rely on the static JSON file to avoid cold-start queries and guarantee deterministic puzzles across deployments.
+- `sessions` holds the live board state and attempt counters between requests.
+- `user_games` now stores the same fields the legacy JSON used (average retries per Leela move, total moves, Maia level) so historical charts render unchanged.
 
-## Deployment Notes
+## Deployment
 
-- Configure the Vercel project root to `src/lcstudy`.
-- Provide environment variables in the dashboard (see `.env.example`).
-- Use the SQL above (also in `docs/db/migrations.sql`) to initialise the database.
-- Upload your curated `data/games.json` file (the shipping sample contains a handful of games for development).
-- Background jobs were intentionally removed; all interactions fit within serverless request limits.
+- Project root: `src/lcstudy`.
+- Required env vars: `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `DATABASE_URL`, `POSTGRES_URL`.
+- Games are read from the bundle at runtime, so deployments stay deterministic—just commit PGNs into `data/pgn`.
 
-## Mobile Responsiveness
+## Frontend Behaviour
 
-Tailwind utility classes power a responsive layout. The board collapses beneath the stats column on narrow viewports, and key actions remain thumb-accessible. Charts compress gracefully with hidden legends at small breakpoints.
+The DOM structure, CSS, sound effects, keyboard review controls, confetti bursts, and streak pill are identical to commit `14318a497430e581c0e809175b0797fe870a52d7`. The only difference is that stats persist via Postgres, and the API layer is powered by Next.js instead of FastAPI.

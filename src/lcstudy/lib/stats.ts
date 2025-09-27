@@ -41,7 +41,10 @@ export function computeStats(history: UserGameRow[]): UserStatsSummary {
   const totalGames = history.length;
   const solvedGames = history.filter((g) => g.solved).length;
   const winRate = solvedGames / totalGames;
-  const averageAttempts = history.reduce((sum, g) => sum + g.attempts, 0) / totalGames;
+  const averageAttempts = history.reduce((sum, g) => {
+    const avg = g.averageRetries ?? (g.totalMoves > 0 ? g.attempts / g.totalMoves : g.attempts);
+    return sum + avg;
+  }, 0) / totalGames;
 
   // streak calculation (count consecutive solved from the end)
   let currentStreak = 0;
@@ -61,7 +64,8 @@ export function computeStats(history: UserGameRow[]): UserStatsSummary {
     }
     const bucket = daily.get(key)!;
     bucket.total += 1;
-    bucket.attempts += g.attempts;
+    const avg = g.averageRetries ?? (g.totalMoves > 0 ? g.attempts / g.totalMoves : g.attempts);
+    bucket.attempts += avg;
     if (g.solved) bucket.wins += 1;
   });
 
@@ -86,7 +90,7 @@ export function computeStats(history: UserGameRow[]): UserStatsSummary {
 
   const attempts: AttemptsPoint[] = history.map((g, idx) => ({
     label: `#${idx + 1}`,
-    attempts: g.attempts,
+    attempts: g.averageRetries ?? (g.totalMoves > 0 ? g.attempts / g.totalMoves : g.attempts),
     solved: g.solved
   }));
 
