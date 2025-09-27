@@ -14,15 +14,14 @@ async function runMigrations() {
     .map((stmt) => stmt.trim())
     .filter(Boolean);
 
-  for (const statement of statements) {
-    console.log(`Running: ${statement.slice(0, 60)}...`);
-    if (typeof sql.unsafe === 'function') {
-      await sql.unsafe(statement);
-    } else if (sql.raw) {
-      await sql`${sql.raw(statement)}`;
-    } else {
-      throw new Error('sql.unsafe is not available and sql.raw fallback failed.');
+  const client = await sql.connect();
+  try {
+    for (const statement of statements) {
+      console.log(`Running: ${statement.slice(0, 60)}...`);
+      await client.query(statement);
     }
+  } finally {
+    await client.end();
   }
 
   console.log('Database migrations completed.');
