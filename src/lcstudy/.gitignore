@@ -1,0 +1,5 @@
+# Node/Next.js
+node_modules/
+.next/
+# Env files
+.env*

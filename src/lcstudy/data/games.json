@@ -1,0 +1,72 @@
+[
+  {
+    "id": "game-0001",
+    "white": "Lc0",
+    "black": "Maia 1900",
+    "event": "Training Set",
+    "eco": "C20",
+    "result": "1-0",
+    "startingFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "sideToMove": "w",
+    "bestMoveSan": "e4",
+    "bestMoveUci": "e2e4",
+    "context": ["1. e4 e5", "2. Nf3 Nc6", "3. Bb5 a6"],
+    "description": "Classic king pawn opener that Leela still loves for fast development."
+  },
+  {
+    "id": "game-0002",
+    "white": "Maia 1900",
+    "black": "Lc0",
+    "event": "Training Set",
+    "eco": "B90",
+    "result": "0-1",
+    "startingFen": "rnbq1rk1/pp3ppp/2p1pn2/2bp4/2B5/2N2N2/PPPQ1PPP/2KR3R w - - 0 1",
+    "sideToMove": "w",
+    "bestMoveSan": "Bd3",
+    "bestMoveUci": "c4d3",
+    "context": ["1. Bd3 Qa5", "2. Kb1 Rb8", "3. Ne4 Nxe4"],
+    "description": "Re-route the bishop to d3 to reinforce the kingside and prepare e4 breaks."
+  },
+  {
+    "id": "game-0003",
+    "white": "Lc0",
+    "black": "Maia 1900",
+    "event": "Training Set",
+    "eco": "A07",
+    "result": "1-0",
+    "startingFen": "r1bqkbnr/pp1p1ppp/2n1p3/2p1P3/2B5/5N2/PPPP1PPP/RNBQ1RK1 b kq - 1 5",
+    "sideToMove": "b",
+    "bestMoveSan": "d5",
+    "bestMoveUci": "d6d5",
+    "context": ["... d5", "6. exd6 e.p. Bxd6", "7. Nc3 Nf6"],
+    "description": "Break in the centre with ...d5 to punish White's overextension."
+  },
+  {
+    "id": "game-0004",
+    "white": "Maia 1900",
+    "black": "Lc0",
+    "event": "Training Set",
+    "eco": "C65",
+    "result": "0-1",
+    "startingFen": "r1bqk1nr/pppp1ppp/2n5/4p3/1bB1P3/2N2N2/PPPP1PPP/R1BQ1RK1 w kq - 4 6",
+    "sideToMove": "w",
+    "bestMoveSan": "Nd5",
+    "bestMoveUci": "c3d5",
+    "context": ["1. Nd5 Bc5", "2. c3 Nf6", "3. d4 exd4"],
+    "description": "Hop into d5 to hit the pinned f6 knight and eye c7 tactics."
+  },
+  {
+    "id": "game-0005",
+    "white": "Lc0",
+    "black": "Maia 1900",
+    "event": "Training Set",
+    "eco": "E11",
+    "result": "1-0",
+    "startingFen": "r2q1rk1/pp2bppp/2n1pn2/3p4/3P4/2NBPN2/PP3PPP/R1BQ1RK1 w - - 0 1",
+    "sideToMove": "w",
+    "bestMoveSan": "e4",
+    "bestMoveUci": "e3e4",
+    "context": ["1. e4 dxe4", "2. Nxe4 Nxd4", "3. Bf4"],
+    "description": "Strike back in the centre with e4 to exploit the overextended d5 pawn."
+  }
+]
