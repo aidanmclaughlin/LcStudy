@@ -1216,12 +1216,20 @@ function updateLiveFen(fen) {
   }
 }
 
-window.addEventListener('DOMContentLoaded', async () => {
-  initBoard();
-  initializeCharts();
-  await loadGameHistory();
-  start();
-  
-  // Add keyboard event listener
-  document.addEventListener('keydown', handleKeyPress);
-});
+async function bootstrap() {
+  try {
+    initBoard();
+    initializeCharts();
+    await loadGameHistory();
+    await start();
+    document.addEventListener('keydown', handleKeyPress);
+  } catch (err) {
+    console.error('LcStudy bootstrap failed', err);
+  }
+}
+
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', bootstrap);
+} else {
+  void bootstrap();
+}

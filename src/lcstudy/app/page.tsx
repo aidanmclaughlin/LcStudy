@@ -2,6 +2,7 @@ import Script from "next/script";
 import { redirect } from "next/navigation";
 
 import { getAuthSession } from "@/lib/auth";
+import { AuthControls } from "@/components/auth-controls";
 
 export default async function HomePage() {
   const session = await getAuthSession();
