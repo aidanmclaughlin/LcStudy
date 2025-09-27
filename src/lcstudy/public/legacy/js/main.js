@@ -7,6 +7,46 @@ let boardIsFlipped = false;
 let boardObserver = null;
 let isRebuildingBoard = false;
 
+const CHART_JS_SRC = 'https://cdn.jsdelivr.net/npm/chart.js';
+let chartLoaderPromise = null;
+
+function ensureChartJs() {
+  if (typeof window !== 'undefined' && typeof window.Chart !== 'undefined') {
+    return Promise.resolve();
+  }
+  if (chartLoaderPromise) {
+    return chartLoaderPromise;
+  }
+  chartLoaderPromise = new Promise((resolve, reject) => {
+    try {
+      if (typeof window === 'undefined') {
+        resolve();
+        return;
+      }
+      if (typeof window.Chart !== 'undefined') {
+        resolve();
+        return;
+      }
+      const existing = document.querySelector('script[data-chartjs]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error('Failed to load Chart.js')), { once: true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = CHART_JS_SRC;
+      script.async = true;
+      script.dataset.chartjs = 'true';
+      script.addEventListener('load', () => resolve());
+      script.addEventListener('error', () => reject(new Error('Failed to load Chart.js')));
+      document.head.appendChild(script);
+    } catch (err) {
+      reject(err);
+    }
+  });
+  return chartLoaderPromise;
+}
+
 let gameAttempts = [];
 let totalAttempts = 0;
 let currentMoveAttempts = 0;
@@ -65,6 +105,10 @@ function getPieceUrl(code) { return defaultPieceImages[code]; }
 // No user-provided pieces; use fixed Wikipedia URLs.
 
 function initializeCharts() {
+  if (typeof window === 'undefined' || typeof window.Chart === 'undefined') {
+    console.error('Chart.js is not available yet. Skipping chart initialization.');
+    return;
+  }
   const accuracyCtx = document.getElementById('accuracy-chart').getContext('2d');
   accuracyChart = new Chart(accuracyCtx, {
     type: 'line',
@@ -1244,6 +1288,7 @@ function updateLiveFen(fen) {
 
 async function bootstrap() {
   try {
+    await ensureChartJs();
     initBoard();
     initializeCharts();
     await loadGameHistory();

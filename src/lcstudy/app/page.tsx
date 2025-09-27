@@ -13,7 +13,6 @@ export default async function HomePage() {
 
   return (
     <>
-      <Script src="https://cdn.jsdelivr.net/npm/chart.js" strategy="beforeInteractive" />
       <Script src="/legacy/js/main.js" strategy="afterInteractive" />
       <div
         className="wrap"
