@@ -23,14 +23,19 @@ export async function POST(request: Request) {
 
   const maiaLevel = body.maia_level ?? 1500;
 
-  const { session: gameSession } = await createSessionForUser({
+  const { session: gameSession, game } = await createSessionForUser({
     userId: session.user.id,
     maiaLevel
   });
 
   return NextResponse.json({
     id: gameSession.id,
+    game_id: game.id,
     flip: gameSession.flip,
-    fen: gameSession.fen
+    fen: gameSession.fen,
+    starting_fen: game.startingFen,
+    moves: game.moves,
+    ply: gameSession.ply,
+    maia_level: gameSession.maiaLevel
   });
 }

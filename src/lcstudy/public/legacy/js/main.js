@@ -1,4 +1,5 @@
 let SID = null;
+const sessionCache = { sessionId: null, gameId: null, moves: [], flip: false, currentIndex: 0, maiaLevel: 1500 };
 let selectedSquare = null;
 let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 let currentTurn = 'white';
@@ -7,8 +8,13 @@ let boardIsFlipped = false;
 let boardObserver = null;
 let isRebuildingBoard = false;
 
+const ATTEMPT_LIMIT = 10;
 const CHART_JS_SRC = 'https://cdn.jsdelivr.net/npm/chart.js';
+const CHESS_JS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0/chess.min.js';
+
 let chartLoaderPromise = null;
+let chessLoaderPromise = null;
+let chessEngine = null;
 
 function ensureChartJs() {
   if (typeof window !== 'undefined' && typeof window.Chart !== 'undefined') {
@@ -45,6 +51,97 @@ function ensureChartJs() {
     }
   });
   return chartLoaderPromise;
+}
+
+function ensureChessJs() {
+  if (typeof window !== 'undefined' && typeof window.Chess !== 'undefined') {
+    return Promise.resolve();
+  }
+  if (chessLoaderPromise) {
+    return chessLoaderPromise;
+  }
+  chessLoaderPromise = new Promise((resolve, reject) => {
+    try {
+      if (typeof window === 'undefined') {
+        resolve();
+        return;
+      }
+      if (typeof window.Chess !== 'undefined') {
+        resolve();
+        return;
+      }
+      const existing = document.querySelector('script[data-chessjs]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error('Failed to load chess.js')), { once: true });
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = CHESS_JS_SRC;
+      script.async = true;
+      script.dataset.chessjs = 'true';
+      script.addEventListener('load', () => resolve());
+      script.addEventListener('error', () => reject(new Error('Failed to load chess.js')));
+      document.head.appendChild(script);
+    } catch (err) {
+      reject(err);
+    }
+  });
+  return chessLoaderPromise;
+}
+
+function parseUciMove(uci) {
+  const norm = uci.toLowerCase();
+  return {
+    from: norm.slice(0, 2),
+    to: norm.slice(2, 4),
+    promotion: norm.length > 4 ? norm.slice(4) : undefined
+  };
+}
+
+function isPlayerMove(moveIndex) {
+  const playerIsWhite = !sessionCache.flip;
+  return playerIsWhite ? moveIndex % 2 === 0 : moveIndex % 2 === 1;
+}
+
+function getExpectedPlayerMove() {
+  const moves = sessionCache.moves || [];
+  for (let idx = sessionCache.currentIndex; idx < moves.length; idx++) {
+    if (isPlayerMove(idx)) {
+      return { index: idx, move: moves[idx] };
+    }
+  }
+  return null;
+}
+
+function applyMoveToBoard(moveDef, isUserMove) {
+  if (!chessEngine || !moveDef) return null;
+  const { from, to, promotion } = parseUciMove(moveDef.uci);
+  const moveResult = chessEngine.move({ from, to, promotion: promotion || undefined });
+  if (!moveResult) {
+    return null;
+  }
+  const fenAfter = chessEngine.fen();
+  currentFen = fenAfter;
+  liveFen = fenAfter;
+  updateBoardFromFen(fenAfter);
+  const san = moveResult.san || moveDef.san || moveDef.uci;
+  addMoveToHistory(fenAfter, san, isUserMove);
+  pgnMoves.push(san);
+  return moveResult;
+}
+
+function handleMaiaReplies() {
+  const moves = sessionCache.moves || [];
+  while (sessionCache.currentIndex < moves.length && !isPlayerMove(sessionCache.currentIndex)) {
+    const reply = moves[sessionCache.currentIndex];
+    const result = applyMoveToBoard(reply, false);
+    sessionCache.currentIndex += 1;
+    if (!result) {
+      break;
+    }
+  }
+  updatePGNDisplay();
 }
 
 let gameAttempts = [];
@@ -549,43 +646,48 @@ async function loadGameHistory() {
 }
 
 async function saveCompletedGame(result) {
-  if (gameAttempts.length === 0) {
+  if (!SID || gameAttempts.length === 0) {
     return;
   }
-  
-  const avgRetries = totalAttempts / gameAttempts.length;
-  const maiaLevel = window.currentMaiaLevel || 1500;
-  
+
+  const maiaLevel = sessionCache.maiaLevel || window.currentMaiaLevel || 1500;
+  const totalMoves = gameAttempts.length;
+  const totalAttemptsForGame = totalAttempts;
+  const attemptHistory = [...gameAttempts];
+  const averageRetries = totalMoves > 0 ? totalAttemptsForGame / totalMoves : 0;
+
   try {
-    await fetch('/api/v1/game-history', {
+    await fetch(`/api/v1/session/${SID}/complete`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        average_retries: avgRetries,
-        total_moves: gameAttempts.length,
+        total_attempts: totalAttemptsForGame,
+        total_moves: totalMoves,
+        attempt_history: attemptHistory,
+        average_retries: averageRetries,
         maia_level: maiaLevel,
         result: result
       })
     });
-    
-    gameHistory.push({
-      average_retries: avgRetries,
-      total_moves: gameAttempts.length,
-      maia_level: maiaLevel,
-      result: result
-    });
-    
-    let runningSum = 0;
-    cumulativeAverages = [];
-    for (let i = 0; i < gameHistory.length; i++) {
-      runningSum += gameHistory[i].average_retries;
-      cumulativeAverages.push(runningSum / (i + 1));
-    }
-    
-    updateCharts();
   } catch (e) {
-    console.log('Failed to save game:', e);
+    console.log('Failed to persist game:', e);
   }
+
+  gameHistory.push({
+    average_retries: averageRetries,
+    total_moves: totalMoves,
+    maia_level: maiaLevel,
+    result: result
+  });
+
+  let runningSum = 0;
+  cumulativeAverages = [];
+  for (let i = 0; i < gameHistory.length; i++) {
+    runningSum += gameHistory[i].average_retries;
+    cumulativeAverages.push(runningSum / (i + 1));
+  }
+
+  updateCharts();
 }
 
 function resetGameData() {
@@ -626,106 +728,6 @@ function flashBoard(result) {
   }, duration);
 }
 
-let pendingMoves = new Set();
-
-async function needsPromotion(mv) {
-  try {
-    const res = await fetch('/api/v1/session/' + SID + '/check-move', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({move: mv})
-    });
-    const data = await res.json();
-    return data.needs_promotion || false;
-  } catch (e) {
-    return false;
-  }
-}
-
-function showPromotionDialog() {
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-    `;
-    
-    const dialog = document.createElement('div');
-    dialog.style.cssText = `
-      background: #2a2a2a;
-      padding: 24px;
-      border-radius: 12px;
-      text-align: center;
-      color: white;
-      font-family: inherit;
-    `;
-    
-    const title = document.createElement('h3');
-    title.textContent = 'Choose promotion piece:';
-    title.style.cssText = 'margin: 0 0 20px 0; font-size: 18px;';
-    dialog.appendChild(title);
-    
-    const pieces = [
-      { piece: 'q', name: 'Queen', symbol: '♕' },
-      { piece: 'r', name: 'Rook', symbol: '♖' },
-      { piece: 'b', name: 'Bishop', symbol: '♗' },
-      { piece: 'n', name: 'Knight', symbol: '♘' }
-    ];
-    
-    const buttonContainer = document.createElement('div');
-    buttonContainer.style.cssText = 'display: flex; gap: 12px; justify-content: center;';
-    
-    pieces.forEach(({ piece, name, symbol }) => {
-      const button = document.createElement('button');
-      button.innerHTML = `<div style="font-size: 32px; margin-bottom: 8px;">${symbol}</div><div style="font-size: 12px;">${name}</div>`;
-      button.style.cssText = `
-        background: #4a4a4a;
-        border: 2px solid #666;
-        border-radius: 8px;
-        color: white;
-        padding: 16px 12px;
-        cursor: pointer;
-        min-width: 80px;
-        transition: all 0.2s;
-      `;
-      
-      button.onmouseover = () => {
-        button.style.background = '#5a5a5a';
-        button.style.borderColor = '#888';
-      };
-      button.onmouseout = () => {
-        button.style.background = '#4a4a4a';
-        button.style.borderColor = '#666';
-      };
-      
-      button.onclick = () => {
-        document.body.removeChild(overlay);
-        resolve(piece);
-      };
-      
-      buttonContainer.appendChild(button);
-    });
-    
-    dialog.appendChild(buttonContainer);
-    overlay.appendChild(dialog);
-    document.body.appendChild(overlay);
-    
-    overlay.onclick = (e) => {
-      if (e.target === overlay) {
-        document.body.removeChild(overlay);
-        resolve(null);
-      }
-    };
-  });
-}
 
 
 
@@ -775,152 +777,71 @@ async function setupPromotionTest() {
   await start(testFen);
 }
 
-async function submitMove(mv){
-  if (!SID || pendingMoves.has(mv)) return;
-  
-  if (await needsPromotion(mv)) {
-    const promotionPiece = await showPromotionDialog();
-    if (!promotionPiece) return;
-    mv = mv + promotionPiece;
-  }
-  
-  try {
-    const legalCheckRes = await fetch('/api/v1/session/' + SID + '/check-move', {
-      method: 'POST', 
-      headers: {'Content-Type': 'application/json'}, 
-      body: JSON.stringify({move: mv})
-    });
-    const legalData = await legalCheckRes.json();
-    
-    if (!legalData.legal) {
-      flashBoard('illegal');
-      return;
-    }
-  } catch (e) {
-    console.log('Move legality check failed:', e);
-  }
-  
-  pendingMoves.add(mv);
-  
+async function submitMove(mv) {
+  if (!SID || !sessionCache.moves.length) return;
+
   const fromSquare = mv.slice(0, 2);
   const toSquare = mv.slice(2, 4);
-  
-  animateMove(fromSquare, toSquare);
-  submitMoveToServer(mv, fromSquare, toSquare);
-  
-  pendingMoves.delete(mv);
+
+  const expectedInfo = getExpectedPlayerMove();
+  if (!expectedInfo) {
+    console.warn('No expected move remaining');
+    return;
+  }
+
+  let normalized = mv.toLowerCase();
+  const expectedUci = expectedInfo.move.uci.toLowerCase();
+  if (expectedUci.length === 5 && normalized.length === 4) {
+    normalized += expectedUci[4];
+  }
+
+  const attemptsForMove = currentMoveAttempts + 1;
+
+  if (normalized !== expectedUci) {
+    currentMoveAttempts = attemptsForMove;
+    flashBoard('wrong');
+    updateAttemptsRemaining(Math.max(0, ATTEMPT_LIMIT - currentMoveAttempts));
+    correctStreak = 0;
+    showStreakPill();
+    return;
+  }
+
+  const moveResult = applyMoveToBoard(expectedInfo.move, true);
+  if (!moveResult) {
+    flashBoard('wrong');
+    return;
+  }
+
+  flashBoard('success');
+  correctStreak = (correctStreak || 0) + 1;
+  showStreakPill();
+  currentMoveAttempts = 0;
+  gameAttempts.push(attemptsForMove);
+  totalAttempts += attemptsForMove;
+  moveCounter += 1;
+  updateAttemptsRemaining(ATTEMPT_LIMIT);
+
+  sessionCache.currentIndex = expectedInfo.index + 1;
+  handleMaiaReplies();
+
+  updateCharts();
+  updateStatistics(totalAttempts, moveCounter);
+  updatePGNDisplay();
+
+  if (sessionCache.currentIndex >= sessionCache.moves.length) {
+    await saveCompletedGame('finished');
+    await loadGameHistory();
+    setTimeout(async () => {
+      await start();
+    }, 2500);
+  }
 }
 
 async function submitCorrectMoveToServer(mv) {
   try {
-    const res = await fetch('/api/v1/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv, client_validated: true})});
-    const data = await res.json();
-    
-    if (data.correct) {
-      const attempts = data.attempts || 1;
-      gameAttempts.push(attempts);
-      currentMoveAttempts = 0;
-      totalAttempts += attempts;
-      moveCounter++;
-      
-      pgnMoves.push(data.leela_move);
-      if (data.maia_move) {
-        pgnMoves.push(data.maia_move);
-      }
-      
-      if (data.status === 'finished') {
-        console.log('Game finished! Starting new game in 2.5s...');
-        createConfetti();
-        await saveCompletedGame('finished');
-        await loadGameHistory();
-        
-        setTimeout(async () => {
-          console.log('Starting new game now...');
-          await start();
-        }, 2500);
-      }
-      
-      // Instant refresh - no delay needed
-      await refresh();
-    }
+
   } catch (e) {
     
-  }
-}
-
-async function submitMoveToServer(mv, fromSquare, toSquare) {
-  try {
-    const res = await fetch('/api/v1/session/' + SID + '/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({move: mv})});
-    const data = await res.json();
-    
-    const last = document.getElementById('last');
-    
-    if (data.error) {
-      if (data.error.includes('Illegal move')) {
-        flashBoard('illegal');
-      } else {
-        flashBoard('wrong');
-      }
-      revertMove();
-      if (last) last.textContent = 'Error: ' + data.error;
-      return;
-    }
-    
-    const ok = !!data.correct;
-    
-    if (ok) {
-      const attempts = data.attempts || 1;
-      gameAttempts.push(attempts);
-      currentMoveAttempts = 0;
-      totalAttempts += attempts;
-      moveCounter++;
-      
-      // Track the user's move in history
-      if (data.leela_move) {
-        const userMoveSAN = data.leela_move; // This should ideally be SAN notation
-        addMoveToHistory(currentFen, userMoveSAN, true);
-      }
-      
-      pgnMoves.push(data.leela_move);
-      if (data.maia_move) {
-        pgnMoves.push(data.maia_move);
-        // Note: We'll add Maia's move to history after refresh when we get the new FEN
-      }
-      
-      updateAttemptsRemaining(10);
-
-      flashBoard('success');
-      // Celebrate at the destination square of the user's move
-      try { celebrateSuccess(toSquare); } catch (e) {}
-      // Update streak and UI
-      correctStreak = (correctStreak || 0) + 1;
-      showStreakPill();
-
-      // Instant refresh - no delay needed with precomputed moves
-      await refresh();
-      updateAttemptsRemaining(10);
-      
-      // Add Maia's move to history if it was made
-      if (data.maia_move) {
-        const maiaMoveSAN = data.maia_move;
-        addMoveToHistory(liveFen, maiaMoveSAN, false);
-      }
-    } else {
-      const attempts = data.attempts || 1;
-      const remaining = Math.max(0, 10 - attempts);
-      updateAttemptsRemaining(remaining);
-      
-      flashBoard('wrong');
-      revertMove();
-      if (last) last.textContent = data.message || 'Not the correct move. Try again.';
-      // Reset streak on incorrect guess
-      correctStreak = 0;
-      showStreakPill();
-    }
-  } catch (e) {
-    flashBoard('wrong');
-    revertMove();
-    console.error('Move submission error:', e);
   }
 }
 
@@ -1097,77 +1018,73 @@ async function start(customFen = null) {
   const maiaLevel = maiaLevels[Math.floor(Math.random() * maiaLevels.length)];
   window.currentMaiaLevel = maiaLevel;
 
-  // Color will be determined by the precomputed game on the backend
-  const payload = {maia_level: maiaLevel};
+  const payload = { maia_level: maiaLevel };
   if (customFen) {
     payload.custom_fen = customFen;
   }
-  const res = await fetch('/api/v1/session/new', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+
+  const res = await fetch('/api/v1/session/new', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
   if (!res.ok) {
     console.error('Failed to create session', res.status);
     return;
   }
   const data = await res.json();
+
   SID = data.id;
-  
-  const shouldFlip = data.flip || false;
-  setBoardFlip(shouldFlip);
-  
-  const sessionFen = data.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-  updateBoardFromFen(sessionFen);
-  
+  sessionCache.sessionId = data.id;
+  sessionCache.gameId = data.game_id;
+  sessionCache.moves = Array.isArray(data.moves) ? data.moves : [];
+  sessionCache.flip = Boolean(data.flip);
+  sessionCache.currentIndex = data.ply || 0;
+  sessionCache.maiaLevel = data.maia_level || maiaLevel;
+
+  const startingFen = data.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const currentFenValue = data.fen || startingFen;
+
+  if (typeof window.Chess === 'function') {
+    chessEngine = new window.Chess(startingFen);
+  } else {
+    console.error('chess.js not available');
+    return;
+  }
+
+  setBoardFlip(sessionCache.flip);
   resetGameData();
   resetMoveHistory();
   initUXToggles();
-  // Unlock WebAudio on first user interaction
+
+  if (Array.isArray(sessionCache.moves) && sessionCache.moves.length > 0) {
+    for (let idx = 0; idx < sessionCache.currentIndex; idx++) {
+      const moveDef = sessionCache.moves[idx];
+      if (!applyMoveToBoard(moveDef, isPlayerMove(idx))) {
+        console.warn('Failed to apply historical move', moveDef);
+        break;
+      }
+    }
+  }
+
+  if (currentFenValue) {
+    chessEngine.load(currentFenValue);
+  }
+
+  currentFen = chessEngine.fen();
+  liveFen = currentFen;
+  updateBoardFromFen(currentFen);
+  updatePGNDisplay();
+  updateAttemptsRemaining(ATTEMPT_LIMIT);
+
   try {
     window.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
     window.addEventListener('keydown', unlockAudio, { once: true, passive: true });
     window.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
     window.addEventListener('click', unlockAudio, { once: true, passive: true });
   } catch (e) {}
-  await refresh();
-  updateAttemptsRemaining(10);
 }
 
-async function refresh() {
-  if (!SID) return;
-  
-  const res = await fetch('/api/v1/session/' + SID + '/state');
-  
-  const data = await res.json();
-  
-  // Update live position
-  updateLiveFen(data.fen);
-  currentTurn = data.turn;
-  leelaTopMoves = data.top_lines || [];
-  const shouldFlip = data.flip || false;
-  
-  // Only update board display if we're at live position
-  if (!isReviewingMoves) {
-    updateBoardFromFen(data.fen);
-  }
-  clearSelection();
-  setWho(data.turn);
-  
-  updateStatistics(data.score_total || 0, data.ply || moveCounter);
-  updateCharts();
-  updatePGNDisplay();
-  
-  if (data.status === 'finished') {
-    console.log('Game finished! Starting new game in 2.5s...');
-    createConfetti();
-    
-    await saveCompletedGame('finished');
-    
-    await loadGameHistory();
-    
-    setTimeout(async () => {
-      console.log('Starting new game now...');
-      await start();
-    }, 2500);
-  }
-}
 
 document.getElementById('new').addEventListener('click', async () => {
   try { unlockAudio(); } catch (e) {}
@@ -1288,7 +1205,7 @@ function updateLiveFen(fen) {
 
 async function bootstrap() {
   try {
-    await ensureChartJs();
+    await Promise.all([ensureChartJs(), ensureChessJs()]);
     initBoard();
     initializeCharts();
     await loadGameHistory();
