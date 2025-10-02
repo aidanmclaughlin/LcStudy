@@ -1,5 +1,5 @@
 let SID = null;
-const sessionCache = { sessionId: null, gameId: null, moves: [], flip: false, currentIndex: 0, maiaLevel: 1500 };
+const sessionCache = { sessionId: null, gameId: null, moves: [], currentIndex: 0, rounds: [], roundIndex: 0, flip: false, maiaLevel: 1500 };
 let selectedSquare = null;
 let currentFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 let currentTurn = 'white';
@@ -10,7 +10,7 @@ let isRebuildingBoard = false;
 
 const ATTEMPT_LIMIT = 10;
 const CHART_JS_SRC = 'https://cdn.jsdelivr.net/npm/chart.js';
-const CHESS_JS_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.0.0/chess.min.js';
+const CHESS_JS_SRC = '/legacy/vendor/chess.esm.js';
 
 let chartLoaderPromise = null;
 let chessLoaderPromise = null;
@@ -60,65 +60,42 @@ function ensureChessJs() {
   if (chessLoaderPromise) {
     return chessLoaderPromise;
   }
-  chessLoaderPromise = new Promise((resolve, reject) => {
-    try {
-      if (typeof window === 'undefined') {
-        resolve();
-        return;
-      }
-      if (typeof window.Chess !== 'undefined') {
-        resolve();
-        return;
-      }
-      const existing = document.querySelector('script[data-chessjs]');
-      if (existing) {
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Failed to load chess.js')), { once: true });
-        return;
-      }
-      const script = document.createElement('script');
-      script.src = CHESS_JS_SRC;
-      script.async = true;
-      script.dataset.chessjs = 'true';
-      script.addEventListener('load', () => resolve());
-      script.addEventListener('error', () => reject(new Error('Failed to load chess.js')));
-      document.head.appendChild(script);
-    } catch (err) {
-      reject(err);
+  chessLoaderPromise = (async () => {
+    if (typeof window === 'undefined') {
+      return;
     }
-  });
+    if (typeof window.Chess !== 'undefined') {
+      return;
+    }
+    try {
+      const mod = await import(/* webpackIgnore: true */ CHESS_JS_SRC);
+      const ChessCtor = mod?.Chess || mod?.default || mod;
+      if (typeof ChessCtor !== 'function') {
+        throw new Error('Invalid chess.js module');
+      }
+      window.Chess = ChessCtor;
+    } catch (err) {
+      console.error('Failed to load chess.js', err);
+      throw err;
+    }
+  })();
   return chessLoaderPromise;
 }
 
-function parseUciMove(uci) {
-  const norm = uci.toLowerCase();
-  return {
-    from: norm.slice(0, 2),
-    to: norm.slice(2, 4),
-    promotion: norm.length > 4 ? norm.slice(4) : undefined
-  };
-}
-
-function isPlayerMove(moveIndex) {
-  const playerIsWhite = !sessionCache.flip;
-  return playerIsWhite ? moveIndex % 2 === 0 : moveIndex % 2 === 1;
-}
-
-function getExpectedPlayerMove() {
-  const moves = sessionCache.moves || [];
-  for (let idx = sessionCache.currentIndex; idx < moves.length; idx++) {
-    if (isPlayerMove(idx)) {
-      return { index: idx, move: moves[idx] };
-    }
-  }
-  return null;
+function getCurrentRound() {
+  const roundIndex = coerceIndex(sessionCache.roundIndex);
+  return sessionCache.rounds[roundIndex] || null;
 }
 
 function applyMoveToBoard(moveDef, isUserMove) {
   if (!chessEngine || !moveDef) return null;
-  const { from, to, promotion } = parseUciMove(moveDef.uci);
+  const norm = moveDef.uci.toLowerCase();
+  const from = norm.slice(0, 2);
+  const to = norm.slice(2, 4);
+  const promotion = norm.length > 4 ? norm.slice(4) : undefined;
   const moveResult = chessEngine.move({ from, to, promotion: promotion || undefined });
   if (!moveResult) {
+    console.warn('applyMoveToBoard failed', { moveDef, isUserMove, fen: chessEngine.fen(), norm });
     return null;
   }
   const fenAfter = chessEngine.fen();
@@ -131,17 +108,147 @@ function applyMoveToBoard(moveDef, isUserMove) {
   return moveResult;
 }
 
-function handleMaiaReplies() {
-  const moves = sessionCache.moves || [];
-  while (sessionCache.currentIndex < moves.length && !isPlayerMove(sessionCache.currentIndex)) {
-    const reply = moves[sessionCache.currentIndex];
-    const result = applyMoveToBoard(reply, false);
-    sessionCache.currentIndex += 1;
-    if (!result) {
-      break;
+function handleMaiaReply(round) {
+  if (!round || !round.reply) {
+    return null;
+  }
+  return applyMoveToBoard(round.reply, false);
+}
+
+function getPlayerColor() {
+  return sessionCache.flip ? 'b' : 'w';
+}
+
+function isPlayerMove(index) {
+  if (typeof index !== 'number' || index < 0) {
+    return false;
+  }
+  const playerColor = getPlayerColor();
+  const isWhitePly = index % 2 === 0;
+  return playerColor === 'w' ? isWhitePly : !isWhitePly;
+}
+
+function buildRoundsFromMoves(moves) {
+  if (!Array.isArray(moves)) {
+    return [];
+  }
+  const rounds = [];
+  for (let idx = 0; idx < moves.length; idx += 1) {
+    if (!isPlayerMove(idx)) {
+      continue;
+    }
+    const playerMove = moves[idx];
+    const replyIndex = idx + 1 < moves.length ? idx + 1 : null;
+    const replyMove = replyIndex !== null ? moves[replyIndex] : undefined;
+    rounds.push({
+      player: playerMove,
+      reply: replyMove,
+      playerIndex: idx,
+      replyIndex: replyIndex
+    });
+  }
+  return rounds;
+}
+
+function coerceIndex(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  if (numeric < 0) {
+    return 0;
+  }
+  return Math.floor(numeric);
+}
+
+function updateRoundIndexFromCurrentIndex() {
+  if (!Array.isArray(sessionCache.rounds)) {
+    sessionCache.roundIndex = 0;
+    return;
+  }
+  const currentPly = coerceIndex(sessionCache.currentIndex);
+  let completed = 0;
+  for (const round of sessionCache.rounds) {
+    if (round && typeof round.playerIndex === 'number' && round.playerIndex < currentPly) {
+      completed += 1;
     }
   }
+  sessionCache.roundIndex = completed;
+}
+
+function getExpectedPlayerMove() {
+  if (!Array.isArray(sessionCache.rounds)) {
+    return null;
+  }
+  const roundIndex = coerceIndex(sessionCache.roundIndex);
+  const round = sessionCache.rounds[roundIndex];
+  if (!round || !round.player) {
+    return null;
+  }
+  return {
+    index: typeof round.playerIndex === 'number' ? round.playerIndex : roundIndex,
+    move: round.player,
+    roundIndex,
+    round
+  };
+}
+
+async function completeExpectedMove(expectedInfo, attemptsForMove, isAutoPlay) {
+  const moveResult = applyMoveToBoard(expectedInfo.move, true);
+  if (!moveResult) {
+    console.warn('Move application failed', expectedInfo.move);
+    flashBoard('wrong');
+    return false;
+  }
+
+  if (isAutoPlay) {
+    flashBoard('illegal');
+    correctStreak = 0;
+  } else {
+    flashBoard('success');
+    correctStreak = (correctStreak || 0) + 1;
+    if (expectedInfo.move && typeof expectedInfo.move.uci === 'string') {
+      const targetSquare = expectedInfo.move.uci.slice(2, 4);
+      celebrateSuccess(targetSquare);
+    }
+  }
+  showStreakPill();
+
+  currentMoveAttempts = 0;
+  gameAttempts.push(attemptsForMove);
+  totalAttempts += attemptsForMove;
+  moveCounter += 1;
+  updateAttemptsRemaining(ATTEMPT_LIMIT);
+
+  sessionCache.currentIndex = expectedInfo.index + 1;
+
+  const round = expectedInfo.round;
+  if (round && round.reply) {
+    const replyResult = handleMaiaReply(round);
+    if (!replyResult) {
+      console.warn('Failed to apply Maia reply', round.reply);
+    } else {
+      const replyIndex = typeof round.replyIndex === 'number' ? round.replyIndex : expectedInfo.index;
+      sessionCache.currentIndex = Math.max(sessionCache.currentIndex, replyIndex + 1);
+    }
+  }
+
+  sessionCache.roundIndex = coerceIndex(expectedInfo.roundIndex) + 1;
+  updateRoundIndexFromCurrentIndex();
+
+  updateCharts();
+  updateStatistics(totalAttempts, moveCounter);
   updatePGNDisplay();
+
+  if (sessionCache.currentIndex >= sessionCache.moves.length) {
+    await saveCompletedGame('finished');
+    await loadGameHistory();
+    setTimeout(async () => {
+      await start();
+    }, 2500);
+  }
+
+  return true;
 }
 
 let gameAttempts = [];
@@ -235,33 +342,10 @@ function initializeCharts() {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        // Reduce left/right padding further so the plot area renders ~5% wider
-        padding: { left: 6, right: 6, top: 12, bottom: 8 }
-      },
-      scales: {
-        y: {
-          min: 0,
-          grid: { color: 'rgba(148,163,184,0.2)' },
-          ticks: { 
-            color: '#9ca3af', 
-            font: { size: 10 },
-            callback: function(value) {
-              return value.toFixed(1);
-            }
-          }
-        },
-        x: {
-          grid: { color: 'rgba(148,163,184,0.2)' },
-          ticks: { 
-            color: '#9ca3af', 
-            font: { size: 10 }
-          }
-        }
+        padding: { left: 18, right: 18, top: 20, bottom: 16 }
       },
       plugins: {
-        legend: { 
-          display: false
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             label: function(context) {
@@ -280,6 +364,30 @@ function initializeCharts() {
               }
               return value;
             }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
+          border: { display: false },
+          ticks: {
+            color: '#9ca3af',
+            font: { size: 10 },
+            padding: 6,
+            callback: function(value) {
+              return value.toFixed(1);
+            }
+          }
+        },
+        x: {
+          grid: { color: 'rgba(148,163,184,0.12)', drawBorder: false },
+          border: { display: false },
+          ticks: {
+            color: '#9ca3af',
+            font: { size: 10 },
+            padding: 6
           }
         }
       }
@@ -303,29 +411,31 @@ function initializeCharts() {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: 15
+        padding: { left: 18, right: 18, top: 20, bottom: 16 }
+      },
+      plugins: {
+        legend: { display: false }
       },
       scales: {
         y: {
           min: 0,
-          grid: { color: 'rgba(148,163,184,0.2)' },
+          grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
+          border: { display: false },
           ticks: { 
             color: '#9ca3af', 
             font: { size: 10 },
-            stepSize: 1
+            stepSize: 1,
+            padding: 6
           }
         },
         x: {
-          grid: { color: 'rgba(148,163,184,0.2)' },
+          grid: { color: 'rgba(148,163,184,0.12)', drawBorder: false },
+          border: { display: false },
           ticks: { 
             color: '#9ca3af', 
-            font: { size: 10 }
+            font: { size: 10 },
+            padding: 6
           }
-        }
-      },
-      plugins: {
-        legend: { 
-          display: false
         }
       }
     }
@@ -654,12 +764,15 @@ async function saveCompletedGame(result) {
   const totalMoves = gameAttempts.length;
   const totalAttemptsForGame = totalAttempts;
   const attemptHistory = [...gameAttempts];
+  console.debug('saveCompletedGame payload', { SID, totalMoves, totalAttemptsForGame, attemptHistory });
   const averageRetries = totalMoves > 0 ? totalAttemptsForGame / totalMoves : 0;
 
   try {
-    await fetch(`/api/v1/session/${SID}/complete`, {
+    const res = await fetch(`/api/v1/session/${SID}/complete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      cache: 'no-store',
       body: JSON.stringify({
         total_attempts: totalAttemptsForGame,
         total_moves: totalMoves,
@@ -669,6 +782,9 @@ async function saveCompletedGame(result) {
         result: result
       })
     });
+    if (!res.ok) {
+      console.error('Failed to persist game', res.status, await res.text());
+    }
   } catch (e) {
     console.log('Failed to persist game:', e);
   }
@@ -780,9 +896,6 @@ async function setupPromotionTest() {
 async function submitMove(mv) {
   if (!SID || !sessionCache.moves.length) return;
 
-  const fromSquare = mv.slice(0, 2);
-  const toSquare = mv.slice(2, 4);
-
   const expectedInfo = getExpectedPlayerMove();
   if (!expectedInfo) {
     console.warn('No expected move remaining');
@@ -795,46 +908,35 @@ async function submitMove(mv) {
     normalized += expectedUci[4];
   }
 
+  console.debug('submitMove', {
+    input: mv,
+    normalized,
+    expected: expectedUci,
+    expectedIndex: expectedInfo.index,
+    currentIndex: sessionCache.currentIndex,
+    flip: sessionCache.flip,
+    movesLength: sessionCache.moves.length,
+    roundIndex: sessionCache.roundIndex
+  });
+
   const attemptsForMove = currentMoveAttempts + 1;
 
   if (normalized !== expectedUci) {
     currentMoveAttempts = attemptsForMove;
+    console.warn('Incorrect move', normalized, 'expected', expectedUci, 'index', expectedInfo.index, 'currentIndex', sessionCache.currentIndex);
     flashBoard('wrong');
     updateAttemptsRemaining(Math.max(0, ATTEMPT_LIMIT - currentMoveAttempts));
     correctStreak = 0;
     showStreakPill();
+    updateBoardFromFen(currentFen);
+    if (currentMoveAttempts >= ATTEMPT_LIMIT) {
+      console.info('Auto-playing move after reaching attempt limit', expectedInfo.move);
+      await completeExpectedMove(expectedInfo, ATTEMPT_LIMIT, true);
+    }
     return;
   }
 
-  const moveResult = applyMoveToBoard(expectedInfo.move, true);
-  if (!moveResult) {
-    flashBoard('wrong');
-    return;
-  }
-
-  flashBoard('success');
-  correctStreak = (correctStreak || 0) + 1;
-  showStreakPill();
-  currentMoveAttempts = 0;
-  gameAttempts.push(attemptsForMove);
-  totalAttempts += attemptsForMove;
-  moveCounter += 1;
-  updateAttemptsRemaining(ATTEMPT_LIMIT);
-
-  sessionCache.currentIndex = expectedInfo.index + 1;
-  handleMaiaReplies();
-
-  updateCharts();
-  updateStatistics(totalAttempts, moveCounter);
-  updatePGNDisplay();
-
-  if (sessionCache.currentIndex >= sessionCache.moves.length) {
-    await saveCompletedGame('finished');
-    await loadGameHistory();
-    setTimeout(async () => {
-      await start();
-    }, 2500);
-  }
+  await completeExpectedMove(expectedInfo, attemptsForMove, false);
 }
 
 async function submitCorrectMoveToServer(mv) {
@@ -1032,15 +1134,37 @@ async function start(customFen = null) {
     console.error('Failed to create session', res.status);
     return;
   }
-  const data = await res.json();
+  const rawBody = await res.text();
+  let data;
+  try {
+    data = rawBody ? JSON.parse(rawBody) : {};
+  } catch (err) {
+    console.error('Failed to parse session response', {
+      status: res.status,
+      body: rawBody
+    }, err);
+    throw err;
+  }
 
   SID = data.id;
   sessionCache.sessionId = data.id;
   sessionCache.gameId = data.game_id;
   sessionCache.moves = Array.isArray(data.moves) ? data.moves : [];
   sessionCache.flip = Boolean(data.flip);
-  sessionCache.currentIndex = data.ply || 0;
+  sessionCache.currentIndex = coerceIndex(data.ply);
   sessionCache.maiaLevel = data.maia_level || maiaLevel;
+  sessionCache.rounds = buildRoundsFromMoves(sessionCache.moves);
+  updateRoundIndexFromCurrentIndex();
+  console.debug('Session initialized', {
+    sessionId: SID,
+    gameId: sessionCache.gameId,
+    moves: sessionCache.moves.length,
+    currentIndex: sessionCache.currentIndex,
+    flip: sessionCache.flip,
+    roundIndex: sessionCache.roundIndex,
+    totalRounds: sessionCache.rounds.length,
+    nextRound: sessionCache.rounds[sessionCache.roundIndex] || null
+  });
 
   const startingFen = data.starting_fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   const currentFenValue = data.fen || startingFen;
@@ -1066,6 +1190,8 @@ async function start(customFen = null) {
       }
     }
   }
+
+  updateRoundIndexFromCurrentIndex();
 
   if (currentFenValue) {
     chessEngine.load(currentFenValue);

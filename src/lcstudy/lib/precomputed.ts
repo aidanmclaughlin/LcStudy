@@ -7,9 +7,15 @@ export interface PrecomputedMove {
   san: string;
 }
 
+export interface PrecomputedRound {
+  player: PrecomputedMove;
+  reply?: PrecomputedMove;
+}
+
 export interface PrecomputedGame {
   id: string;
   moves: PrecomputedMove[];
+  rounds: PrecomputedRound[];
   leelaColor: "w" | "b";
   metadata: {
     event?: string;
@@ -83,10 +89,25 @@ export function loadPrecomputedGames(): PrecomputedGame[] {
       }
     }
 
+    const leelaColor = determineLeelaColor(headers);
+    const rounds = [] as PrecomputedRound[];
+    const playerIsWhite = leelaColor === 'w';
+
+    for (let idx = 0; idx < moves.length; idx += 1) {
+      const isPlayerMove = playerIsWhite ? idx % 2 === 0 : idx % 2 === 1;
+      if (!isPlayerMove) {
+        continue;
+      }
+      const playerMove = moves[idx];
+      const reply = moves[idx + 1];
+      rounds.push({ player: playerMove, reply: reply });
+    }
+
     games.push({
       id: file.replace(/\.pgn$/i, ""),
       moves,
-      leelaColor: determineLeelaColor(headers),
+      rounds,
+      leelaColor,
       metadata: {
         event: normalizeHeader(headers.Event),
         white: normalizeHeader(headers.White),

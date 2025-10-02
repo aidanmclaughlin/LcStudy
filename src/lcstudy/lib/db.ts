@@ -51,6 +51,16 @@ export async function getUserById(id: string): Promise<DbUser | null> {
   return rows[0] ?? null;
 }
 
+export async function ensureGameRecord(args: { id: string; source: unknown }): Promise<void> {
+  const { id, source } = args;
+
+  await sql`
+    INSERT INTO games (id, source)
+    VALUES (${id}, ${JSON.stringify(source)}::jsonb)
+    ON CONFLICT (id) DO NOTHING;
+  `;
+}
+
 export interface UserGameRow {
   userId: string;
   gameId: string;

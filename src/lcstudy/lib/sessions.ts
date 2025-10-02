@@ -5,6 +5,7 @@ import {
   createSessionRecord,
   deleteSessionById,
   deleteSessionsForUser,
+  ensureGameRecord,
   getSessionRecord,
   getUserPlayedGameIds,
   recordGameResult,
@@ -27,6 +28,8 @@ export async function createSessionForUser({ userId, maiaLevel }: CreateSessionO
 
   const played = await getUserPlayedGameIds(userId);
   const game = pickPrecomputedGame(played);
+
+  await ensureGameRecord({ id: game.id, source: game });
 
   const sessionId = randomUUID();
   const flip = game.leelaColor === "b";

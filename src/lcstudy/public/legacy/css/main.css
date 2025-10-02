@@ -15,7 +15,8 @@ html,body {
     height: 100%; 
     margin: 0; 
     padding: 0; 
-    overflow: hidden; 
+    overflow-x: hidden;
+    overflow-y: auto; 
 }
 
 body { 
@@ -69,7 +70,7 @@ h1 {
 #board { 
     border: 1px solid rgba(148,163,184,.2); 
     border-radius: 12px; 
-    overflow:hidden; 
+    overflow: hidden; 
     position: relative;
     display: grid; 
     grid-template-columns: repeat(8, 1fr); 
