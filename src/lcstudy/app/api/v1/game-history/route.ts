@@ -13,8 +13,7 @@ export async function GET() {
 
   const payload = history.map((item) => ({
     date: item.playedAt.toISOString(),
-    average_retries:
-      item.averageRetries ?? (item.totalMoves > 0 ? item.attempts / item.totalMoves : item.attempts),
+    average_retries: item.averageRetries ?? 0,
     total_moves: item.totalMoves,
     maia_level: item.maiaLevel ?? 1500,
     result: item.solved ? "finished" : "incomplete"

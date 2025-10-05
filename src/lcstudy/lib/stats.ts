@@ -41,10 +41,14 @@ export function computeStats(history: UserGameRow[]): UserStatsSummary {
   const totalGames = history.length;
   const solvedGames = history.filter((g) => g.solved).length;
   const winRate = solvedGames / totalGames;
-  const averageAttempts = history.reduce((sum, g) => {
-    const avg = g.averageRetries ?? (g.totalMoves > 0 ? g.attempts / g.totalMoves : g.attempts);
-    return sum + avg;
-  }, 0) / totalGames;
+
+  // Calculate proper weighted average across all games
+  const totalMoves = history.reduce((sum, g) => sum + g.totalMoves, 0);
+  const totalAttempts = history.reduce((sum, g) => {
+    const gameAttempts = (g.averageRetries ?? 0) * g.totalMoves;
+    return sum + gameAttempts;
+  }, 0);
+  const averageAttempts = totalMoves > 0 ? totalAttempts / totalMoves : 0;
 
   // streak calculation (count consecutive solved from the end)
   let currentStreak = 0;
@@ -56,16 +60,16 @@ export function computeStats(history: UserGameRow[]): UserStatsSummary {
     }
   }
 
-  const daily = new Map<string, { wins: number; total: number; attempts: number }>();
+  const daily = new Map<string, { wins: number; total: number; moves: number; attempts: number }>();
   history.forEach((g) => {
     const key = g.playedAt.toISOString().slice(0, 10);
     if (!daily.has(key)) {
-      daily.set(key, { wins: 0, total: 0, attempts: 0 });
+      daily.set(key, { wins: 0, total: 0, moves: 0, attempts: 0 });
     }
     const bucket = daily.get(key)!;
     bucket.total += 1;
-    const avg = g.averageRetries ?? (g.totalMoves > 0 ? g.attempts / g.totalMoves : g.attempts);
-    bucket.attempts += avg;
+    bucket.moves += g.totalMoves;
+    bucket.attempts += (g.averageRetries ?? 0) * g.totalMoves;
     if (g.solved) bucket.wins += 1;
   });
 
@@ -83,14 +87,14 @@ export function computeStats(history: UserGameRow[]): UserStatsSummary {
       gamesPlayed: entry.total,
       wins: entry.wins,
       winRate: entry.wins / entry.total,
-      avgAttempts: entry.attempts / entry.total,
+      avgAttempts: entry.moves > 0 ? entry.attempts / entry.moves : 0,
       cumulativeWinRate: cumulativeWins / cumulativeTotal
     });
   }
 
   const attempts: AttemptsPoint[] = history.map((g, idx) => ({
     label: `#${idx + 1}`,
-    attempts: g.averageRetries ?? (g.totalMoves > 0 ? g.attempts / g.totalMoves : g.attempts),
+    attempts: g.averageRetries ?? 0,
     solved: g.solved
   }));
 

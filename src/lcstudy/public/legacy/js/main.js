@@ -741,14 +741,25 @@ async function loadGameHistory() {
     const res = await fetch('/api/v1/game-history');
     const data = await res.json();
     gameHistory = data.history || [];
-    
+
+    // Calculate proper cumulative average (weighted by total moves)
     cumulativeAverages = [];
-    let runningSum = 0;
+    let totalMovesSoFar = 0;
+    let totalAttemptsSoFar = 0;
+
     for (let i = 0; i < gameHistory.length; i++) {
-      runningSum += gameHistory[i].average_retries;
-      cumulativeAverages.push(runningSum / (i + 1));
+      const game = gameHistory[i];
+      const gameMoves = game.total_moves || 0;
+      const gameAttempts = game.average_retries * gameMoves;
+
+      totalMovesSoFar += gameMoves;
+      totalAttemptsSoFar += gameAttempts;
+
+      // Cumulative average = total attempts / total moves
+      const cumulativeAvg = totalMovesSoFar > 0 ? totalAttemptsSoFar / totalMovesSoFar : 0;
+      cumulativeAverages.push(cumulativeAvg);
     }
-    
+
     updateCharts();
   } catch (e) {
     console.log('Failed to load game history:', e);
@@ -796,11 +807,22 @@ async function saveCompletedGame(result) {
     result: result
   });
 
-  let runningSum = 0;
+  // Recalculate cumulative averages properly (weighted by total moves)
   cumulativeAverages = [];
+  let totalMovesSoFar = 0;
+  let totalAttemptsSoFar = 0;
+
   for (let i = 0; i < gameHistory.length; i++) {
-    runningSum += gameHistory[i].average_retries;
-    cumulativeAverages.push(runningSum / (i + 1));
+    const game = gameHistory[i];
+    const gameMoves = game.total_moves || 0;
+    const gameAttempts = game.average_retries * gameMoves;
+
+    totalMovesSoFar += gameMoves;
+    totalAttemptsSoFar += gameAttempts;
+
+    // Cumulative average = total attempts / total moves
+    const cumulativeAvg = totalMovesSoFar > 0 ? totalAttemptsSoFar / totalMovesSoFar : 0;
+    cumulativeAverages.push(cumulativeAvg);
   }
 
   updateCharts();
