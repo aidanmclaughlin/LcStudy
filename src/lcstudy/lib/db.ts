@@ -131,14 +131,6 @@ export async function recordGameResult(args: {
   await sql`
     INSERT INTO user_games (user_id, game_id, attempts, solved, accuracy, total_moves, average_retries, maia_level)
     VALUES (${userId}, ${gameId}, ${attempts}, ${solved}, ${accuracy}, ${totalMoves}, ${averageRetries}, ${maiaLevel})
-    ON CONFLICT (user_id, game_id)
-    DO UPDATE SET attempts = EXCLUDED.attempts,
-                  solved = EXCLUDED.solved,
-                  accuracy = EXCLUDED.accuracy,
-                  total_moves = EXCLUDED.total_moves,
-                  average_retries = EXCLUDED.average_retries,
-                  maia_level = EXCLUDED.maia_level,
-                  played_at = NOW();
   `;
 }
 
