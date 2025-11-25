@@ -28,18 +28,7 @@ CREATE TABLE IF NOT EXISTS user_games (
 CREATE INDEX IF NOT EXISTS idx_user_games_user ON user_games(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_games_game ON user_games(game_id);
 
--- Allow multiple plays of the same game to be tracked over time.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM pg_constraint
-    WHERE conname = 'user_games_user_id_game_id_key'
-  ) THEN
-    ALTER TABLE user_games DROP CONSTRAINT user_games_user_id_game_id_key;
-  END IF;
-END $$;
-
+ALTER TABLE user_games DROP CONSTRAINT IF EXISTS user_games_user_id_game_id_key;
 CREATE INDEX IF NOT EXISTS idx_user_games_user_played_at ON user_games(user_id, played_at);
 
 CREATE TABLE IF NOT EXISTS sessions (
