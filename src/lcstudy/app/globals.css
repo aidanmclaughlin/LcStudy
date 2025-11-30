@@ -80,10 +80,11 @@ body {
 .panel-chart {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 2.5vh 3vh;
+  gap: 12px;
+  padding: 16px 20px;
   min-height: 0;
   flex: 1 1 0;
+  overflow: hidden;
 }
 
 .panel-section-heading {
@@ -104,11 +105,10 @@ body {
 }
 
 .panel-canvas {
-  width: calc(100% - 8px);
+  width: 100%;
   flex: 1;
-  height: 100%;
+  min-height: 0;
   display: block;
-  margin-left: 8px;
 }
 
 .panel-history {
@@ -185,9 +185,8 @@ body {
 
   .panel-canvas {
     flex: 1 1 auto;
-    height: 100%;
-    width: calc(100% - 8px);
-    margin-left: 8px;
+    width: 100%;
+    min-height: 0;
   }
 
   .panel-history {

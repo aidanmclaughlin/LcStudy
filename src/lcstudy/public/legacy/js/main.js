@@ -342,7 +342,7 @@ function initializeCharts() {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { left: 18, right: 18, top: 20, bottom: 16 }
+        padding: { left: 4, right: 12, top: 8, bottom: 4 }
       },
       plugins: {
         legend: { display: false },
@@ -370,25 +370,23 @@ function initializeCharts() {
       scales: {
         y: {
           min: 0,
+          position: 'left',
           grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
           border: { display: false },
           ticks: {
-            color: '#9ca3af',
-            font: { size: 10 },
-            padding: 6,
+            color: '#64748b',
+            font: { size: 11 },
+            padding: 8,
             callback: function(value) {
               return value.toFixed(1);
             }
+          },
+          afterFit: function(scaleInstance) {
+            scaleInstance.width = 36;
           }
         },
         x: {
-          grid: { color: 'rgba(148,163,184,0.12)', drawBorder: false },
-          border: { display: false },
-          ticks: {
-            color: '#9ca3af',
-            font: { size: 10 },
-            padding: 6
-          }
+          display: false
         }
       }
     }
@@ -404,14 +402,16 @@ function initializeCharts() {
         data: [],
         backgroundColor: '#f59e0b',
         borderColor: '#d97706',
-        borderWidth: 1
+        borderWidth: 1,
+        borderRadius: 3,
+        maxBarThickness: 24
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { left: 18, right: 18, top: 20, bottom: 16 }
+        padding: { left: 4, right: 12, top: 8, bottom: 4 }
       },
       plugins: {
         legend: { display: false }
@@ -419,23 +419,21 @@ function initializeCharts() {
       scales: {
         y: {
           min: 0,
+          position: 'left',
           grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
           border: { display: false },
-          ticks: { 
-            color: '#9ca3af', 
-            font: { size: 10 },
+          ticks: {
+            color: '#64748b',
+            font: { size: 11 },
             stepSize: 1,
-            padding: 6
+            padding: 8
+          },
+          afterFit: function(scaleInstance) {
+            scaleInstance.width = 36;
           }
         },
         x: {
-          grid: { color: 'rgba(148,163,184,0.12)', drawBorder: false },
-          border: { display: false },
-          ticks: { 
-            color: '#9ca3af', 
-            font: { size: 10 },
-            padding: 6
-          }
+          display: false
         }
       }
     }

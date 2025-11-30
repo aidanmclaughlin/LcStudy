@@ -34,3 +34,4 @@ coverage.xml
 # LcStudy user data
 .lcstudy/
 .vercel
+.env*.local
