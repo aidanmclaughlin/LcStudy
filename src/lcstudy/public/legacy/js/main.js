@@ -313,6 +313,21 @@ function initializeCharts() {
     console.error('Chart.js is not available yet. Skipping chart initialization.');
     return;
   }
+
+  // Common chart options for consistent styling
+  const commonScaleOptions = {
+    grid: {
+      color: 'rgba(148, 163, 184, 0.12)',
+      drawBorder: false
+    },
+    border: { display: false },
+    ticks: {
+      color: '#94a3b8',
+      font: { size: 10, weight: '500' },
+      padding: 6
+    }
+  };
+
   const accuracyCtx = document.getElementById('accuracy-chart').getContext('2d');
   accuracyChart = new Chart(accuracyCtx, {
     type: 'line',
@@ -322,18 +337,23 @@ function initializeCharts() {
         label: "Average Retries",
         data: [],
         borderColor: '#8b5cf6',
-        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+        backgroundColor: 'rgba(139, 92, 246, 0.08)',
         borderWidth: 2,
         fill: true,
-        tension: 0.3
+        tension: 0.35,
+        pointRadius: 0,
+        pointHoverRadius: 5
       }, {
         label: "Current Game",
         data: [],
         borderColor: '#22c55e',
-        backgroundColor: 'rgba(34, 197, 94, 0.2)',
+        backgroundColor: 'rgba(34, 197, 94, 0.15)',
         borderWidth: 2,
-        pointRadius: 6,
-        pointHoverRadius: 8,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: '#22c55e',
+        pointBorderColor: '#15803d',
+        pointBorderWidth: 2,
         fill: false,
         tension: 0
       }]
@@ -342,11 +362,18 @@ function initializeCharts() {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { left: 0, right: 8, top: 8, bottom: 4 }
+        padding: { left: 2, right: 10, top: 10, bottom: 2 }
       },
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          titleColor: '#f1f5f9',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(148, 163, 184, 0.2)',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: 10,
           callbacks: {
             label: function(context) {
               const dsIndex = context.datasetIndex;
@@ -356,11 +383,11 @@ function initializeCharts() {
                 const ds = context.chart.data.datasets[0] || {};
                 const minIdx = ds.customMinIndex;
                 if (minIdx !== undefined && minIdx !== null && idx === minIdx) {
-                  return `Lowest Retries: ${value}`;
+                  return `Best: ${value}`;
                 }
-                return `Average Retries: ${value}`;
+                return `Avg: ${value}`;
               } else if (dsIndex === 1) {
-                return `Current Game: ${value}`;
+                return `Now: ${value}`;
               }
               return value;
             }
@@ -369,20 +396,14 @@ function initializeCharts() {
       },
       scales: {
         y: {
+          ...commonScaleOptions,
           min: 0,
-          position: 'left',
-          grid: { color: 'rgba(148,163,184,0.15)', drawBorder: false },
-          border: { display: false },
           ticks: {
-            color: '#64748b',
-            font: { size: 10 },
-            padding: 4,
+            ...commonScaleOptions.ticks,
+            maxTicksLimit: 5,
             callback: function(value) {
               return value.toFixed(1);
             }
-          },
-          afterFit: function(scaleInstance) {
-            scaleInstance.width = 28;
           }
         },
         x: {
@@ -401,35 +422,39 @@ function initializeCharts() {
         label: 'Attempts',
         data: [],
         backgroundColor: '#f59e0b',
-        borderColor: '#d97706',
-        borderWidth: 1,
-        borderRadius: 3,
-        maxBarThickness: 28
+        borderColor: 'transparent',
+        borderWidth: 0,
+        borderRadius: 4,
+        maxBarThickness: 32,
+        borderSkipped: false
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { left: 0, right: 8, top: 8, bottom: 4 }
+        padding: { left: 2, right: 10, top: 10, bottom: 2 }
       },
       plugins: {
-        legend: { display: false }
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          titleColor: '#f1f5f9',
+          bodyColor: '#cbd5e1',
+          borderColor: 'rgba(148, 163, 184, 0.2)',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: 10
+        }
       },
       scales: {
         y: {
+          ...commonScaleOptions,
           min: 0,
-          position: 'left',
-          grid: { color: 'rgba(148,163,184,0.15)', drawBorder: false },
-          border: { display: false },
           ticks: {
-            color: '#64748b',
-            font: { size: 10 },
+            ...commonScaleOptions.ticks,
             stepSize: 1,
-            padding: 4
-          },
-          afterFit: function(scaleInstance) {
-            scaleInstance.width = 20;
+            maxTicksLimit: 6
           }
         },
         x: {

@@ -67,8 +67,9 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 2vh 3vh;
+  gap: 10px;
+  padding: 12px 14px;
+  flex-shrink: 0;
 }
 
 .panel-header-controls {
@@ -80,8 +81,8 @@ body {
 .panel-chart {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 16px;
+  gap: 6px;
+  padding: 12px 14px;
   min-height: 0;
   flex: 1 1 0;
   overflow: hidden;
@@ -91,35 +92,44 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .panel-metric {
   color: #f59e0b;
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 .panel-metric--accent {
   color: #ef4444;
 }
 
-.panel-canvas {
-  width: 100%;
+/* Chart container pattern: relative wrapper with absolute canvas */
+.chart-container {
+  position: relative;
   flex: 1 1 0;
   min-height: 0;
-  max-height: 100%;
-  display: block;
+  width: 100%;
+}
+
+.chart-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .panel-history {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 20px;
+  gap: 6px;
+  padding: 10px 14px;
   min-height: 0;
-  flex: 0 0 100px;
-  height: 100px;
+  flex: 0 0 80px;
   justify-content: center;
 }
 
@@ -180,13 +190,12 @@ body {
 
   .panel-chart {
     flex: none;
-    height: clamp(220px, 55vw, 320px);
-    padding: 22px;
+    height: clamp(180px, 45vw, 260px);
+    padding: 16px;
   }
 
-  .panel-canvas {
-    flex: 1 1 auto;
-    width: 100%;
+  .chart-container {
+    flex: 1 1 0;
     min-height: 0;
   }
 

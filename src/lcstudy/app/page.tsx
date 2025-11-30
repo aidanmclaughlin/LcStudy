@@ -50,7 +50,7 @@ export default async function HomePage() {
                   style={{
                     margin: 0,
                     color: "#f8fafc",
-                    fontSize: "0.9rem",
+                    fontSize: "0.85rem",
                     fontWeight: 600
                   }}
                 >
@@ -60,7 +60,9 @@ export default async function HomePage() {
                   Current Average: <span id="avg-attempts">0</span>
                 </span>
               </div>
-              <canvas id="accuracy-chart" className="panel-canvas" />
+              <div className="chart-container">
+                <canvas id="accuracy-chart" />
+              </div>
             </div>
 
             <div className="panel panel-chart">
@@ -69,7 +71,7 @@ export default async function HomePage() {
                   style={{
                     margin: 0,
                     color: "#f8fafc",
-                    fontSize: "0.9rem",
+                    fontSize: "0.85rem",
                     fontWeight: 600
                   }}
                 >
@@ -79,7 +81,9 @@ export default async function HomePage() {
                   10 left
                 </span>
               </div>
-              <canvas id="attempts-chart" className="panel-canvas" />
+              <div className="chart-container">
+                <canvas id="attempts-chart" />
+              </div>
             </div>
 
             <div className="panel panel-history">
