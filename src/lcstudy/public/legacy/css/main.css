@@ -208,9 +208,12 @@ h1 {
 }
 
 .btn-sm {
-    padding: 6px 10px;
-    font-size: 0.72rem;
+    padding: 6px 14px;
+    font-size: 0.7rem;
     border-radius: 6px;
+    min-width: 76px;
+    text-align: center;
+    box-sizing: border-box;
 }
 
 /* Success ring pulse on destination square */
@@ -271,7 +274,10 @@ h1 {
   border-radius: 6px;
   font-weight: 600;
   font-size: 0.7rem;
-  padding: 5px 8px;
+  padding: 6px 14px;
+  min-width: 76px;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .streak-pill.show {
