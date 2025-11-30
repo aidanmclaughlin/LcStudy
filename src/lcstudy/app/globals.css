@@ -59,9 +59,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: clamp(12px, 1.5vh, 18px);
-  overflow: visible;
-  min-height: min(var(--board-size), 640px);
-  height: auto;
+  overflow: hidden;
+  height: min(var(--board-size), 640px);
 }
 
 .panel-header {
@@ -81,10 +80,10 @@ body {
 .panel-chart {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px;
-  min-height: 120px;
-  flex: 1 1 auto;
+  gap: 8px;
+  padding: 14px 16px;
+  min-height: 0;
+  flex: 1 1 0;
   overflow: hidden;
 }
 
@@ -107,8 +106,9 @@ body {
 
 .panel-canvas {
   width: 100%;
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
+  max-height: 100%;
   display: block;
 }
 
