@@ -23,21 +23,12 @@ export default async function HomePage() {
           </div>
           <div className="sidebar">
             <div className="panel panel-header">
-              <h1
-                style={{
-                  margin: 0,
-                  color: "#f8fafc",
-                  fontSize: "1.2rem",
-                  fontWeight: 800
-                }}
-              >
-                LcStudy
-              </h1>
+              <span className="header-title">LcStudy</span>
               <div className="panel-header-controls">
                 <span id="streak-pill" className="streak-pill">
                   Streak x1
                 </span>
-                <button id="new" className="btn">
+                <button id="new" className="btn btn-sm">
                   New Game
                 </button>
                 <AuthControls />

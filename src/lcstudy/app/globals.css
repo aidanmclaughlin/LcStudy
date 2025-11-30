@@ -67,15 +67,22 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 10px 12px;
   flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
 }
 
 .panel-header-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .panel-chart {
@@ -181,11 +188,15 @@ body {
   .panel-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 16px;
+    gap: 12px;
   }
 
   .panel-header-controls {
     justify-content: space-between;
+  }
+
+  .header-title {
+    font-size: 1rem;
   }
 
   .panel-chart {
@@ -289,12 +300,12 @@ body {
 }
 
 .auth-avatar-btn {
-  width: 38px;
-  height: 38px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: radial-gradient(circle at 30% 30%, rgba(148, 163, 184, 0.25), rgba(30, 41, 59, 0.9));
-  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.6);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -315,7 +326,7 @@ body {
 }
 
 .auth-avatar-fallback {
-  font-size: 0.85rem;
+  font-size: 0.65rem;
   font-weight: 600;
   color: #f8fafc;
 }

@@ -189,19 +189,28 @@ h1 {
     border: 1px solid rgba(139,92,246,.25); 
 }
 
-.btn { 
-    background: linear-gradient(180deg,#8b5cf6,#7c3aed); 
-    color:#fff; 
-    border:0; 
-    padding:9px 14px; 
-    border-radius: 10px; 
-    font-weight:700; 
-    cursor:pointer; 
-    box-shadow: 0 6px 14px rgba(124,58,237,.3); 
+.btn {
+    background: linear-gradient(180deg,#8b5cf6,#7c3aed);
+    color:#fff;
+    border:0;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor:pointer;
+    box-shadow: 0 4px 12px rgba(124,58,237,.25);
+    transition: filter 0.15s ease, transform 0.15s ease;
 }
 
-.btn:hover { 
-    filter:brightness(1.05); 
+.btn:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    border-radius: 6px;
 }
 
 /* Success ring pulse on destination square */
@@ -256,14 +265,20 @@ h1 {
 /* Streak pill */
 .streak-pill {
   display: none;
-  background: rgba(234,179,8,.14);
-  color: #fde68a;
-  border: 0; /* match button border for identical height */
-  border-radius: 10px;
-  font-weight: 700;
+  background: rgba(234,179,8,.12);
+  color: #fcd34d;
+  border: 0;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.7rem;
+  padding: 5px 8px;
 }
 
-.streak-pill.show { display: inline-flex; align-items: center; gap: 6px; }
+.streak-pill.show {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
 .streak-pop {
   animation: streakPop 300ms ease-out;
