@@ -104,10 +104,11 @@ body {
 }
 
 .panel-canvas {
-  width: 100%;
+  width: calc(100% - 8px);
   flex: 1;
   height: 100%;
   display: block;
+  margin-left: 8px;
 }
 
 .panel-history {
@@ -185,6 +186,8 @@ body {
   .panel-canvas {
     flex: 1 1 auto;
     height: 100%;
+    width: calc(100% - 8px);
+    margin-left: 8px;
   }
 
   .panel-history {
