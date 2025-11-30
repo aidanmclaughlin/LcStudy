@@ -13,7 +13,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <Script src="/legacy/js/main.js" strategy="afterInteractive" />
+      <Script src="/legacy/js/main.js" strategy="afterInteractive" type="module" />
       <div className="wrap layout-root" style={{ minHeight: "100vh" }}>
         <div className="layout">
           <div className="board-column">
