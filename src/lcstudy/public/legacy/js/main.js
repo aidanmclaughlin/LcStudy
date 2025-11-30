@@ -342,7 +342,7 @@ function initializeCharts() {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { left: 4, right: 12, top: 8, bottom: 4 }
+        padding: { left: 0, right: 8, top: 8, bottom: 4 }
       },
       plugins: {
         legend: { display: false },
@@ -371,18 +371,18 @@ function initializeCharts() {
         y: {
           min: 0,
           position: 'left',
-          grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
+          grid: { color: 'rgba(148,163,184,0.15)', drawBorder: false },
           border: { display: false },
           ticks: {
             color: '#64748b',
-            font: { size: 11 },
-            padding: 8,
+            font: { size: 10 },
+            padding: 4,
             callback: function(value) {
               return value.toFixed(1);
             }
           },
           afterFit: function(scaleInstance) {
-            scaleInstance.width = 36;
+            scaleInstance.width = 28;
           }
         },
         x: {
@@ -404,14 +404,14 @@ function initializeCharts() {
         borderColor: '#d97706',
         borderWidth: 1,
         borderRadius: 3,
-        maxBarThickness: 24
+        maxBarThickness: 28
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       layout: {
-        padding: { left: 4, right: 12, top: 8, bottom: 4 }
+        padding: { left: 0, right: 8, top: 8, bottom: 4 }
       },
       plugins: {
         legend: { display: false }
@@ -420,16 +420,16 @@ function initializeCharts() {
         y: {
           min: 0,
           position: 'left',
-          grid: { color: 'rgba(148,163,184,0.18)', drawBorder: false },
+          grid: { color: 'rgba(148,163,184,0.15)', drawBorder: false },
           border: { display: false },
           ticks: {
             color: '#64748b',
-            font: { size: 11 },
+            font: { size: 10 },
             stepSize: 1,
-            padding: 8
+            padding: 4
           },
           afterFit: function(scaleInstance) {
-            scaleInstance.width = 36;
+            scaleInstance.width = 20;
           }
         },
         x: {
