@@ -152,7 +152,6 @@ function handleSquareClick(event) {
 
   // Don't allow moves while reviewing history
   if (getIsReviewingMoves()) {
-    console.log('Cannot make moves while reviewing. Use arrow keys to return to current position.');
     return;
   }
 

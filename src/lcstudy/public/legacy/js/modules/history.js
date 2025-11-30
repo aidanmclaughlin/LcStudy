@@ -1,5 +1,7 @@
 /**
  * Move history navigation.
+ * Allows users to review previous positions using arrow keys.
+ *
  * @module history
  */
 
@@ -24,8 +26,6 @@ export function navigateToMove(targetIndex) {
   const maxIndex = moveHistory.length - 1;
   const currentIndex = getCurrentMoveIndex();
 
-  console.log(`Navigate: current=${currentIndex}, target=${targetIndex}, maxIndex=${maxIndex}`);
-
   // Handle navigation from live position
   if (currentIndex === -1) {
     if (targetIndex === -2) {
@@ -44,23 +44,20 @@ export function navigateToMove(targetIndex) {
     targetIndex = -1;
   }
 
+  // No change needed
   if (targetIndex === currentIndex) {
-    console.log('No change needed');
     return;
   }
 
-  console.log(`Moving to index ${targetIndex}`);
   setCurrentMoveIndex(targetIndex);
   setIsReviewingMoves(targetIndex !== -1);
 
   if (targetIndex !== -1) {
     // Show historical position
     const move = moveHistory[targetIndex];
-    console.log(`Showing historical move ${targetIndex}: ${move.san}`);
     updateBoardFromFen(move.fen);
   } else {
     // Return to live position
-    console.log('Returning to live position');
     updateBoardFromFen(getLiveFen());
   }
 
@@ -73,18 +70,7 @@ export function navigateToMove(targetIndex) {
  */
 function updateNavigationUI() {
   const isReviewing = getIsReviewingMoves();
-  const currentIndex = getCurrentMoveIndex();
-  const moveHistory = getMoveHistory();
-
   setReviewingIndicator(isReviewing);
-
-  if (isReviewing) {
-    const move = moveHistory[currentIndex];
-    console.log(`Reviewing move ${currentIndex + 1}/${moveHistory.length}: ${move.san}`);
-  } else {
-    console.log('Back to live position');
-  }
-
   updateCharts();
   updatePgnDisplay();
 }

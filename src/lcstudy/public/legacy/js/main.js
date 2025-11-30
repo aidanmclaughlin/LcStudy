@@ -9,7 +9,6 @@ import { MAIA_LEVELS, ATTEMPT_LIMIT, STARTING_FEN } from './modules/constants.js
 import {
   setSessionId,
   updateSessionCache,
-  resetSessionCache,
   setChessEngine,
   setCurrentFen,
   setLiveFen,
@@ -20,7 +19,7 @@ import {
 } from './modules/state.js';
 import { loadDependencies } from './modules/loaders.js';
 import { initBoard, setFlip, updateBoardFromFen, setMoveSubmitCallback } from './modules/board.js';
-import { initializeCharts, updateCharts, resetAttemptsChart, updateStatistics } from './modules/charts.js';
+import { initializeCharts } from './modules/charts.js';
 import { initAudioUnlockListeners, unlockAudio } from './modules/audio.js';
 import { updateAttemptsRemaining } from './modules/effects.js';
 import { updatePgnDisplay } from './modules/pgn.js';

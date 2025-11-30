@@ -33,7 +33,7 @@ export async function loadGameHistory() {
 
     updateCharts();
   } catch (e) {
-    console.log('Failed to load game history:', e);
+    console.warn('Failed to load game history:', e);
   }
 }
 
@@ -110,7 +110,7 @@ export async function saveCompletedGame(result) {
       console.error('Failed to persist game', res.status, await res.text());
     }
   } catch (e) {
-    console.log('Failed to persist game:', e);
+    console.warn('Failed to persist game:', e);
   }
 
   // Update local history
