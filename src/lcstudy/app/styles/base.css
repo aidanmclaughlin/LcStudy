@@ -1,0 +1,46 @@
+/**
+ * Base styles and resets
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  background:
+    radial-gradient(1200px 800px at 10% 10%, #0f1a34 0%, var(--bg-primary) 50%),
+    linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
+}
+
+/* Scrollbar hiding utility */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Animation bounce for numbers */
+.num-bounce {
+  animation: numBounce 260ms ease-out;
+}
+
+@keyframes numBounce {
+  0% { transform: translateY(-2px) scale(0.98); }
+  60% { transform: translateY(0) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
+}

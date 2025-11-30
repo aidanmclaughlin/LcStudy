@@ -1,0 +1,108 @@
+/**
+ * Chessboard styles
+ */
+
+/* Board container */
+#board {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Square */
+.square {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.square.light {
+  background: var(--board-light);
+}
+
+.square.dark {
+  background: var(--board-dark);
+}
+
+.square.selected {
+  box-shadow: inset 0 0 0 3px var(--board-selected);
+}
+
+.square.highlight {
+  box-shadow: inset 0 0 0 3px var(--board-highlight);
+}
+
+/* Piece */
+.piece {
+  width: 85%;
+  height: 85%;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  cursor: grab;
+  transition: transform 0.1s ease;
+}
+
+.piece:active {
+  cursor: grabbing;
+}
+
+.piece.flipped {
+  transform: rotate(180deg);
+}
+
+.piece.flipped.animate {
+  transform: rotate(180deg) scale(1.1);
+}
+
+.piece.animate {
+  transform: scale(1.1);
+}
+
+/* Hit indicator on correct move */
+.square .hit {
+  position: absolute;
+  width: 80%;
+  height: 80%;
+  border-radius: 10px;
+  border: 3px solid rgba(234, 179, 8, 0.95);
+  box-shadow: 0 0 12px rgba(234, 179, 8, 0.8);
+  animation: hitPulse 380ms ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes hitPulse {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* Move review indicator */
+.reviewing-moves {
+  border: 3px solid var(--color-warning) !important;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5) !important;
+}
+
+.reviewing-moves::after {
+  content: 'REVIEWING MOVES - Use ← → arrows to navigate';
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(245, 158, 11, 0.9);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  white-space: nowrap;
+  z-index: 10;
+}

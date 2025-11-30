@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import "../public/legacy/css/main.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {

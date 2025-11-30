@@ -1,0 +1,75 @@
+/**
+ * Buttons, pills, and interactive elements
+ */
+
+/* Base button */
+.btn {
+  background: linear-gradient(180deg, var(--color-brand), var(--color-brand-dark));
+  color: #fff;
+  border: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+/* Small button variant */
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 0.7rem;
+  border-radius: var(--radius-sm);
+  min-width: 76px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* Pill badge */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  background: rgba(139, 92, 246, 0.12);
+  color: var(--color-brand-light);
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+/* Streak pill */
+.streak-pill {
+  display: none;
+  background: rgba(234, 179, 8, 0.12);
+  color: #fcd34d;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.7rem;
+  padding: 6px 14px;
+  min-width: 76px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.streak-pill.show {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.streak-pop {
+  animation: streakPop 300ms ease-out;
+}
+
+@keyframes streakPop {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}

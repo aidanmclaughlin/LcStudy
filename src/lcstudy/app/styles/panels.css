@@ -1,0 +1,163 @@
+/**
+ * Sidebar panels - header, charts, history
+ */
+
+/* Base panel */
+.panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(4px);
+}
+
+/* Header panel */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.panel-header-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* Chart panels */
+.panel-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  min-height: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.panel-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+.panel-section-heading h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.panel-metric {
+  color: var(--color-warning);
+  font-weight: 600;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.panel-metric--accent {
+  color: var(--color-error);
+}
+
+/* Chart container (relative wrapper for absolute canvas) */
+.chart-container {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.chart-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* History panel */
+.panel-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  min-height: 0;
+  flex: 0 0 80px;
+  justify-content: center;
+}
+
+/* PGN moves display */
+.pgn-moves {
+  font-family: var(--font-serif);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 0.6vh 0;
+  scrollbar-width: none;
+}
+
+.pgn-moves::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============================================
+   Panel Responsive Styles
+   ============================================ */
+
+@media (max-width: 960px) {
+  .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .panel-header-controls {
+    justify-content: space-between;
+  }
+
+  .header-title {
+    font-size: 1rem;
+  }
+
+  .panel-chart {
+    flex: none;
+    height: clamp(180px, 45vw, 260px);
+    padding: 16px;
+  }
+
+  .chart-container {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  .panel-history {
+    flex: none;
+    height: clamp(120px, 32vw, 160px);
+    padding: 22px;
+  }
+}
+
+@media (max-width: 600px) {
+  .panel-header-controls {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .panel-chart,
+  .panel-history {
+    padding: 20px;
+  }
+}
