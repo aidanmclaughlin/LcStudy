@@ -1,34 +1,34 @@
-import { NextResponse } from "next/server";
+/**
+ * New game session API endpoint.
+ *
+ * POST /api/v1/session/new
+ * Creates a new game session for the authenticated user.
+ * Picks an unplayed game from the pool when possible.
+ */
 
 import { getAuthSession } from "@/lib/auth";
 import { createSessionForUser } from "@/lib/sessions";
+import { jsonResponse, unauthorizedResponse, parseJsonBody } from "@/lib/api-utils";
+import type { SessionCreateRequest, SessionCreateResponse } from "@/lib/types/api";
 
-interface SessionCreateRequest {
-  maia_level?: number;
-  custom_fen?: string | null;
-}
+/** Default Maia level when not specified in request */
+const DEFAULT_MAIA_LEVEL = 1500;
 
 export async function POST(request: Request) {
   const session = await getAuthSession();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse();
   }
 
-  let body: SessionCreateRequest = {};
-  try {
-    body = (await request.json()) as SessionCreateRequest;
-  } catch (error) {
-    // ignore malformed bodies and use defaults
-  }
-
-  const maiaLevel = body.maia_level ?? 1500;
+  const body = await parseJsonBody<SessionCreateRequest>(request) ?? {};
+  const maiaLevel = body.maia_level ?? DEFAULT_MAIA_LEVEL;
 
   const { session: gameSession, game } = await createSessionForUser({
     userId: session.user.id,
     maiaLevel
   });
 
-  return NextResponse.json({
+  const response: SessionCreateResponse = {
     id: gameSession.id,
     game_id: game.id,
     flip: gameSession.flip,
@@ -37,5 +37,7 @@ export async function POST(request: Request) {
     moves: game.moves,
     ply: gameSession.ply,
     maia_level: gameSession.maiaLevel
-  });
+  };
+
+  return jsonResponse(response);
 }

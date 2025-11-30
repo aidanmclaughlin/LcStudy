@@ -60,6 +60,10 @@
   font-weight: 600;
 }
 
+.panel-history .panel-section-heading h2 {
+  font-size: 0.9rem;
+}
+
 .panel-metric {
   color: var(--color-warning);
   font-weight: 600;

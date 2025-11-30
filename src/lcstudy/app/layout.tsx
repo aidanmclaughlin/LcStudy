@@ -1,6 +1,16 @@
+/**
+ * Root layout for the application.
+ *
+ * Provides:
+ * - Global CSS imports
+ * - NextAuth session provider
+ * - HTML lang attribute
+ * - Theme color meta tag
+ */
+
 import type { Metadata, Viewport } from "next";
-import "./globals.css";
 import { Providers } from "@/components/providers";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "LcStudy",

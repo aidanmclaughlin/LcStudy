@@ -1,28 +1,32 @@
-import { NextResponse } from "next/server";
+/**
+ * Session completion API endpoint.
+ *
+ * POST /api/v1/session/[sid]/complete
+ * Finalizes a game session, records the result, and cleans up.
+ */
 
 import { getAuthSession } from "@/lib/auth";
 import { finalizeSession } from "@/lib/sessions";
+import {
+  jsonResponse,
+  errorResponse,
+  unauthorizedResponse,
+  parseJsonBody
+} from "@/lib/api-utils";
+import type { SessionCompleteRequest, SessionCompleteResponse } from "@/lib/types/api";
 
-interface CompletePayload {
-  total_attempts?: number;
-  total_moves?: number;
-  attempt_history?: number[];
-  average_retries?: number;
-  maia_level?: number;
-  result?: string;
-}
-
-export async function POST(request: Request, { params }: { params: { sid: string } }) {
+export async function POST(
+  request: Request,
+  { params }: { params: { sid: string } }
+) {
   const session = await getAuthSession();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return unauthorizedResponse();
   }
 
-  let payload: CompletePayload;
-  try {
-    payload = (await request.json()) as CompletePayload;
-  } catch (error) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  const payload = await parseJsonBody<SessionCompleteRequest>(request);
+  if (!payload) {
+    return errorResponse("Invalid payload");
   }
 
   try {
@@ -37,8 +41,8 @@ export async function POST(request: Request, { params }: { params: { sid: string
       result: payload.result ?? "finished"
     });
   } catch (error: unknown) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    return errorResponse((error as Error).message);
   }
 
-  return NextResponse.json({ ok: true });
+  return jsonResponse<SessionCompleteResponse>({ ok: true });
 }

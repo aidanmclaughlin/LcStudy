@@ -1,3 +1,15 @@
+/**
+ * Home page - Main game interface.
+ *
+ * This page renders the chess board and sidebar panels.
+ * The actual game logic is handled by the legacy JavaScript
+ * loaded as an ES module (main.js).
+ *
+ * Layout:
+ * - Board column: Chessboard powered by chessboard-element
+ * - Sidebar: Header, charts (attempts over time, per-move), move history
+ */
+
 import Script from "next/script";
 import { redirect } from "next/navigation";
 
@@ -14,14 +26,19 @@ export default async function HomePage() {
   return (
     <>
       <Script src="/legacy/js/main.js" strategy="afterInteractive" type="module" />
-      <div className="wrap layout-root" style={{ minHeight: "100vh" }}>
+
+      <div className="wrap layout-root">
         <div className="layout">
+          {/* Chess Board */}
           <div className="board-column">
             <div className="board-shell">
               <div id="board" className="board-surface" />
             </div>
           </div>
+
+          {/* Sidebar Panels */}
           <div className="sidebar">
+            {/* Header Panel */}
             <div className="panel panel-header">
               <span className="header-title">LcStudy</span>
               <div className="panel-header-controls">
@@ -35,18 +52,10 @@ export default async function HomePage() {
               </div>
             </div>
 
+            {/* Accuracy Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2
-                  style={{
-                    margin: 0,
-                    color: "#f8fafc",
-                    fontSize: "0.85rem",
-                    fontWeight: 600
-                  }}
-                >
-                  Avg Attempts Over Time
-                </h2>
+                <h2>Avg Attempts Over Time</h2>
                 <span className="panel-metric">
                   Current Average: <span id="avg-attempts">0</span>
                 </span>
@@ -56,18 +65,10 @@ export default async function HomePage() {
               </div>
             </div>
 
+            {/* Attempts Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2
-                  style={{
-                    margin: 0,
-                    color: "#f8fafc",
-                    fontSize: "0.85rem",
-                    fontWeight: 600
-                  }}
-                >
-                  Attempts per Move
-                </h2>
+                <h2>Attempts per Move</h2>
                 <span id="attempts-remaining" className="panel-metric panel-metric--accent">
                   10 left
                 </span>
@@ -77,19 +78,10 @@ export default async function HomePage() {
               </div>
             </div>
 
+            {/* Move History Panel */}
             <div className="panel panel-history">
               <div className="panel-section-heading">
-                <h2
-                  style={{
-                    margin: 0,
-                    color: "#f8fafc",
-                    fontSize: "0.9rem",
-                    fontWeight: 600
-                  }}
-                >
-                  Recent Moves
-                </h2>
-                <div style={{ display: "flex", gap: "1vh", alignItems: "center" }} />
+                <h2>Recent Moves</h2>
               </div>
               <div id="pgn-moves" className="pgn-moves">
                 <div id="move-list" className="meta">

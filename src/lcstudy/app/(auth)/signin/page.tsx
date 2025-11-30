@@ -1,3 +1,10 @@
+/**
+ * Sign-in page.
+ *
+ * Displays a simple sign-in card with Google OAuth button.
+ * This page is shown when users are not authenticated.
+ */
+
 "use client";
 
 import { signIn } from "next-auth/react";
