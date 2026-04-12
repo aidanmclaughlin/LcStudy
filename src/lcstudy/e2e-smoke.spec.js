@@ -376,6 +376,7 @@ test.describe('desktop checkmate', () => {
       (document.querySelector('#move-list')?.textContent || '').includes(expectedSan) &&
       (document.querySelector('#move-feedback')?.textContent || '').includes('%')
     ), expectedMate.san);
+    await page.waitForSelector('.confetti');
     await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
     await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
     await page.waitForTimeout(3200);

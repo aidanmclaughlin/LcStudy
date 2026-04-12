@@ -20,7 +20,7 @@ import {
   setLastMoveHighlight
 } from './state.js';
 import { animateMove, showMoveHint, updateBoardAfterMove } from './board.js';
-import { flashBoard, celebrateSuccess, showStreakPill, updateMoveFeedback } from './effects.js';
+import { flashBoard, celebrateSuccess, celebrateCheckmate, showStreakPill, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame, loadGameHistory } from './api.js';
@@ -383,6 +383,9 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   if (updatedCache.currentIndex >= updatedCache.moves.length) {
     const chessEngine = getChessEngine();
     pendingMateCompletion = Boolean(chessEngine?.isCheckmate?.());
+    if (pendingMateCompletion && moveResult.to) {
+      celebrateCheckmate(moveResult.to);
+    }
   }
 
   return true;

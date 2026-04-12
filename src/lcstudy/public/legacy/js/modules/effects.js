@@ -156,6 +156,20 @@ export function celebrateSuccess(toSquare) {
 }
 
 /**
+ * Create a larger but short-lived celebration when the mating move lands.
+ * @param {string} toSquare - Destination square of the checkmate move
+ */
+export function celebrateCheckmate(toSquare) {
+  const el = document.querySelector(`[data-square="${toSquare}"]`);
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    createConfettiBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, 36);
+  }
+
+  createCelebrationConfetti(90);
+}
+
+/**
  * Create full-screen falling confetti for game completion.
  * @param {number} [count=150] - Number of confetti pieces
  */
