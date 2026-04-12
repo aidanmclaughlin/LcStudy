@@ -1,10 +1,13 @@
 # LcStudy
 
-Learn to think like Leela (LcZero). LcStudy is a small Python project with a CLI and a local web app that helps you practice predicting Leela’s moves while playing against Maia engines.
+Learn to think like Leela (LcZero). LcStudy helps you practice predicting Leela's moves while playing against Maia (human-like) engines.
 
-The repo is intentionally minimal: a Python package, FastAPI-based web app, and just enough plumbing to install engines/networks and generate training games locally.
+## Two Versions
 
-• Looking for the engine/agent details? See AGENTS.md
+- **Vercel/Next.js** (`src/lcstudy/`): Deployed web app with Google auth and Postgres persistence. See `src/lcstudy/README.md`.
+- **Python/FastAPI** (legacy): Local CLI and web app. See below.
+
+**Looking for the engine/agent details?** See AGENTS.md
 
 ## Quick start
 
@@ -56,7 +59,7 @@ lcstudy up --no-seeds
 Notes
 - macOS (including Apple Silicon) works with lc0 builds that support the appropriate backend; lc0 typically auto-detects the best backend.
 - Default locations: lc0 lives in ~/.lcstudy/bin and networks in ~/.lcstudy/nets.
-- If a download ever fails, you can place .pb.gz files manually in ~/.lcstudy/nets (names like lczero-best.pb.gz, maia-1500.pb.gz, …).
+- If a download ever fails, you can place .pb.gz files manually in ~/.lcstudy/nets (names like BT4-it332.pb.gz, maia-1500.pb.gz, ...).
 - Precomputed games are written to ~/.lcstudy/precomputed/games by the background generator.
 
 ## CLI cheatsheet
@@ -66,14 +69,13 @@ Notes
 
 ## Project layout
 
-- src/lcstudy
-  - config/: settings and logging
-  - controllers/: FastAPI routers and DI helpers
-  - services/: engine, analysis, game logic
-  - repositories/: in-memory sessions, history store, precomputed seeds
-  - domain/: data models and request/response validation
-  - static/, templates/: bundled UI assets
-  - webapp.py: app wiring and lifecycle
+- src/lcstudy/: Next.js/Vercel app (primary)
+  - app/: Next.js pages and API routes
+  - public/legacy/: Original HTML/CSS/JS UI
+  - data/pgn/: Precomputed Leela vs Maia games
+  - lib/: Database and game logic
+- tools/: Offline utilities
+  - generate_games.py: Generate Leela vs Maia PGN files
 - examples/: placeholder for sample positions and walkthroughs
 
 ## Configuration
@@ -112,10 +114,10 @@ See CONTRIBUTING.md for more details.
 
 ## Troubleshooting
 
-- lc0 not found: install via lcstudy install lc0 or your system package manager; ensure lc0 is on PATH
-- Best net download failed: place a .pb.gz at ~/.lcstudy/nets/lczero-best.pb.gz
-- Maia nets missing: run lcstudy install maia or drop maia-<level>.pb.gz files into ~/.lcstudy/nets
-- The UI says “No precomputed game available”: the app can still run, but grading requires precomputed games. Let the background generator run for a bit (lcstudy up), or generate seeds yourself with: python -m lcstudy.scripts.generate_seeds
+- **lc0 not found**: Install via `brew install lc0` or your system package manager
+- **Best net download failed**: Place BT4-it332 at `~/.lcstudy/nets/BT4-it332.pb.gz`
+- **Maia nets missing**: Download from [maia-chess releases](https://github.com/CSSLab/maia-chess/releases) into `~/.lcstudy/nets`
+- **Need more games**: Generate offline with `python tools/generate_games.py --count 100` (see `tools/README.md`)
 
 ## Roadmap ideas
 

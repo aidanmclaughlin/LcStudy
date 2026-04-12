@@ -10,19 +10,20 @@ Requirements:
 
 You'll also need:
     - lc0 binary (install via brew install lc0)
-    - Leela network (~/.lcstudy/nets/lczero-best.pb.gz)
+    - Leela network (~/.lcstudy/nets/BT4-it332.pb.gz)
     - Maia networks (~/.lcstudy/nets/maia-1100.pb.gz through maia-1900.pb.gz)
 """
 
 import argparse
 import base64
+from dataclasses import dataclass
 import json
 import random
 import re
+import shutil
 import subprocess
 import sys
 import time
-import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -44,16 +45,33 @@ APPLE_SILICON_CONFIG = Path(__file__).parent / "lc0-apple-silicon.config"
 
 MAIA_LEVELS = [1100, 1300, 1500, 1700, 1900]
 
-# BT4 transformer networks are extremely slow on Metal - use policy-only (1 node)
-# for practical game generation. Still provides strong play using the raw policy.
-LEELA_NODES = 1
-MAIA_NODES = 1
+DEFAULT_LEELA_NET = "BT4-it332"
+DEFAULT_LEELA_MOVETIME_MS = 5_000
+DEFAULT_MAIA_NODES = 1
 MAX_PLIES = 300
 
 
 # =============================================================================
 # UCI Engine (Direct subprocess, no python-chess engine module)
 # =============================================================================
+
+@dataclass(frozen=True)
+class SearchBudget:
+    movetime_ms: Optional[int] = None
+    nodes: Optional[int] = None
+
+    def command(self) -> str:
+        if self.movetime_ms is not None:
+            return f"go movetime {self.movetime_ms}"
+        if self.nodes is not None:
+            return f"go nodes {self.nodes}"
+        raise ValueError("SearchBudget must define movetime_ms or nodes")
+
+    def label(self) -> str:
+        if self.movetime_ms is not None:
+            return f"{self.movetime_ms}ms"
+        return f"{self.nodes} nodes"
+
 
 class UciEngine:
     """Simple synchronous UCI engine wrapper using subprocess."""
@@ -102,10 +120,10 @@ class UciEngine:
             if line.startswith(expected):
                 return lines
 
-    def get_best_move(self, board: chess.Board, nodes: int) -> chess.Move:
+    def get_best_move(self, board: chess.Board, budget: SearchBudget) -> chess.Move:
         """Get the best move for the position."""
         self._send(f"position fen {board.fen()}")
-        self._send(f"go nodes {nodes}")
+        self._send(budget.command())
 
         while True:
             line = self.proc.stdout.readline().strip()
@@ -117,7 +135,11 @@ class UciEngine:
                     return chess.Move.from_uci(match.group(1))
                 raise ValueError(f"Could not parse bestmove: {line}")
 
-    def get_policy_analysis(self, board: chess.Board, nodes: int) -> tuple[chess.Move, list[dict[str, object]]]:
+    def get_policy_analysis(
+        self,
+        board: chess.Board,
+        budget: SearchBudget,
+    ) -> tuple[chess.Move, list[dict[str, object]]]:
         """Get LC0 policy data for every legal move in the position."""
         legal_moves = list(board.legal_moves)
         legal_uci = {move.uci() for move in legal_moves}
@@ -125,7 +147,7 @@ class UciEngine:
         best_move = None
 
         self._send(f"position fen {board.fen()}")
-        self._send(f"go nodes {nodes}")
+        self._send(budget.command())
 
         while True:
             line = self.proc.stdout.readline().strip()
@@ -204,6 +226,14 @@ def find_network(name: str) -> Path:
     raise FileNotFoundError(f"Network '{name}' not found")
 
 
+def network_name(path: Path) -> str:
+    name = path.name
+    for suffix in [".pb.gz", ".pb"]:
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return path.stem
+
+
 def normalize_engine_uci(raw_uci: str, legal_uci: set[str]) -> str:
     """Normalize LC0's internal castling move encoding to standard UCI."""
     if raw_uci in legal_uci:
@@ -243,8 +273,13 @@ def generate_game(
     leela_net: Path,
     maia_net: Path,
     maia_level: int,
+    leela_budget: SearchBudget,
+    maia_budget: SearchBudget,
+    leela_backend: Optional[str],
+    leela_config: Optional[Path],
+    maia_backend: Optional[str],
     max_plies: int = MAX_PLIES,
-) -> tuple[str, int]:
+) -> tuple[str, int, str]:
     """Generate a single game with LC0 policy analysis on every player move."""
 
     board = chess.Board()
@@ -257,25 +292,32 @@ def generate_game(
     game.headers["White"] = "Leela (PLAYER)" if leela_is_white else f"Maia {maia_level} (AUTO)"
     game.headers["Black"] = f"Maia {maia_level} (AUTO)" if leela_is_white else "Leela (PLAYER)"
     game.headers["Result"] = "*"
+    game.headers["LcStudyLeelaNet"] = network_name(leela_net)
+    game.headers["LcStudyLeelaSearch"] = leela_budget.label()
+    game.headers["LcStudyMaiaSearch"] = maia_budget.label()
 
     node = game
     plies = 0
     maia_engine = None
+    leela_engine = None
 
     try:
-        maia_engine = UciEngine(lc0_path, maia_net, backend="blas", multipv=1)
+        maia_engine = UciEngine(lc0_path, maia_net, backend=maia_backend, multipv=1)
+        leela_engine = UciEngine(
+            lc0_path,
+            leela_net,
+            backend=leela_backend,
+            multipv=500,
+            config=leela_config,
+        )
 
         while not board.is_game_over() and plies < max_plies:
             is_leela_turn = (board.turn == chess.WHITE) == leela_is_white
 
             if is_leela_turn:
-                leela_engine = UciEngine(lc0_path, leela_net, multipv=500, config=APPLE_SILICON_CONFIG)
-                try:
-                    move, analysis = leela_engine.get_policy_analysis(board, LEELA_NODES)
-                finally:
-                    leela_engine.quit()
+                move, analysis = leela_engine.get_policy_analysis(board, leela_budget)
             else:
-                move = maia_engine.get_best_move(board, MAIA_NODES)
+                move = maia_engine.get_best_move(board, maia_budget)
                 analysis = None
 
             board.push(move)
@@ -296,9 +338,11 @@ def generate_game(
                     game.headers["Result"] = "0-1"
 
         exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=True)
-        return game.accept(exporter), plies
+        return game.accept(exporter), plies, game.headers["Result"]
 
     finally:
+        if leela_engine:
+            leela_engine.quit()
         if maia_engine:
             maia_engine.quit()
 
@@ -308,7 +352,33 @@ def main():
     parser.add_argument("--count", "-n", type=int, default=10)
     parser.add_argument("--output", "-o", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--max-plies", type=int, default=MAX_PLIES)
+    parser.add_argument("--leela-net", default=DEFAULT_LEELA_NET)
+    parser.add_argument("--leela-movetime-ms", type=int, default=DEFAULT_LEELA_MOVETIME_MS)
+    parser.add_argument("--maia-nodes", type=int, default=DEFAULT_MAIA_NODES)
+    parser.add_argument("--leela-backend", default=None)
+    parser.add_argument("--maia-backend", default="blas")
+    parser.add_argument("--leela-config", type=Path, default=APPLE_SILICON_CONFIG)
+    parser.add_argument("--no-leela-config", action="store_true")
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--replace-output", action="store_true")
+    parser.add_argument("--require-result", action="store_true")
     args = parser.parse_args()
+
+    if args.count < 1:
+        print("Error: --count must be at least 1")
+        return 1
+    if args.leela_movetime_ms < 1:
+        print("Error: --leela-movetime-ms must be positive")
+        return 1
+    if args.maia_nodes < 1:
+        print("Error: --maia-nodes must be positive")
+        return 1
+    if args.seed is not None:
+        random.seed(args.seed)
+
+    leela_budget = SearchBudget(movetime_ms=args.leela_movetime_ms)
+    maia_budget = SearchBudget(nodes=args.maia_nodes)
+    leela_config = None if args.no_leela_config else args.leela_config
 
     print("Checking setup...")
 
@@ -320,7 +390,7 @@ def main():
         return 1
 
     try:
-        leela_net = find_network("lczero-best")
+        leela_net = find_network(args.leela_net)
         print(f"  Leela: {leela_net.name}")
     except FileNotFoundError as e:
         print(f"Error: {e}")
@@ -335,6 +405,15 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     existing = len(list(args.output.glob("*.pgn")))
     print(f"  Output: {args.output.name}/ ({existing} existing)")
+    print(f"  Leela search: {leela_budget.label()}/move")
+    print(f"  Maia search: {maia_budget.label()}/move")
+
+    write_dir = args.output
+    if args.replace_output:
+        write_dir = args.output / f".new-{int(time.time())}"
+        if write_dir.exists():
+            shutil.rmtree(write_dir)
+        write_dir.mkdir(parents=True)
 
     print(f"\nGenerating {args.count} games...\n")
 
@@ -344,6 +423,7 @@ def main():
 
     attempts = 0
     max_attempts = max(args.count * 4, args.count + 5)
+    batch_id = f"seed_{args.seed}" if args.seed is not None else f"seed_{int(time.time())}"
 
     while success < args.count and attempts < max_attempts:
         attempts += 1
@@ -351,10 +431,23 @@ def main():
         maia_net = find_network(f"maia-{level}")
 
         try:
-            pgn, plies = generate_game(lc0_path, leela_net, maia_net, level, args.max_plies)
+            pgn, plies, result = generate_game(
+                lc0_path,
+                leela_net,
+                maia_net,
+                level,
+                leela_budget,
+                maia_budget,
+                args.leela_backend,
+                leela_config,
+                args.maia_backend,
+                args.max_plies,
+            )
+            if args.require_result and result == "*":
+                raise ValueError(f"Game reached {plies} plies without a result")
 
-            fname = f"seed_{int(time.time())}_{uuid.uuid4().hex[:8]}.pgn"
-            (args.output / fname).write_text(pgn)
+            fname = f"{batch_id}_{success + 1:04d}.pgn"
+            (write_dir / fname).write_text(pgn)
 
             success += 1
             total_plies += plies
@@ -367,7 +460,22 @@ def main():
 
     elapsed = time.time() - start
     avg = total_plies / success if success else 0
+
+    if args.replace_output:
+        if success != args.count:
+            shutil.rmtree(write_dir)
+            print("Replacement aborted; existing PGNs were left unchanged.")
+            return 1
+        for old_file in args.output.glob("*.pgn"):
+            old_file.unlink()
+        for new_file in sorted(write_dir.glob("*.pgn")):
+            new_file.replace(args.output / new_file.name)
+        shutil.rmtree(write_dir)
+        print("Replaced existing PGNs with the new generated set.")
+
     print(f"\nDone! {success}/{args.count} in {elapsed:.0f}s ({avg:.0f} avg plies)")
+    if success != args.count:
+        return 1
 
     return 0
 
