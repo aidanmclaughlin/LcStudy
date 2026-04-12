@@ -240,8 +240,8 @@ async function applyAutoMoveToBoard(moveDef, isUserMove) {
   if (!applied) return null;
 
   await sleep(AUTO_PLAY_DELAY_MS);
-  await animateMove(applied.from, applied.to);
-  finishMoveOnBoard(applied);
+  const animated = await animateMove(applied.from, applied.to, () => finishMoveOnBoard(applied));
+  if (!animated) finishMoveOnBoard(applied);
   return applied.moveResult;
 }
 

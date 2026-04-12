@@ -334,8 +334,9 @@ function handlePointerCancel() {
  * Animate a piece moving between squares.
  * @param {string} fromSquare - Source square
  * @param {string} toSquare - Destination square
+ * @param {function(): void} commitMove - Paint the final board position before removing the ghost
  */
-export function animateMove(fromSquare, toSquare) {
+export function animateMove(fromSquare, toSquare, commitMove = null) {
   const fromEl = document.querySelector(`[data-square="${fromSquare}"]`);
   const toEl = document.querySelector(`[data-square="${toSquare}"]`);
   const piece = fromEl?.querySelector('.piece');
@@ -368,6 +369,9 @@ export function animateMove(fromSquare, toSquare) {
     });
 
     window.setTimeout(() => {
+      if (typeof commitMove === 'function') {
+        commitMove();
+      }
       ghost.remove();
       piece.style.visibility = '';
       if (existingPiece) existingPiece.style.visibility = '';
