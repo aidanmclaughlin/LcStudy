@@ -19,7 +19,7 @@ import {
   getMoveCounter,
   setLastMoveHighlight
 } from './state.js';
-import { animateMove, updateBoardAfterMove } from './board.js';
+import { animateMove, showMoveHint, updateBoardAfterMove } from './board.js';
 import { flashBoard, celebrateSuccess, showStreakPill, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
@@ -31,6 +31,7 @@ let pendingMateCompletion = false;
 let movePlaybackInProgress = false;
 
 const AUTO_PLAY_DELAY_MS = 320;
+const WRONG_MOVE_REVEAL_DELAY_MS = 180;
 
 /**
  * Clear pending completion state after starting a fresh game.
@@ -235,11 +236,11 @@ export function applyMoveToBoard(moveDef, isUserMove) {
   return applied.moveResult;
 }
 
-async function applyAutoMoveToBoard(moveDef, isUserMove) {
+async function applyAutoMoveToBoard(moveDef, isUserMove, delayMs = AUTO_PLAY_DELAY_MS) {
   const applied = applyMoveToEngine(moveDef, isUserMove);
   if (!applied) return null;
 
-  await sleep(AUTO_PLAY_DELAY_MS);
+  await sleep(delayMs);
   const animated = await animateMove(applied.from, applied.to, () => finishMoveOnBoard(applied));
   if (!animated) finishMoveOnBoard(applied);
   return applied.moveResult;
@@ -307,9 +308,25 @@ export async function handleMaiaReply(round) {
  * @returns {Promise<boolean>} Success
  */
 export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestMove) {
-  const moveResult = isBestMove
-    ? applyMoveToBoard(expectedInfo.move, true)
-    : await applyAutoMoveToBoard(expectedInfo.move, true);
+  let moveResult = null;
+
+  if (isBestMove) {
+    moveResult = applyMoveToBoard(expectedInfo.move, true);
+  } else {
+    const intensity = inaccuracyIntensity(moveEvaluation.accuracy);
+    const shakeDuration = flashBoard('wrong', intensity);
+    hapticInaccuracy(moveEvaluation.accuracy);
+    setCorrectStreak(0);
+
+    await sleep(Math.min(380, Math.max(WRONG_MOVE_REVEAL_DELAY_MS, shakeDuration * 0.55)));
+    updateMoveFeedback({
+      ...moveEvaluation,
+      bestMoveSan: expectedInfo.move.san,
+      bestMoveUci: expectedInfo.move.uci
+    });
+    showMoveHint(expectedInfo.move.uci.slice(0, 2), expectedInfo.move.uci.slice(2, 4));
+    moveResult = await applyAutoMoveToBoard(expectedInfo.move, true, WRONG_MOVE_REVEAL_DELAY_MS);
+  }
 
   if (!moveResult) {
     console.warn('Move application failed', expectedInfo.move);
@@ -327,10 +344,6 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
       const targetSquare = expectedInfo.move.uci.slice(2, 4);
       celebrateSuccess(targetSquare);
     }
-  } else {
-    flashBoard('wrong', inaccuracyIntensity(moveEvaluation.accuracy));
-    hapticInaccuracy(moveEvaluation.accuracy);
-    setCorrectStreak(0);
   }
 
   const scoreEvaluation = isBestMove

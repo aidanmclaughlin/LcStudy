@@ -14,7 +14,7 @@ import { playSuccessChime } from './audio.js';
  */
 export function flashBoard(result, intensity = 1) {
   const boardEl = document.getElementById('board');
-  if (!boardEl) return;
+  if (!boardEl) return 0;
 
   const classMap = {
     success: 'board-flash-green',
@@ -23,10 +23,14 @@ export function flashBoard(result, intensity = 1) {
   };
 
   const className = classMap[result] || 'board-shake';
-  const duration = className === 'board-shake' ? 400 : 300;
   const clampedIntensity = Math.max(0, Math.min(1, Number(intensity) || 0));
+  const force = Math.pow(clampedIntensity, 1.35);
+  const duration = className === 'board-shake' ? 240 + force * 520 : 300;
 
-  boardEl.style.setProperty('--shake-distance', `${4 + clampedIntensity * 10}px`);
+  boardEl.style.setProperty('--shake-distance', `${2 + force * 30}px`);
+  boardEl.style.setProperty('--shake-y', `${force * 4.8}px`);
+  boardEl.style.setProperty('--shake-twist', `${force * 1.4}deg`);
+  boardEl.style.setProperty('--shake-duration', `${duration}ms`);
 
   // Remove existing classes and force reflow
   boardEl.classList.remove('board-flash-green', 'board-shake', 'board-flash-gray');
@@ -37,6 +41,8 @@ export function flashBoard(result, intensity = 1) {
   setTimeout(() => {
     boardEl.classList.remove(className);
   }, duration);
+
+  return duration;
 }
 
 /**
@@ -193,6 +199,12 @@ export function updateMoveFeedback(result = null) {
   if (result.illegal) {
     feedbackElement.textContent = 'Illegal move';
     feedbackElement.style.color = '#94a3b8';
+    return;
+  }
+
+  if (result.bestMoveSan || result.bestMoveUci) {
+    feedbackElement.textContent = `Best: ${result.bestMoveSan || result.bestMoveUci}`;
+    feedbackElement.style.color = '#f59e0b';
     return;
   }
 

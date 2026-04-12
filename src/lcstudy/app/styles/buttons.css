@@ -50,24 +50,30 @@
 .zen-icon,
 .zen-exit-icon {
   position: relative;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   display: block;
 }
 
-.zen-icon::before,
-.zen-icon::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border: 2px solid currentColor;
-  border-radius: 3px;
+.zen-icon {
+  background:
+    linear-gradient(currentColor, currentColor) left top / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left top / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 7px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 2px 7px no-repeat;
 }
 
-.zen-icon::after {
-  inset: 4px;
-  border-width: 1px;
-  opacity: 0.75;
+.zen-icon::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.8;
 }
 
 .zen-exit-icon::before,
@@ -93,9 +99,16 @@
 .zen-exit {
   display: none;
   position: fixed;
-  top: max(14px, env(safe-area-inset-top));
-  right: max(14px, env(safe-area-inset-right));
+  top: max(18px, env(safe-area-inset-top));
+  right: max(18px, env(safe-area-inset-right));
   z-index: 10000;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  background: rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.28);
 }
 
 body.zen-mode .zen-exit {

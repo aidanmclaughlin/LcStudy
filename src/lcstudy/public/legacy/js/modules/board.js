@@ -37,6 +37,12 @@ const LAST_MOVE_CLASSES = [
   'last-opponent-move-to'
 ];
 
+const MOVE_HINT_CLASSES = [
+  'move-hint',
+  'move-hint-from',
+  'move-hint-to'
+];
+
 /**
  * Set the callback for move submission.
  * @param {function(string): void} callback - Called with UCI move string
@@ -259,6 +265,26 @@ export function applyLastMoveHighlights() {
 
   applyMoveHighlight('user', highlights.user);
   applyMoveHighlight('opponent', highlights.opponent);
+}
+
+/**
+ * Briefly show the move Leela wanted before it is auto-played.
+ */
+export function showMoveHint(fromSquare, toSquare) {
+  document.querySelectorAll('.square').forEach(squareEl => {
+    squareEl.classList.remove(...MOVE_HINT_CLASSES);
+  });
+
+  const fromEl = document.querySelector(`[data-square="${fromSquare}"]`);
+  const toEl = document.querySelector(`[data-square="${toSquare}"]`);
+
+  fromEl?.classList.add('move-hint', 'move-hint-from');
+  toEl?.classList.add('move-hint', 'move-hint-to');
+
+  window.setTimeout(() => {
+    fromEl?.classList.remove(...MOVE_HINT_CLASSES);
+    toEl?.classList.remove(...MOVE_HINT_CLASSES);
+  }, 760);
 }
 
 function getPlayerPieceOnSquare(squareEl) {

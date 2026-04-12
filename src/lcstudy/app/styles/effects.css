@@ -8,7 +8,7 @@
 }
 
 .board-shake {
-  animation: boardShake 400ms ease;
+  animation: boardShake var(--shake-duration, 400ms) ease;
 }
 
 .board-flash-gray {
@@ -22,9 +22,17 @@
 }
 
 @keyframes boardShake {
-  0%, 100% { transform: translateX(0) rotate(var(--board-rotation, 0deg)); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(calc(-1 * var(--shake-distance, 8px))) rotate(var(--board-rotation, 0deg)); }
-  20%, 40%, 60%, 80% { transform: translateX(var(--shake-distance, 8px)) rotate(var(--board-rotation, 0deg)); }
+  0%, 100% { transform: translate(0, 0) rotate(var(--board-rotation, 0deg)); }
+  10%, 30%, 50%, 70%, 90% {
+    transform:
+      translate(calc(-1 * var(--shake-distance, 8px)), calc(-1 * var(--shake-y, 0px)))
+      rotate(calc(var(--board-rotation, 0deg) - var(--shake-twist, 0deg)));
+  }
+  20%, 40%, 60%, 80% {
+    transform:
+      translate(var(--shake-distance, 8px), var(--shake-y, 0px))
+      rotate(calc(var(--board-rotation, 0deg) + var(--shake-twist, 0deg)));
+  }
 }
 
 @keyframes boardGray {

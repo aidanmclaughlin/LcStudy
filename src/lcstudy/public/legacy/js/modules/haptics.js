@@ -22,16 +22,20 @@ export function hapticError() {
 }
 
 export function hapticInaccuracy(accuracy) {
-  const miss = Math.max(0, Math.min(100, 100 - Number(accuracy || 0)));
+  const miss = Math.max(0, Math.min(1, (100 - Number(accuracy || 0)) / 100));
+  const force = Math.pow(miss, 1.35);
+  const pulses = Math.max(1, Math.min(5, Math.round(1 + force * 4)));
+  const gap = Math.max(45, 105 - force * 45);
 
-  if (miss < 12) {
-    haptic();
-  } else if (miss < 35) {
-    haptic();
-    setTimeout(() => haptic(), 110);
-  } else if (miss < 65) {
-    haptic.confirm();
-  } else {
-    haptic.error();
+  for (let idx = 0; idx < pulses; idx++) {
+    setTimeout(() => {
+      if (force > 0.72 && idx === 0) {
+        haptic.error();
+      } else if (force > 0.38 && idx === 0) {
+        haptic.confirm();
+      } else {
+        haptic();
+      }
+    }, idx * gap);
   }
 }
