@@ -17,6 +17,8 @@ You'll also need:
 import argparse
 import base64
 from dataclasses import dataclass
+import hashlib
+import io
 import json
 import random
 import re
@@ -43,7 +45,7 @@ NETS_DIR = Path.home() / ".lcstudy" / "nets"
 OUTPUT_DIR = Path(__file__).parent.parent / "src" / "lcstudy" / "data" / "pgn"
 APPLE_SILICON_CONFIG = Path(__file__).parent / "lc0-apple-silicon.config"
 
-MAIA_LEVELS = [1100, 1300, 1500, 1700, 1900]
+MAIA_LEVELS = list(range(1100, 2000, 100))
 
 DEFAULT_LEELA_NET = "BT4-it332"
 DEFAULT_LEELA_MOVETIME_MS = 5_000
@@ -83,6 +85,7 @@ class UciEngine:
         backend: Optional[str] = None,
         multipv: int = 1,
         config: Optional[Path] = None,
+        options: Optional[dict[str, object]] = None,
     ):
         command = [lc0_path, f"--weights={weights}"]
         if config:
@@ -103,6 +106,8 @@ class UciEngine:
         self._send(f"setoption name MultiPV value {multipv}")
         if multipv > 1:
             self._send("setoption name VerboseMoveStats value true")
+        for name, value in (options or {}).items():
+            self._send(f"setoption name {name} value {value}")
         self._send("isready")
         self._wait_for("readyok")
 
@@ -264,6 +269,30 @@ def encode_analysis(best_move: chess.Move, analysis: list[dict[str, object]]) ->
     return f"[%lcstudy {encoded}]"
 
 
+def move_sequence_key(pgn: str) -> str:
+    """Hash the actual playable UCI move sequence, ignoring headers/comments."""
+    game = chess.pgn.read_game(io.StringIO(pgn))
+    if game is None:
+        raise ValueError("Could not parse generated PGN")
+    board = game.board()
+    moves = []
+    for move in game.mainline_moves():
+        moves.append(move.uci())
+        board.push(move)
+    raw = " ".join(moves).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def load_existing_move_keys(output_dir: Path) -> set[str]:
+    keys: set[str] = set()
+    for path in output_dir.glob("*.pgn"):
+        try:
+            keys.add(move_sequence_key(path.read_text()))
+        except Exception:
+            continue
+    return keys
+
+
 # =============================================================================
 # Game Generation
 # =============================================================================
@@ -278,6 +307,12 @@ def generate_game(
     leela_backend: Optional[str],
     leela_config: Optional[Path],
     maia_backend: Optional[str],
+    maia_temperature: float,
+    maia_policy_temp: float,
+    maia_temp_decay_moves: int,
+    maia_temp_cutoff_move: int,
+    maia_temp_endgame: float,
+    maia_temp_value_cutoff: float,
     max_plies: int = MAX_PLIES,
 ) -> tuple[str, int, str]:
     """Generate a single game with LC0 policy analysis on every player move."""
@@ -295,6 +330,12 @@ def generate_game(
     game.headers["LcStudyLeelaNet"] = network_name(leela_net)
     game.headers["LcStudyLeelaSearch"] = leela_budget.label()
     game.headers["LcStudyMaiaSearch"] = maia_budget.label()
+    game.headers["LcStudyMaiaTemperature"] = str(maia_temperature)
+    game.headers["LcStudyMaiaPolicyTemperature"] = str(maia_policy_temp)
+    game.headers["LcStudyMaiaTempDecayMoves"] = str(maia_temp_decay_moves)
+    game.headers["LcStudyMaiaTempCutoffMove"] = str(maia_temp_cutoff_move)
+    game.headers["LcStudyMaiaTempEndgame"] = str(maia_temp_endgame)
+    game.headers["LcStudyMaiaTempValueCutoff"] = str(maia_temp_value_cutoff)
 
     node = game
     plies = 0
@@ -302,7 +343,20 @@ def generate_game(
     leela_engine = None
 
     try:
-        maia_engine = UciEngine(lc0_path, maia_net, backend=maia_backend, multipv=1)
+        maia_engine = UciEngine(
+            lc0_path,
+            maia_net,
+            backend=maia_backend,
+            multipv=1,
+            options={
+                "Temperature": maia_temperature,
+                "PolicyTemperature": maia_policy_temp,
+                "TempDecayMoves": maia_temp_decay_moves,
+                "TempCutoffMove": maia_temp_cutoff_move,
+                "TempEndgame": maia_temp_endgame,
+                "TempValueCutoff": maia_temp_value_cutoff,
+            },
+        )
         leela_engine = UciEngine(
             lc0_path,
             leela_net,
@@ -355,6 +409,13 @@ def main():
     parser.add_argument("--leela-net", default=DEFAULT_LEELA_NET)
     parser.add_argument("--leela-movetime-ms", type=int, default=DEFAULT_LEELA_MOVETIME_MS)
     parser.add_argument("--maia-nodes", type=int, default=DEFAULT_MAIA_NODES)
+    parser.add_argument("--maia-temperature", type=float, default=1.0)
+    parser.add_argument("--maia-policy-temp", type=float, default=1.0)
+    parser.add_argument("--maia-temp-decay-moves", type=int, default=22)
+    parser.add_argument("--maia-temp-cutoff-move", type=int, default=20)
+    parser.add_argument("--maia-temp-endgame", type=float, default=0.25)
+    parser.add_argument("--maia-temp-value-cutoff", type=float, default=25.0)
+    parser.add_argument("--allow-duplicate-lines", action="store_true")
     parser.add_argument("--leela-backend", default=None)
     parser.add_argument("--maia-backend", default="blas")
     parser.add_argument("--leela-config", type=Path, default=APPLE_SILICON_CONFIG)
@@ -372,6 +433,9 @@ def main():
         return 1
     if args.maia_nodes < 1:
         print("Error: --maia-nodes must be positive")
+        return 1
+    if args.maia_temperature < 0 or args.maia_policy_temp <= 0:
+        print("Error: Maia temperatures must be non-negative, and policy temp must be positive")
         return 1
     if args.seed is not None:
         random.seed(args.seed)
@@ -407,6 +471,13 @@ def main():
     print(f"  Output: {args.output.name}/ ({existing} existing)")
     print(f"  Leela search: {leela_budget.label()}/move")
     print(f"  Maia search: {maia_budget.label()}/move")
+    print(
+        "  Maia temp: "
+        f"{args.maia_temperature} "
+        f"(policy={args.maia_policy_temp}, decay={args.maia_temp_decay_moves}, "
+        f"cutoff={args.maia_temp_cutoff_move}, endgame={args.maia_temp_endgame}, "
+        f"value-cutoff={args.maia_temp_value_cutoff})"
+    )
 
     write_dir = args.output
     if args.replace_output:
@@ -420,6 +491,7 @@ def main():
     start = time.time()
     success = 0
     total_plies = 0
+    move_keys = set() if args.replace_output else load_existing_move_keys(write_dir)
 
     attempts = 0
     max_attempts = max(args.count * 4, args.count + 5)
@@ -441,13 +513,25 @@ def main():
                 args.leela_backend,
                 leela_config,
                 args.maia_backend,
+                args.maia_temperature,
+                args.maia_policy_temp,
+                args.maia_temp_decay_moves,
+                args.maia_temp_cutoff_move,
+                args.maia_temp_endgame,
+                args.maia_temp_value_cutoff,
                 args.max_plies,
             )
             if args.require_result and result == "*":
                 raise ValueError(f"Game reached {plies} plies without a result")
 
+            move_key = move_sequence_key(pgn)
+            if not args.allow_duplicate_lines and move_key in move_keys:
+                print(f"  [SKIP] duplicate line after {plies}p")
+                continue
+
             fname = f"{batch_id}_{success + 1:04d}.pgn"
             (write_dir / fname).write_text(pgn)
+            move_keys.add(move_key)
 
             success += 1
             total_plies += plies
