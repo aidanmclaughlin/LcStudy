@@ -451,9 +451,6 @@ export function animateMove(fromSquare, toSquare, commitMove = null) {
 
   ghostPiece.className = 'move-ghost-piece';
   ghostPiece.style.backgroundImage = piece.style.backgroundImage;
-  if (piece.classList.contains('flipped')) {
-    ghostPiece.classList.add('flipped');
-  }
   ghost.appendChild(ghostPiece);
 
   piece.style.visibility = 'hidden';

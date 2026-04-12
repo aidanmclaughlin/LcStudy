@@ -158,10 +158,6 @@
   background-position: center;
 }
 
-.move-ghost-piece.flipped {
-  transform: rotate(180deg);
-}
-
 /* Hit indicator on correct move */
 .square .hit {
   position: absolute;
