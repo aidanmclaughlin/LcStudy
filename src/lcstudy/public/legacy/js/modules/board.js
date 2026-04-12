@@ -340,17 +340,40 @@ export function animateMove(fromSquare, toSquare) {
   const toEl = document.querySelector(`[data-square="${toSquare}"]`);
   const piece = fromEl?.querySelector('.piece');
 
-  if (piece && toEl) {
-    // Remove any existing piece on destination
-    const existingPiece = toEl.querySelector('.piece');
-    if (existingPiece) {
-      existingPiece.remove();
-    }
+  if (!piece || !toEl) return Promise.resolve(false);
 
-    toEl.appendChild(piece);
-    piece.classList.add('animate');
-    piece.classList.remove('animate');
-  }
+  const fromRect = piece.getBoundingClientRect();
+  const toRect = toEl.getBoundingClientRect();
+  const ghost = document.createElement('div');
+  const existingPiece = toEl.querySelector('.piece');
+  const rotate = piece.classList.contains('flipped') ? ' rotate(180deg)' : '';
+  const dx = toRect.left + (toRect.width - fromRect.width) / 2 - fromRect.left;
+  const dy = toRect.top + (toRect.height - fromRect.height) / 2 - fromRect.top;
+
+  ghost.className = 'piece move-ghost';
+  ghost.style.backgroundImage = piece.style.backgroundImage;
+  ghost.style.left = `${fromRect.left}px`;
+  ghost.style.top = `${fromRect.top}px`;
+  ghost.style.width = `${fromRect.width}px`;
+  ghost.style.height = `${fromRect.height}px`;
+  ghost.style.transform = `translate(0, 0)${rotate}`;
+
+  piece.style.visibility = 'hidden';
+  if (existingPiece) existingPiece.style.visibility = 'hidden';
+  document.body.appendChild(ghost);
+
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      ghost.style.transform = `translate(${dx}px, ${dy}px)${rotate} scale(1.04)`;
+    });
+
+    window.setTimeout(() => {
+      ghost.remove();
+      piece.style.visibility = '';
+      if (existingPiece) existingPiece.style.visibility = '';
+      resolve(true);
+    }, 280);
+  });
 }
 
 /**

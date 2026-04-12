@@ -114,6 +114,16 @@
   transform: scale(1.1);
 }
 
+.piece.move-ghost {
+  position: fixed;
+  margin: 0;
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 280ms cubic-bezier(0.18, 0.88, 0.32, 1.12);
+  filter: drop-shadow(0 12px 16px rgba(15, 23, 42, 0.3));
+  will-change: transform;
+}
+
 /* Hit indicator on correct move */
 .square .hit {
   position: absolute;

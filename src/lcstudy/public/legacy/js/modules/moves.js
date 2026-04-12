@@ -19,7 +19,7 @@ import {
   getMoveCounter,
   setLastMoveHighlight
 } from './state.js';
-import { updateBoardFromFen } from './board.js';
+import { animateMove, updateBoardFromFen } from './board.js';
 import { flashBoard, celebrateSuccess, showStreakPill, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
@@ -28,6 +28,9 @@ import { hapticMove, hapticSuccess, hapticError } from './haptics.js';
 
 /** Whether the completed mate should be saved when the player starts another game */
 let pendingMateCompletion = false;
+let movePlaybackInProgress = false;
+
+const AUTO_PLAY_DELAY_MS = 320;
 
 /**
  * Clear pending completion state after starting a fresh game.
@@ -210,6 +213,28 @@ function buildMissedMoveEvaluation(moveUci) {
  * @returns {Object|null} Chess.js move result or null
  */
 export function applyMoveToBoard(moveDef, isUserMove) {
+  const applied = applyMoveToEngine(moveDef, isUserMove);
+  if (!applied) return null;
+
+  finishMoveOnBoard(applied);
+  return applied.moveResult;
+}
+
+async function applyAutoMoveToBoard(moveDef, isUserMove) {
+  const applied = applyMoveToEngine(moveDef, isUserMove);
+  if (!applied) return null;
+
+  await sleep(AUTO_PLAY_DELAY_MS);
+  await animateMove(applied.from, applied.to);
+  finishMoveOnBoard(applied);
+  return applied.moveResult;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function applyMoveToEngine(moveDef, isUserMove) {
   const chessEngine = getChessEngine();
   if (!chessEngine || !moveDef) return null;
 
@@ -230,13 +255,21 @@ export function applyMoveToBoard(moveDef, isUserMove) {
   setCurrentFen(fenAfter);
   setLiveFen(fenAfter);
   setLastMoveHighlight(isUserMove, moveSquares);
-  updateBoardFromFen(fenAfter);
 
   const san = moveResult.san || moveDef.san || moveDef.uci;
   pushMoveHistory(fenAfter, san, isUserMove, moveSquares);
   pushPgnMove(san);
 
-  return moveResult;
+  return {
+    fenAfter,
+    from,
+    to,
+    moveResult
+  };
+}
+
+function finishMoveOnBoard(applied) {
+  updateBoardFromFen(applied.fenAfter);
 }
 
 /**
@@ -244,9 +277,9 @@ export function applyMoveToBoard(moveDef, isUserMove) {
  * @param {Object} round - Current round object
  * @returns {Object|null} Chess.js move result or null
  */
-export function handleMaiaReply(round) {
+export async function handleMaiaReply(round) {
   if (!round || !round.reply) return null;
-  return applyMoveToBoard(round.reply, false);
+  return applyAutoMoveToBoard(round.reply, false);
 }
 
 /**
@@ -257,7 +290,9 @@ export function handleMaiaReply(round) {
  * @returns {Promise<boolean>} Success
  */
 export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestMove) {
-  const moveResult = applyMoveToBoard(expectedInfo.move, true);
+  const moveResult = isBestMove
+    ? applyMoveToBoard(expectedInfo.move, true)
+    : await applyAutoMoveToBoard(expectedInfo.move, true);
 
   if (!moveResult) {
     console.warn('Move application failed', expectedInfo.move);
@@ -296,7 +331,7 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   // Handle Maia's reply
   const round = expectedInfo.round;
   if (round && round.reply) {
-    const replyResult = handleMaiaReply(round);
+    const replyResult = await handleMaiaReply(round);
     if (!replyResult) {
       console.warn('Failed to apply Maia reply', round.reply);
     } else {
@@ -328,46 +363,53 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
  * @param {string} moveUci - UCI move string (e.g., 'e2e4')
  */
 export async function submitMove(moveUci) {
+  if (movePlaybackInProgress) return;
+
   const sessionId = getSessionId();
   const sessionCache = getSessionCache();
 
   if (!sessionId || !sessionCache.moves.length) return;
 
-  const expectedInfo = getExpectedPlayerMove();
-  if (!expectedInfo) {
-    console.warn('No expected move remaining');
-    return;
+  movePlaybackInProgress = true;
+  try {
+    const expectedInfo = getExpectedPlayerMove();
+    if (!expectedInfo) {
+      console.warn('No expected move remaining');
+      return;
+    }
+
+    let normalized = moveUci.toLowerCase();
+    const expectedUci = expectedInfo.move.uci.toLowerCase();
+
+    // Auto-add promotion if missing
+    if (expectedUci.length === 5 && normalized.length === 4) {
+      normalized += expectedUci[4];
+    }
+
+    console.debug('submitMove', {
+      input: moveUci,
+      normalized,
+      expected: expectedUci,
+      expectedIndex: expectedInfo.index,
+      currentIndex: sessionCache.currentIndex,
+      flip: sessionCache.flip,
+      movesLength: sessionCache.moves.length,
+      roundIndex: sessionCache.roundIndex
+    });
+
+    const moveEvaluation = findMoveEvaluation(normalized, expectedInfo);
+
+    if (!moveEvaluation) {
+      console.warn('Unscored wrong move', normalized);
+      await completeExpectedMove(expectedInfo, buildMissedMoveEvaluation(normalized), false);
+      return;
+    }
+
+    hapticMove();
+    normalized = moveEvaluation.uci.toLowerCase();
+    const isBestMove = normalized === expectedUci;
+    await completeExpectedMove(expectedInfo, moveEvaluation, isBestMove);
+  } finally {
+    movePlaybackInProgress = false;
   }
-
-  let normalized = moveUci.toLowerCase();
-  const expectedUci = expectedInfo.move.uci.toLowerCase();
-
-  // Auto-add promotion if missing
-  if (expectedUci.length === 5 && normalized.length === 4) {
-    normalized += expectedUci[4];
-  }
-
-  console.debug('submitMove', {
-    input: moveUci,
-    normalized,
-    expected: expectedUci,
-    expectedIndex: expectedInfo.index,
-    currentIndex: sessionCache.currentIndex,
-    flip: sessionCache.flip,
-    movesLength: sessionCache.moves.length,
-    roundIndex: sessionCache.roundIndex
-  });
-
-  const moveEvaluation = findMoveEvaluation(normalized, expectedInfo);
-
-  if (!moveEvaluation) {
-    console.warn('Unscored wrong move', normalized);
-    await completeExpectedMove(expectedInfo, buildMissedMoveEvaluation(normalized), false);
-    return;
-  }
-
-  hapticMove();
-  normalized = moveEvaluation.uci.toLowerCase();
-  const isBestMove = normalized === expectedUci;
-  await completeExpectedMove(expectedInfo, moveEvaluation, isBestMove);
 }

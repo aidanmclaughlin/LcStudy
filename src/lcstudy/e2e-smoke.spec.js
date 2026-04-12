@@ -197,7 +197,13 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const firstMove = sessionData.moves[sessionData.ply];
   const firstReply = sessionData.moves[sessionData.ply + 1];
   const [firstFrom, firstTo] = moveParts(firstMove.uci);
+  const [firstReplyFrom] = moveParts(firstReply.uci);
   await dragMove(page, firstFrom, firstTo);
+  await page.waitForTimeout(120);
+  expect(await pieceAt(page, firstReplyFrom)).not.toBeNull();
+  await page.waitForFunction((replySan) => (
+    (document.querySelector('#move-list')?.textContent || '').includes(replySan)
+  ), firstReply.san);
   await page.waitForFunction(() => document.querySelector('#avg-accuracy')?.textContent?.includes('100'));
   await requireMoveHighlight(page, 'user', firstMove);
   await requireMoveHighlight(page, 'opponent', firstReply);
@@ -212,10 +218,15 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   if (!alternate) throw new Error('No alternate legal move');
 
   const [altFrom, altTo] = moveParts(alternate.uci);
+  const [secondFrom] = moveParts(secondMove.uci);
   await squareClick(page, altFrom);
   await page.waitForTimeout(150);
   await squareClick(page, altTo);
-  await page.waitForFunction(() => (document.querySelector('#move-list')?.textContent || '').includes('2.'));
+  await page.waitForTimeout(120);
+  expect(await pieceAt(page, secondFrom)).not.toBeNull();
+  await page.waitForFunction((replySan) => (
+    (document.querySelector('#move-list')?.textContent || '').includes(replySan)
+  ), secondReply.san);
   await requireMoveHighlight(page, 'user', secondMove);
   await requireMoveHighlight(page, 'opponent', secondReply);
   await page.screenshot({ path: 'e2e-screenshots/03-after-low-accuracy-move.png', fullPage: true });
@@ -341,6 +352,8 @@ test.describe('desktop checkmate', () => {
     if (!wrongTo) throw new Error('No illegal empty mate target found');
     await squareClick(page, wrongFrom);
     await squareClick(page, wrongTo);
+    await page.waitForTimeout(120);
+    expect(await pieceAt(page, wrongFrom)).toBe(expectedPieceCode);
     await page.waitForFunction((expectedSan) => (
       (document.querySelector('#move-list')?.textContent || '').includes(expectedSan) &&
       (document.querySelector('#move-feedback')?.textContent || '').includes('0.0%')
