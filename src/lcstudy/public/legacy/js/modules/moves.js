@@ -257,10 +257,14 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     setCorrectStreak(0);
   }
 
+  const scoreEvaluation = isBestMove
+    ? { ...moveEvaluation, accuracy: 100 }
+    : moveEvaluation;
+
   showStreakPill();
-  pushMoveScore(moveEvaluation.accuracy);
+  pushMoveScore(scoreEvaluation.accuracy);
   incrementMoveCounter();
-  updateMoveFeedback(moveEvaluation);
+  updateMoveFeedback(scoreEvaluation);
 
   const sessionCache = getSessionCache();
   updateSessionCache({ currentIndex: expectedInfo.index + 1 });

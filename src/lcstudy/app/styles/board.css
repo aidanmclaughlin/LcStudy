@@ -12,6 +12,7 @@
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
   box-shadow: var(--shadow-lg);
+  touch-action: none;
 }
 
 /* Square */
@@ -49,6 +50,7 @@
   background-position: center;
   cursor: grab;
   transition: transform 0.1s ease;
+  touch-action: none;
 }
 
 .piece:active {

@@ -22,6 +22,8 @@ import { hapticSelect } from './haptics.js';
 
 /** Callback for when a move is submitted */
 let onMoveSubmit = null;
+let pointerStart = null;
+let suppressedClick = null;
 
 /**
  * Set the callback for move submission.
@@ -80,6 +82,9 @@ export function createBoardHtml() {
       squareEl.className = `square ${isLight ? 'light' : 'dark'}`;
       squareEl.dataset.square = square;
       squareEl.addEventListener('click', handleSquareClick);
+      squareEl.addEventListener('pointerdown', handlePointerDown);
+      squareEl.addEventListener('pointerup', handlePointerUp);
+      squareEl.addEventListener('pointercancel', handlePointerCancel);
 
       boardEl.appendChild(squareEl);
     }
@@ -143,11 +148,47 @@ export function clearSelection() {
   setSelectedSquare(null);
 }
 
+function getPlayerPieceOnSquare(squareEl) {
+  const piece = squareEl?.querySelector('.piece');
+  if (!piece) return null;
+
+  const playerColor = isBoardFlipped() ? 'b' : 'w';
+  const pieceCode = piece.dataset.piece || '';
+
+  return pieceCode.startsWith(playerColor) ? piece : null;
+}
+
+function submitSelectedMove(fromSquare, toSquare) {
+  if (!fromSquare || !toSquare || fromSquare === toSquare) return false;
+
+  clearSelection();
+
+  if (onMoveSubmit) {
+    onMoveSubmit(fromSquare + toSquare);
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Handle click on a square.
  * @param {Event} event - Click event
  */
 function handleSquareClick(event) {
+  const square = event.currentTarget.dataset.square;
+  if (
+    suppressedClick &&
+    Date.now() < suppressedClick.until &&
+    suppressedClick.square === square
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+
+  suppressedClick = null;
+
   // Unlock audio on user interaction
   try { unlockAudio(); } catch (e) {}
 
@@ -156,21 +197,14 @@ function handleSquareClick(event) {
     return;
   }
 
-  const square = event.currentTarget.dataset.square;
-  const piece = event.currentTarget.querySelector('.piece');
   const selectedSq = getSelectedSquare();
 
   if (selectedSq === null) {
     // No selection - try to select a piece
-    if (piece) {
-      const playerColor = isBoardFlipped() ? 'b' : 'w';
-      const pieceCode = piece.dataset.piece || '';
-
-      if (pieceCode.startsWith(playerColor)) {
-        setSelectedSquare(square);
-        event.currentTarget.classList.add('selected');
-        hapticSelect();
-      }
+    if (getPlayerPieceOnSquare(event.currentTarget)) {
+      setSelectedSquare(square);
+      event.currentTarget.classList.add('selected');
+      hapticSelect();
     }
   } else {
     // Already have selection
@@ -179,14 +213,48 @@ function handleSquareClick(event) {
       clearSelection();
     } else {
       // Clicked different square - submit move
-      const move = selectedSq + square;
-      clearSelection();
-
-      if (onMoveSubmit) {
-        onMoveSubmit(move);
-      }
+      submitSelectedMove(selectedSq, square);
     }
   }
+}
+
+function handlePointerDown(event) {
+  if (getIsReviewingMoves()) return;
+
+  const piece = getPlayerPieceOnSquare(event.currentTarget);
+  if (!piece) return;
+
+  pointerStart = {
+    square: event.currentTarget.dataset.square,
+    x: event.clientX,
+    y: event.clientY,
+    pointerId: event.pointerId
+  };
+}
+
+function handlePointerUp(event) {
+  if (!pointerStart || pointerStart.pointerId !== event.pointerId) return;
+
+  const start = pointerStart;
+  pointerStart = null;
+
+  const dragged = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8;
+  if (!dragged) return;
+
+  const target = document.elementFromPoint(event.clientX, event.clientY);
+  const targetSquare = target?.closest?.('.square')?.dataset?.square;
+  if (!targetSquare || targetSquare === start.square) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  suppressedClick = { square: targetSquare, until: Date.now() + 250 };
+
+  hapticSelect();
+  submitSelectedMove(start.square, targetSquare);
+}
+
+function handlePointerCancel() {
+  pointerStart = null;
 }
 
 /**
