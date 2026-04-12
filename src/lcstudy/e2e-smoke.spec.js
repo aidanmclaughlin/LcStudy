@@ -42,6 +42,26 @@ async function dragMove(page, from, to) {
   await page.mouse.up();
 }
 
+async function requireSquareClass(page, square, className) {
+  const hasClass = await page.locator(`[data-square="${square}"]`).evaluate((el, cls) => (
+    el.classList.contains(cls)
+  ), className);
+
+  if (!hasClass) {
+    throw new Error(`Expected ${square} to have ${className}`);
+  }
+}
+
+async function requireMoveHighlight(page, role, move) {
+  const [from, to] = moveParts(move.uci);
+  const prefix = role === 'user' ? 'last-user-move' : 'last-opponent-move';
+
+  await requireSquareClass(page, from, prefix);
+  await requireSquareClass(page, from, `${prefix}-from`);
+  await requireSquareClass(page, to, prefix);
+  await requireSquareClass(page, to, `${prefix}-to`);
+}
+
 test.use({
   ...devices['iPhone 14'],
   baseURL: 'http://localhost:3000',
@@ -91,12 +111,16 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.screenshot({ path: 'e2e-screenshots/01-initial-iphone.png', fullPage: true });
 
   const firstMove = sessionData.moves[sessionData.ply];
+  const firstReply = sessionData.moves[sessionData.ply + 1];
   const [firstFrom, firstTo] = moveParts(firstMove.uci);
   await dragMove(page, firstFrom, firstTo);
   await page.waitForFunction(() => document.querySelector('#avg-accuracy')?.textContent?.includes('100'));
+  await requireMoveHighlight(page, 'user', firstMove);
+  await requireMoveHighlight(page, 'opponent', firstReply);
   await page.screenshot({ path: 'e2e-screenshots/02-after-best-move.png', fullPage: true });
 
   const secondMove = sessionData.moves[sessionData.ply + 2];
+  const secondReply = sessionData.moves[sessionData.ply + 3];
   if (!secondMove?.analysis?.length) throw new Error('No second analyzed prompt');
   const alternate = [...secondMove.analysis].reverse().find((move) => (
     move.uci !== secondMove.uci && move.uci.slice(0, 2) !== secondMove.uci.slice(0, 2)
@@ -108,13 +132,19 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.waitForTimeout(150);
   await squareClick(page, altTo);
   await page.waitForFunction(() => (document.querySelector('#move-list')?.textContent || '').includes('2.'));
+  await requireMoveHighlight(page, 'user', secondMove);
+  await requireMoveHighlight(page, 'opponent', secondReply);
   await page.screenshot({ path: 'e2e-screenshots/03-after-low-accuracy-move.png', fullPage: true });
 
   await page.keyboard.press('ArrowLeft');
   await page.waitForTimeout(300);
+  await requireMoveHighlight(page, 'user', secondMove);
+  await requireMoveHighlight(page, 'opponent', secondReply);
   await page.screenshot({ path: 'e2e-screenshots/04-review-back.png', fullPage: true });
   await page.keyboard.press('ArrowRight');
   await page.waitForTimeout(300);
+  await requireMoveHighlight(page, 'user', secondMove);
+  await requireMoveHighlight(page, 'opponent', secondReply);
   await page.screenshot({ path: 'e2e-screenshots/05-review-forward.png', fullPage: true });
 
   const haptics = await page.evaluate(() => window.__haptics || []);
@@ -137,6 +167,9 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     feedbackText,
     historyText,
     firstMove: firstMove.uci,
+    firstReply: firstReply.uci,
     alternateMove: alternate.uci,
+    secondMove: secondMove.uci,
+    secondReply: secondReply.uci,
   }));
 });

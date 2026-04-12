@@ -75,7 +75,7 @@ let correctStreak = 0;
 // Move Navigation State
 // =============================================================================
 
-/** Array of {fen, san, isUserMove} for navigation */
+/** Array of {fen, san, isUserMove, from, to} for navigation */
 let moveHistory = [];
 
 /** Current position in move history (-1 = live position) */
@@ -86,6 +86,9 @@ let isReviewingMoves = false;
 
 /** The actual current game position (not historical) */
 let liveFen = STARTING_FEN;
+
+/** Last visible move squares by side for the live position */
+let lastMoveHighlights = { user: null, opponent: null };
 
 // =============================================================================
 // Chart State
@@ -140,6 +143,7 @@ export function getMoveHistory() { return moveHistory; }
 export function getCurrentMoveIndex() { return currentMoveIndex; }
 export function getIsReviewingMoves() { return isReviewingMoves; }
 export function getLiveFen() { return liveFen; }
+export function getLastMoveHighlights() { return lastMoveHighlights; }
 export function getAccuracyChart() { return accuracyChart; }
 export function getMoveAccuracyChart() { return moveAccuracyChart; }
 export function isSoundEnabled() { return soundEnabled; }
@@ -169,6 +173,7 @@ export function setMoveHistory(history) { moveHistory = history; }
 export function setCurrentMoveIndex(index) { currentMoveIndex = index; }
 export function setIsReviewingMoves(reviewing) { isReviewingMoves = reviewing; }
 export function setLiveFen(fen) { liveFen = fen; }
+export function setLastMoveHighlights(highlights) { lastMoveHighlights = highlights; }
 export function setAccuracyChart(chart) { accuracyChart = chart; }
 export function setMoveAccuracyChart(chart) { moveAccuracyChart = chart; }
 export function setSoundEnabled(enabled) { soundEnabled = enabled; }
@@ -241,9 +246,51 @@ export function incrementMoveCounter() {
  * @param {string} fen - Position after the move
  * @param {string} san - SAN notation
  * @param {boolean} isUserMove - Whether this was the user's move
+ * @param {{from: string, to: string}|null} moveSquares - Move source/destination
  */
-export function pushMoveHistory(fen, san, isUserMove) {
-  moveHistory.push({ fen, san, isUserMove });
+export function pushMoveHistory(fen, san, isUserMove, moveSquares = null) {
+  moveHistory.push({
+    fen,
+    san,
+    isUserMove,
+    from: moveSquares?.from || null,
+    to: moveSquares?.to || null
+  });
+}
+
+/**
+ * Remember the latest move squares for the live position.
+ * @param {boolean} isUserMove - Whether this was the user's move
+ * @param {{from: string, to: string}} moveSquares - Move source/destination
+ */
+export function setLastMoveHighlight(isUserMove, moveSquares) {
+  const key = isUserMove ? 'user' : 'opponent';
+  lastMoveHighlights = {
+    ...lastMoveHighlights,
+    [key]: moveSquares
+  };
+}
+
+/**
+ * Get last user/opponent move highlights at a history index.
+ * @param {number} targetIndex - Move history index
+ * @returns {{user: Object|null, opponent: Object|null}}
+ */
+export function getMoveHighlightsForIndex(targetIndex) {
+  const highlights = { user: null, opponent: null };
+  const maxIndex = Math.min(targetIndex, moveHistory.length - 1);
+
+  for (let idx = 0; idx <= maxIndex; idx++) {
+    const move = moveHistory[idx];
+    if (!move?.from || !move?.to) continue;
+
+    highlights[move.isUserMove ? 'user' : 'opponent'] = {
+      from: move.from,
+      to: move.to
+    };
+  }
+
+  return highlights;
 }
 
 /**
@@ -254,6 +301,7 @@ export function resetMoveHistoryState() {
   currentMoveIndex = -1;
   isReviewingMoves = false;
   liveFen = STARTING_FEN;
+  lastMoveHighlights = { user: null, opponent: null };
 }
 
 /**

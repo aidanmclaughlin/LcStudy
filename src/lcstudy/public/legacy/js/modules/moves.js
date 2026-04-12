@@ -17,7 +17,8 @@ import {
   incrementMoveCounter,
   pushPgnMove,
   pushMoveHistory,
-  getMoveCounter
+  getMoveCounter,
+  setLastMoveHighlight
 } from './state.js';
 import { updateBoardFromFen } from './board.js';
 import { flashBoard, celebrateSuccess, showStreakPill, updateMoveFeedback } from './effects.js';
@@ -204,12 +205,14 @@ export function applyMoveToBoard(moveDef, isUserMove) {
   }
 
   const fenAfter = chessEngine.fen();
+  const moveSquares = { from, to };
   setCurrentFen(fenAfter);
   setLiveFen(fenAfter);
+  setLastMoveHighlight(isUserMove, moveSquares);
   updateBoardFromFen(fenAfter);
 
   const san = moveResult.san || moveDef.san || moveDef.uci;
-  pushMoveHistory(fenAfter, san, isUserMove);
+  pushMoveHistory(fenAfter, san, isUserMove, moveSquares);
   pushPgnMove(san);
 
   return moveResult;

@@ -15,7 +15,10 @@ import {
   setBoardObserver,
   isRebuilding,
   setIsRebuildingBoard,
-  getIsReviewingMoves
+  getIsReviewingMoves,
+  getCurrentMoveIndex,
+  getLastMoveHighlights,
+  getMoveHighlightsForIndex
 } from './state.js';
 import { unlockAudio } from './audio.js';
 import { hapticSelect } from './haptics.js';
@@ -24,6 +27,15 @@ import { hapticSelect } from './haptics.js';
 let onMoveSubmit = null;
 let pointerStart = null;
 let suppressedClick = null;
+
+const LAST_MOVE_CLASSES = [
+  'last-user-move',
+  'last-user-move-from',
+  'last-user-move-to',
+  'last-opponent-move',
+  'last-opponent-move-from',
+  'last-opponent-move-to'
+];
 
 /**
  * Set the callback for move submission.
@@ -117,6 +129,8 @@ export function updateBoardFromFen(fen) {
       squareEl.appendChild(pieceEl);
     }
   }
+
+  applyLastMoveHighlights();
 }
 
 /**
@@ -146,6 +160,40 @@ export function clearSelection() {
     sq.classList.remove('selected');
   });
   setSelectedSquare(null);
+}
+
+function clearLastMoveHighlights() {
+  document.querySelectorAll('.square').forEach(squareEl => {
+    squareEl.classList.remove(...LAST_MOVE_CLASSES);
+  });
+}
+
+function applyMoveHighlight(role, move) {
+  if (!move?.from || !move?.to) return;
+
+  const roleClass = role === 'user' ? 'last-user-move' : 'last-opponent-move';
+  const fromClass = role === 'user' ? 'last-user-move-from' : 'last-opponent-move-from';
+  const toClass = role === 'user' ? 'last-user-move-to' : 'last-opponent-move-to';
+
+  const fromEl = document.querySelector(`[data-square="${move.from}"]`);
+  const toEl = document.querySelector(`[data-square="${move.to}"]`);
+
+  fromEl?.classList.add(roleClass, fromClass);
+  toEl?.classList.add(roleClass, toClass);
+}
+
+/**
+ * Apply last user/opponent move highlights to the visible board.
+ */
+export function applyLastMoveHighlights() {
+  clearLastMoveHighlights();
+
+  const highlights = getIsReviewingMoves()
+    ? getMoveHighlightsForIndex(getCurrentMoveIndex())
+    : getLastMoveHighlights();
+
+  applyMoveHighlight('user', highlights.user);
+  applyMoveHighlight('opponent', highlights.opponent);
 }
 
 function getPlayerPieceOnSquare(squareEl) {
