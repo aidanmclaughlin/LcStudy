@@ -221,11 +221,15 @@ function handleSquareClick(event) {
 function handlePointerDown(event) {
   if (getIsReviewingMoves()) return;
 
+  const selectedSq = getSelectedSquare();
   const piece = getPlayerPieceOnSquare(event.currentTarget);
-  if (!piece) return;
+  if (!piece && !selectedSq) return;
+
+  event.preventDefault();
 
   pointerStart = {
     square: event.currentTarget.dataset.square,
+    hadPlayerPiece: Boolean(piece),
     x: event.clientX,
     y: event.clientY,
     pointerId: event.pointerId
@@ -239,18 +243,39 @@ function handlePointerUp(event) {
   pointerStart = null;
 
   const dragged = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8;
-  if (!dragged) return;
-
   const target = document.elementFromPoint(event.clientX, event.clientY);
   const targetSquare = target?.closest?.('.square')?.dataset?.square;
-  if (!targetSquare || targetSquare === start.square) return;
+  if (!targetSquare) return;
 
   event.preventDefault();
   event.stopPropagation();
   suppressedClick = { square: targetSquare, until: Date.now() + 250 };
 
-  hapticSelect();
-  submitSelectedMove(start.square, targetSquare);
+  const selectedSq = getSelectedSquare();
+
+  if (dragged) {
+    if (start.hadPlayerPiece && targetSquare !== start.square) {
+      hapticSelect();
+      submitSelectedMove(start.square, targetSquare);
+    }
+    return;
+  }
+
+  if (selectedSq) {
+    if (selectedSq === targetSquare) {
+      clearSelection();
+    } else {
+      submitSelectedMove(selectedSq, targetSquare);
+    }
+    return;
+  }
+
+  if (start.hadPlayerPiece) {
+    const squareEl = document.querySelector(`[data-square="${start.square}"]`);
+    setSelectedSquare(start.square);
+    squareEl?.classList.add('selected');
+    hapticSelect();
+  }
 }
 
 function handlePointerCancel() {
