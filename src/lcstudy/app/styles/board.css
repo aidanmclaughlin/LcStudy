@@ -114,7 +114,7 @@
   transform: scale(1.1);
 }
 
-.piece.move-ghost {
+.move-ghost {
   position: fixed;
   margin: 0;
   pointer-events: none;
@@ -122,6 +122,18 @@
   transition: transform 280ms cubic-bezier(0.18, 0.88, 0.32, 1.12);
   filter: drop-shadow(0 12px 16px rgba(15, 23, 42, 0.3));
   will-change: transform;
+}
+
+.move-ghost-piece {
+  width: 100%;
+  height: 100%;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.move-ghost-piece.flipped {
+  transform: rotate(180deg);
 }
 
 /* Hit indicator on correct move */

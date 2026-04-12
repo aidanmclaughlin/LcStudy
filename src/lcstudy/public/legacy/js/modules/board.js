@@ -346,18 +346,24 @@ export function animateMove(fromSquare, toSquare, commitMove = null) {
   const fromRect = piece.getBoundingClientRect();
   const toRect = toEl.getBoundingClientRect();
   const ghost = document.createElement('div');
+  const ghostPiece = document.createElement('div');
   const existingPiece = toEl.querySelector('.piece');
-  const rotate = piece.classList.contains('flipped') ? ' rotate(180deg)' : '';
   const dx = toRect.left + (toRect.width - fromRect.width) / 2 - fromRect.left;
   const dy = toRect.top + (toRect.height - fromRect.height) / 2 - fromRect.top;
 
-  ghost.className = 'piece move-ghost';
-  ghost.style.backgroundImage = piece.style.backgroundImage;
+  ghost.className = 'move-ghost';
   ghost.style.left = `${fromRect.left}px`;
   ghost.style.top = `${fromRect.top}px`;
   ghost.style.width = `${fromRect.width}px`;
   ghost.style.height = `${fromRect.height}px`;
-  ghost.style.transform = `translate(0, 0)${rotate}`;
+  ghost.style.transform = 'translate(0, 0)';
+
+  ghostPiece.className = 'move-ghost-piece';
+  ghostPiece.style.backgroundImage = piece.style.backgroundImage;
+  if (piece.classList.contains('flipped')) {
+    ghostPiece.classList.add('flipped');
+  }
+  ghost.appendChild(ghostPiece);
 
   piece.style.visibility = 'hidden';
   if (existingPiece) existingPiece.style.visibility = 'hidden';
@@ -365,7 +371,7 @@ export function animateMove(fromSquare, toSquare, commitMove = null) {
 
   return new Promise((resolve) => {
     requestAnimationFrame(() => {
-      ghost.style.transform = `translate(${dx}px, ${dy}px)${rotate} scale(1.04)`;
+      ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.04)`;
     });
 
     window.setTimeout(() => {
