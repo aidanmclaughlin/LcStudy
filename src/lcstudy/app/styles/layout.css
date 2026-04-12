@@ -99,3 +99,38 @@
     gap: 20px;
   }
 }
+
+body.zen-mode {
+  overflow: hidden;
+}
+
+body.zen-mode .layout-root {
+  padding: 0;
+  min-height: 100vh;
+  align-items: center;
+}
+
+body.zen-mode .layout {
+  --board-size: min(100vw, 100vh);
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+}
+
+body.zen-mode .board-column {
+  flex: 0 0 auto;
+  width: var(--board-size);
+  height: var(--board-size);
+}
+
+body.zen-mode .board-shell {
+  width: var(--board-size);
+  max-width: none;
+}
+
+body.zen-mode .sidebar {
+  display: none;
+}

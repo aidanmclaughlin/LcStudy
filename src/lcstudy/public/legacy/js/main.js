@@ -47,6 +47,16 @@ function initSoundSettings() {
   } catch (e) {}
 }
 
+function setZenMode(enabled) {
+  document.body.classList.toggle('zen-mode', enabled);
+
+  const toggle = document.getElementById('zen-toggle');
+  if (toggle) {
+    toggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    toggle.setAttribute('aria-label', enabled ? 'Exit zen mode' : 'Enter zen mode');
+  }
+}
+
 /**
  * Start a new game session.
  */
@@ -179,6 +189,20 @@ document.getElementById('new')?.addEventListener('click', async () => {
   try { unlockAudio(); } catch (e) {}
   await savePendingCompletedGame();
   await startNewGame();
+});
+
+document.getElementById('zen-toggle')?.addEventListener('click', () => {
+  setZenMode(!document.body.classList.contains('zen-mode'));
+});
+
+document.getElementById('zen-exit')?.addEventListener('click', () => {
+  setZenMode(false);
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    setZenMode(false);
+  }
 });
 
 // =============================================================================

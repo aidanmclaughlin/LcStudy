@@ -10,8 +10,9 @@ import { playSuccessChime } from './audio.js';
 /**
  * Flash the board with a colored outline effect.
  * @param {'success' | 'wrong' | 'illegal'} result - Type of feedback to show
+ * @param {number} intensity - 0..1 intensity for wrong feedback
  */
-export function flashBoard(result) {
+export function flashBoard(result, intensity = 1) {
   const boardEl = document.getElementById('board');
   if (!boardEl) return;
 
@@ -23,6 +24,9 @@ export function flashBoard(result) {
 
   const className = classMap[result] || 'board-shake';
   const duration = className === 'board-shake' ? 400 : 300;
+  const clampedIntensity = Math.max(0, Math.min(1, Number(intensity) || 0));
+
+  boardEl.style.setProperty('--shake-distance', `${4 + clampedIntensity * 10}px`);
 
   // Remove existing classes and force reflow
   boardEl.classList.remove('board-flash-green', 'board-shake', 'board-flash-gray');
@@ -182,6 +186,12 @@ export function updateMoveFeedback(result = null) {
 
   if (!result) {
     feedbackElement.textContent = 'Pick one move';
+    feedbackElement.style.color = '#94a3b8';
+    return;
+  }
+
+  if (result.illegal) {
+    feedbackElement.textContent = 'Illegal move';
     feedbackElement.style.color = '#94a3b8';
     return;
   }

@@ -31,6 +31,59 @@
   box-sizing: border-box;
 }
 
+.btn-icon {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zen-icon,
+.zen-exit-icon {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.zen-icon::before,
+.zen-icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.zen-icon::after {
+  inset: 4px;
+  border-width: 1px;
+  opacity: 0.75;
+}
+
+.zen-exit-icon::before,
+.zen-exit-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.zen-exit-icon::before {
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.zen-exit-icon::after {
+  transform: translateX(-50%) rotate(-45deg);
+}
+
 /* Pill badge */
 .pill {
   display: inline-flex;

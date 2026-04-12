@@ -193,6 +193,12 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const sessionData = await (await sessionResponsePromise).json();
   await page.waitForSelector('#board .piece');
   await page.screenshot({ path: 'e2e-screenshots/01-initial-iphone.png', fullPage: true });
+  await page.locator('#zen-toggle').click();
+  await expect(page.locator('body')).toHaveClass(/zen-mode/);
+  await expect(page.locator('#zen-exit')).toBeVisible();
+  await page.screenshot({ path: 'e2e-screenshots/01b-zen-mode.png', fullPage: true });
+  await page.locator('#zen-exit').click();
+  await expect(page.locator('body')).not.toHaveClass(/zen-mode/);
 
   const firstMove = sessionData.moves[sessionData.ply];
   const firstReply = sessionData.moves[sessionData.ply + 1];
@@ -204,7 +210,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.waitForFunction((replySan) => (
     (document.querySelector('#move-list')?.textContent || '').includes(replySan)
   ), firstReply.san);
-  await page.waitForFunction(() => document.querySelector('#avg-accuracy')?.textContent?.includes('100'));
+  await page.waitForFunction(() => document.querySelector('#move-feedback')?.textContent?.includes('100'));
   await requireMoveHighlight(page, 'user', firstMove);
   await requireMoveHighlight(page, 'opponent', firstReply);
   await page.screenshot({ path: 'e2e-screenshots/02-after-best-move.png', fullPage: true });
@@ -249,7 +255,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const metricText = await page.locator('#avg-accuracy').textContent();
   const feedbackText = await page.locator('#move-feedback').textContent();
   const historyText = await page.locator('#move-list').textContent();
-  if (!metricText?.includes('%') || !feedbackText?.includes('%')) {
+  if (!metricText?.includes('pp') || !feedbackText?.includes('%')) {
     throw new Error(`Expected accuracy metrics, got ${metricText} / ${feedbackText}`);
   }
   if (feedbackText.includes('100.0')) {
@@ -333,13 +339,16 @@ test.describe('desktop checkmate', () => {
     expect(sessionNewCalls).toBe(1);
 
     const expectedMate = fixture.moves[fixture.ply];
-    const [wrongFrom] = moveParts(expectedMate.uci);
+    const [expectedFrom, expectedTo] = moveParts(expectedMate.uci);
+    const legalWrong = expectedMate.analysis.find((move) => move.uci !== expectedMate.uci);
+    if (!legalWrong) throw new Error('No legal wrong mate move found');
+    const [wrongFrom, wrongTo] = moveParts(legalWrong.uci);
     const mateBoard = new Chess(fixture.fen);
-    const movingPiece = mateBoard.get(wrongFrom);
+    const movingPiece = mateBoard.get(expectedFrom);
     if (!movingPiece) throw new Error('No mating piece found');
     const expectedPieceCode = movingPiece ? `${movingPiece.color}${movingPiece.type.toUpperCase()}` : null;
     const legalMateMoves = new Set(mateBoard.moves({ verbose: true }).map(normalizeUci));
-    const wrongTo = [
+    const illegalTo = [
       'a1', 'b1', 'c1', 'd1', 'e1', 'f1', 'g1', 'h1',
       'a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', 'h2',
       'a3', 'b3', 'c3', 'd3', 'e3', 'f3', 'g3', 'h3',
@@ -348,43 +357,52 @@ test.describe('desktop checkmate', () => {
       'a6', 'b6', 'c6', 'd6', 'e6', 'f6', 'g6', 'h6',
       'a7', 'b7', 'c7', 'd7', 'e7', 'f7', 'g7', 'h7',
       'a8', 'b8', 'c8', 'd8', 'e8', 'f8', 'g8', 'h8',
-    ].find((square) => square !== wrongFrom && !mateBoard.get(square) && !legalMateMoves.has(`${wrongFrom}${square}`));
-    if (!wrongTo) throw new Error('No illegal empty mate target found');
+    ].find((square) => square !== expectedFrom && !mateBoard.get(square) && !legalMateMoves.has(`${expectedFrom}${square}`));
+    if (!illegalTo) throw new Error('No illegal empty mate target found');
+
+    await squareClick(page, expectedFrom);
+    await squareClick(page, illegalTo);
+    await page.waitForFunction(() => (
+      (document.querySelector('#move-feedback')?.textContent || '').includes('Illegal move')
+    ));
+    expect(await pieceAt(page, expectedFrom)).toBe(expectedPieceCode);
+    expect(completeCalls).toBe(0);
+
     await squareClick(page, wrongFrom);
     await squareClick(page, wrongTo);
     await page.waitForTimeout(120);
-    expect(await pieceAt(page, wrongFrom)).toBe(expectedPieceCode);
+    expect(await pieceAt(page, expectedFrom)).toBe(expectedPieceCode);
     await page.waitForFunction((expectedSan) => (
       (document.querySelector('#move-list')?.textContent || '').includes(expectedSan) &&
-      (document.querySelector('#move-feedback')?.textContent || '').includes('0.0%')
+      (document.querySelector('#move-feedback')?.textContent || '').includes('%')
     ), expectedMate.san);
     await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
     await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
     await page.waitForTimeout(3200);
     expect(sessionNewCalls).toBe(1);
     expect(completeCalls).toBe(0);
-    expect(await pieceAt(page, wrongFrom)).toBeNull();
-    expect(await pieceAt(page, expectedMate.uci.slice(2, 4))).toBe(expectedPieceCode);
+    expect(await pieceAt(page, expectedFrom)).toBeNull();
+    expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(300);
-    expect(await pieceAt(page, wrongFrom)).toBeNull();
-    expect(await pieceAt(page, expectedMate.uci.slice(2, 4))).toBe(expectedPieceCode);
+    expect(await pieceAt(page, expectedFrom)).toBeNull();
+    expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(300);
-    expect(await pieceAt(page, wrongFrom)).toBe(expectedPieceCode);
+    expect(await pieceAt(page, expectedFrom)).toBe(expectedPieceCode);
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(300);
-    expect(await pieceAt(page, wrongFrom)).toBeNull();
-    expect(await pieceAt(page, expectedMate.uci.slice(2, 4))).toBe(expectedPieceCode);
+    expect(await pieceAt(page, expectedFrom)).toBeNull();
+    expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 
     await page.locator('#new').click();
     await expect.poll(() => completeCalls).toBe(1);
     await expect.poll(() => sessionNewCalls).toBe(2);
-    expect(completePayloads[0]?.accuracy_history).toEqual([0]);
+    expect(completePayloads[0]?.accuracy_history).toEqual([legalWrong.accuracy]);
     await page.waitForFunction((from) => (
       Boolean(document.querySelector(`[data-square="${from}"] .piece`)?.dataset?.piece)
-    ), wrongFrom);
+    ), expectedFrom);
 
     const historyText = await page.locator('#move-list').textContent();
     const feedbackText = await page.locator('#move-feedback').textContent();

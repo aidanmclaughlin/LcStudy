@@ -24,7 +24,7 @@ import { flashBoard, celebrateSuccess, showStreakPill, updateMoveFeedback } from
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame, loadGameHistory } from './api.js';
-import { hapticMove, hapticSuccess, hapticError } from './haptics.js';
+import { hapticMove, hapticSuccess, hapticError, hapticInaccuracy } from './haptics.js';
 
 /** Whether the completed mate should be saved when the player starts another game */
 let pendingMateCompletion = false;
@@ -206,6 +206,21 @@ function buildMissedMoveEvaluation(moveUci) {
   };
 }
 
+function isLegalSubmittedMove(moveUci) {
+  const chessEngine = getChessEngine();
+  if (!chessEngine) return false;
+
+  const normalized = moveUci.toLowerCase();
+  return chessEngine.moves({ verbose: true }).some((move) => {
+    const legalUci = `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
+    return legalUci === normalized || (normalized.length === 4 && legalUci.startsWith(normalized));
+  });
+}
+
+function inaccuracyIntensity(accuracy) {
+  return Math.max(0.12, Math.min(1, (100 - Number(accuracy || 0)) / 100));
+}
+
 /**
  * Apply a move to the board and update state.
  * @param {Object} moveDef - Move definition {uci, san}
@@ -296,7 +311,7 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
 
   if (!moveResult) {
     console.warn('Move application failed', expectedInfo.move);
-    flashBoard('wrong');
+    flashBoard('wrong', 1);
     hapticError();
     return false;
   }
@@ -311,8 +326,8 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
       celebrateSuccess(targetSquare);
     }
   } else {
-    flashBoard('wrong');
-    hapticError();
+    flashBoard('wrong', inaccuracyIntensity(moveEvaluation.accuracy));
+    hapticInaccuracy(moveEvaluation.accuracy);
     setCorrectStreak(0);
   }
 
@@ -400,6 +415,13 @@ export async function submitMove(moveUci) {
     const moveEvaluation = findMoveEvaluation(normalized, expectedInfo);
 
     if (!moveEvaluation) {
+      if (!isLegalSubmittedMove(normalized)) {
+        flashBoard('illegal', 0.15);
+        hapticError();
+        updateMoveFeedback({ illegal: true });
+        return;
+      }
+
       console.warn('Unscored wrong move', normalized);
       await completeExpectedMove(expectedInfo, buildMissedMoveEvaluation(normalized), false);
       return;

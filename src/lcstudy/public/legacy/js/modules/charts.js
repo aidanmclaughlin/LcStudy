@@ -371,18 +371,19 @@ export function updateStatistics() {
   const avgAccuracy = moveAccuracies.length > 0
     ? moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length
     : 0;
+  const latest = moveAccuracies.length > 0 ? moveAccuracies[moveAccuracies.length - 1] : 0;
+  const delta = moveAccuracies.length > 0 ? latest - avgAccuracy : 0;
   const prev = parseFloat(currentAverageElement.textContent || '0') || 0;
-  const next = parseFloat(avgAccuracy.toFixed(1));
+  const next = parseFloat(delta.toFixed(1));
 
   if (next !== prev) {
-    currentAverageElement.textContent = `${next.toFixed(1)}%`;
+    currentAverageElement.textContent = `${next >= 0 ? '+' : ''}${next.toFixed(1)} pp`;
     currentAverageElement.classList.add('num-bounce');
     setTimeout(() => currentAverageElement.classList.remove('num-bounce'), 260);
   }
 
   const moveElement = document.getElementById('move-accuracy-summary');
   if (moveElement) {
-    const latest = moveAccuracies.length > 0 ? moveAccuracies[moveAccuracies.length - 1] : 0;
-    moveElement.textContent = `${latest.toFixed(1)}% latest`;
+    moveElement.textContent = `Game avg ${avgAccuracy.toFixed(1)}%`;
   }
 }

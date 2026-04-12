@@ -48,6 +48,15 @@ export default async function HomePage() {
                 <button id="new" className="btn btn-sm">
                   New Game
                 </button>
+                <button
+                  id="zen-toggle"
+                  className="btn btn-sm btn-icon"
+                  type="button"
+                  aria-label="Enter zen mode"
+                  aria-pressed="false"
+                >
+                  <span className="zen-icon" aria-hidden="true" />
+                </button>
                 <AuthControls />
               </div>
             </div>
@@ -57,7 +66,7 @@ export default async function HomePage() {
               <div className="panel-section-heading">
                 <h2>Accuracy Over Time</h2>
                 <span className="panel-metric">
-                  Current: <span id="avg-accuracy">0%</span>
+                  Delta: <span id="avg-accuracy">0.0 pp</span>
                 </span>
               </div>
               <div className="chart-container">
@@ -77,7 +86,7 @@ export default async function HomePage() {
                 <canvas id="move-accuracy-chart" />
               </div>
               <span id="move-accuracy-summary" className="panel-metric">
-                0.0% latest
+                Game avg 0.0%
               </span>
             </div>
 
@@ -95,6 +104,14 @@ export default async function HomePage() {
           </div>
         </div>
       </div>
+      <button
+        id="zen-exit"
+        className="btn btn-icon zen-exit"
+        type="button"
+        aria-label="Exit zen mode"
+      >
+        <span className="zen-exit-icon" aria-hidden="true" />
+      </button>
     </>
   );
 }
