@@ -23,11 +23,11 @@ import { animateMove, showMoveHint, updateBoardAfterMove } from './board.js';
 import { flashBoard, celebrateSuccess, celebrateCheckmate, showStreakPill, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
-import { saveCompletedGame, loadGameHistory } from './api.js';
+import { saveCompletedGame } from './api.js';
 import { hapticMove, hapticSuccess, hapticError, hapticInaccuracy } from './haptics.js';
 
-/** Whether the completed mate should be saved when the player starts another game */
-let pendingMateCompletion = false;
+/** Whether the completed mate has already been saved for the current session */
+let completedMateSaved = false;
 let movePlaybackInProgress = false;
 
 const AUTO_PLAY_DELAY_MS = 320;
@@ -37,20 +37,7 @@ const WRONG_MOVE_REVEAL_DELAY_MS = 180;
  * Clear pending completion state after starting a fresh game.
  */
 export function clearPendingCompletedGame() {
-  pendingMateCompletion = false;
-}
-
-/**
- * Save a completed mate only when the player manually starts the next game.
- * @returns {Promise<boolean>} Whether a completed game was saved
- */
-export async function savePendingCompletedGame() {
-  if (!pendingMateCompletion) return false;
-
-  await saveCompletedGame('finished');
-  await loadGameHistory();
-  pendingMateCompletion = false;
-  return true;
+  completedMateSaved = false;
 }
 
 /**
@@ -382,9 +369,11 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   const updatedCache = getSessionCache();
   if (updatedCache.currentIndex >= updatedCache.moves.length) {
     const chessEngine = getChessEngine();
-    pendingMateCompletion = Boolean(chessEngine?.isCheckmate?.());
-    if (pendingMateCompletion && moveResult.to) {
+    const completedByMate = Boolean(chessEngine?.isCheckmate?.());
+    if (completedByMate && !completedMateSaved) {
+      completedMateSaved = true;
       celebrateCheckmate(moveResult.to);
+      await saveCompletedGame('finished');
     }
   }
 

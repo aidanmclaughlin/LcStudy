@@ -31,8 +31,7 @@ import {
   coerceIndex,
   applyMoveToBoard,
   isPlayerMove,
-  clearPendingCompletedGame,
-  savePendingCompletedGame
+  clearPendingCompletedGame
 } from './modules/moves.js';
 import { initKeyboardNavigation } from './modules/history.js';
 
@@ -190,7 +189,6 @@ async function bootstrap() {
 // New game button
 document.getElementById('new')?.addEventListener('click', async () => {
   try { unlockAudio(); } catch (e) {}
-  await savePendingCompletedGame();
   await startNewGame();
 });
 

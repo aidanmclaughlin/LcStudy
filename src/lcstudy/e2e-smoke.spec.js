@@ -379,9 +379,10 @@ test.describe('desktop checkmate', () => {
     await page.waitForSelector('.confetti');
     await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
     await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
+    await expect.poll(() => completeCalls).toBe(1);
     await page.waitForTimeout(3200);
     expect(sessionNewCalls).toBe(1);
-    expect(completeCalls).toBe(0);
+    expect(completePayloads[0]?.accuracy_history).toEqual([legalWrong.accuracy]);
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 
@@ -398,9 +399,8 @@ test.describe('desktop checkmate', () => {
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 
     await page.locator('#new').click();
-    await expect.poll(() => completeCalls).toBe(1);
     await expect.poll(() => sessionNewCalls).toBe(2);
-    expect(completePayloads[0]?.accuracy_history).toEqual([legalWrong.accuracy]);
+    expect(completeCalls).toBe(1);
     await page.waitForFunction((from) => (
       Boolean(document.querySelector(`[data-square="${from}"] .piece`)?.dataset?.piece)
     ), expectedFrom);
