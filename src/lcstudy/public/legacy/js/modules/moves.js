@@ -8,7 +8,6 @@ import {
   getSessionCache,
   updateSessionCache,
   getChessEngine,
-  getCurrentFen,
   setCurrentFen,
   setLiveFen,
   getCorrectStreak,
@@ -182,6 +181,16 @@ function findMoveEvaluation(moveUci, expectedInfo) {
   return evaluation || null;
 }
 
+function buildMissedMoveEvaluation(moveUci) {
+  return {
+    uci: moveUci,
+    san: moveUci,
+    policy: 0,
+    accuracy: 0,
+    best: false
+  };
+}
+
 /**
  * Apply a move to the board and update state.
  * @param {Object} moveDef - Move definition {uci, san}
@@ -346,12 +355,8 @@ export async function submitMove(moveUci) {
   const moveEvaluation = findMoveEvaluation(normalized, expectedInfo);
 
   if (!moveEvaluation) {
-    console.warn('Illegal move', normalized);
-    flashBoard('wrong');
-    hapticError();
-    setCorrectStreak(0);
-    showStreakPill();
-    updateBoardFromFen(getCurrentFen());
+    console.warn('Unscored wrong move', normalized);
+    await completeExpectedMove(expectedInfo, buildMissedMoveEvaluation(normalized), false);
     return;
   }
 

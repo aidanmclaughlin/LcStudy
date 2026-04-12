@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { test, devices } = require('@playwright/test');
 const { encode } = require('next-auth/jwt');
+const { Chess } = require('chess.js');
 
 function loadEnv(file) {
   const raw = fs.readFileSync(file, 'utf8');
@@ -21,6 +22,76 @@ function loadEnv(file) {
 
 function moveParts(uci) {
   return [uci.slice(0, 2), uci.slice(2, 4)];
+}
+
+function normalizeUci(move) {
+  return `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
+}
+
+function parseAnalysisComment(comment) {
+  if (!comment) return undefined;
+
+  const match = comment.match(/\[%lcstudy\s+([A-Za-z0-9_-]+)\]/);
+  if (!match) return undefined;
+
+  const raw = match[1].replace(/-/g, '+').replace(/_/g, '/');
+  const padded = raw.padEnd(Math.ceil(raw.length / 4) * 4, '=');
+  const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+
+  return payload.moves.map((move) => ({
+    uci: move.u.toLowerCase(),
+    san: move.s,
+    policy: Number(move.p),
+    accuracy: Number(move.a),
+    best: move.u.toLowerCase() === payload.best.toLowerCase(),
+  }));
+}
+
+function buildFinalMateSession() {
+  const pgn = fs.readFileSync(
+    path.join(process.cwd(), 'data/pgn/seed_1775972530_9402423d.pgn'),
+    'utf8'
+  );
+  const game = new Chess();
+  game.loadPgn(pgn);
+
+  const commentsByFen = new Map(
+    game.getComments().map(({ fen, comment }) => [fen, comment])
+  );
+  const replay = new Chess();
+  const moves = [];
+  let matePly = -1;
+  let mateFen = null;
+
+  for (const move of game.history({ verbose: true })) {
+    const fenBefore = replay.fen();
+    replay.move({ from: move.from, to: move.to, promotion: move.promotion });
+    moves.push({
+      uci: normalizeUci(move),
+      san: move.san,
+      analysis: parseAnalysisComment(commentsByFen.get(replay.fen())),
+    });
+
+    if (replay.isCheckmate()) {
+      matePly = moves.length - 1;
+      mateFen = fenBefore;
+    }
+  }
+
+  if (matePly < 0 || !mateFen) {
+    throw new Error('No final mate fixture found');
+  }
+
+  return {
+    id: 'final-mate-session',
+    game_id: 'final-mate-fixture',
+    flip: false,
+    fen: mateFen,
+    starting_fen: new Chess().fen(),
+    moves,
+    ply: matePly,
+    maia_level: 1500,
+  };
 }
 
 async function squareClick(page, square) {
@@ -173,4 +244,75 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     secondMove: secondMove.uci,
     secondReply: secondReply.uci,
   }));
+});
+
+test.describe('desktop checkmate', () => {
+  const desktopSafari = { ...devices['Desktop Safari'] };
+  delete desktopSafari.defaultBrowserType;
+
+  test.use({
+    ...desktopSafari,
+    baseURL: 'http://localhost:3000',
+  });
+
+  test('checkmate prompt completes after wrong illegal move', async ({ page, context }) => {
+    loadEnv(path.join(process.cwd(), '.env.local'));
+    const { sql } = require('@vercel/postgres');
+    const email = `lcstudy-mate-e2e-${Date.now()}@example.test`;
+    const { rows } = await sql`
+      INSERT INTO users (email, name, image)
+      VALUES (${email}, ${'LcStudy Mate E2E'}, ${null})
+      RETURNING id, email, name, image;
+    `;
+    const user = rows[0];
+    const token = await encode({
+      secret: process.env.NEXTAUTH_SECRET,
+      token: { sub: user.id, userId: user.id, email: user.email, name: user.name },
+    });
+    await sql`DELETE FROM users WHERE id = ${user.id};`;
+
+    await context.addCookies([
+      { name: 'next-auth.session-token', value: token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' },
+      { name: '__Secure-next-auth.session-token', value: token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax', secure: true },
+    ]);
+
+    const fixture = buildFinalMateSession();
+    await page.route('**/api/v1/game-history', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ history: [] }),
+    }));
+    await page.route('**/api/v1/session/new', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(fixture),
+    }));
+    await page.route('**/api/v1/session/*/complete', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true }),
+    }));
+
+    await page.goto('/', { waitUntil: 'networkidle' });
+    await page.waitForSelector('#board .piece');
+
+    await squareClick(page, 'a2');
+    await squareClick(page, 'a5');
+    await page.waitForFunction(() => (
+      (document.querySelector('#move-list')?.textContent || '').includes('Qxg7#') &&
+      (document.querySelector('#move-feedback')?.textContent || '').includes('0.0%')
+    ));
+    await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
+    await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
+
+    const historyText = await page.locator('#move-list').textContent();
+    const feedbackText = await page.locator('#move-feedback').textContent();
+    await sql`DELETE FROM users WHERE email = ${email};`;
+
+    console.log(JSON.stringify({
+      checkmateMove: fixture.moves[fixture.ply].uci,
+      feedbackText,
+      historyText,
+    }));
+  });
 });
