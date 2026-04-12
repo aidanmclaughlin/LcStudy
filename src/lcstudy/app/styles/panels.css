@@ -165,15 +165,3 @@
     padding: 20px;
   }
 }
-
-.zen-exit {
-  display: none;
-  position: fixed;
-  top: max(14px, env(safe-area-inset-top));
-  right: max(14px, env(safe-area-inset-right));
-  z-index: 10000;
-}
-
-body.zen-mode .zen-exit {
-  display: inline-flex;
-}
