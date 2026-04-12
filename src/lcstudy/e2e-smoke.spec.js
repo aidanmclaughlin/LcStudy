@@ -138,12 +138,19 @@ async function requireMoveHighlight(page, role, move) {
   await requireSquareClass(page, to, `${prefix}-to`);
 }
 
+async function pieceAt(page, square) {
+  const piece = page.locator(`[data-square="${square}"] .piece`);
+  if (await piece.count() === 0) return null;
+  return piece.first().evaluate((element) => element.dataset.piece || null);
+}
+
 test.use({
   ...devices['iPhone 14'],
   baseURL: 'http://localhost:3000',
 });
 
 test('accuracy gameplay, haptics, and move review', async ({ page, context }) => {
+  test.setTimeout(60000);
   loadEnv(path.join(process.cwd(), '.env.local'));
   const { sql } = require('@vercel/postgres');
   const email = `lcstudy-e2e-${Date.now()}@example.test`;
@@ -261,6 +268,7 @@ test.describe('desktop checkmate', () => {
   });
 
   test('checkmate prompt completes after wrong illegal move', async ({ page, context }) => {
+    test.setTimeout(60000);
     loadEnv(path.join(process.cwd(), '.env.local'));
     const { sql } = require('@vercel/postgres');
     const email = `lcstudy-mate-e2e-${Date.now()}@example.test`;
@@ -316,6 +324,9 @@ test.describe('desktop checkmate', () => {
     const expectedMate = fixture.moves[fixture.ply];
     const [wrongFrom] = moveParts(expectedMate.uci);
     const mateBoard = new Chess(fixture.fen);
+    const movingPiece = mateBoard.get(wrongFrom);
+    if (!movingPiece) throw new Error('No mating piece found');
+    const expectedPieceCode = movingPiece ? `${movingPiece.color}${movingPiece.type.toUpperCase()}` : null;
     const legalMateMoves = new Set(mateBoard.moves({ verbose: true }).map(normalizeUci));
     const wrongTo = [
       'a1', 'b1', 'c1', 'd1', 'e1', 'f1', 'g1', 'h1',
@@ -339,11 +350,28 @@ test.describe('desktop checkmate', () => {
     await page.waitForTimeout(3200);
     expect(sessionNewCalls).toBe(1);
     expect(completeCalls).toBe(0);
+    expect(await pieceAt(page, wrongFrom)).toBeNull();
+    expect(await pieceAt(page, expectedMate.uci.slice(2, 4))).toBe(expectedPieceCode);
+
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(300);
+    expect(await pieceAt(page, wrongFrom)).toBeNull();
+    expect(await pieceAt(page, expectedMate.uci.slice(2, 4))).toBe(expectedPieceCode);
+    await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(300);
+    expect(await pieceAt(page, wrongFrom)).toBe(expectedPieceCode);
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(300);
+    expect(await pieceAt(page, wrongFrom)).toBeNull();
+    expect(await pieceAt(page, expectedMate.uci.slice(2, 4))).toBe(expectedPieceCode);
 
     await page.locator('#new').click();
     await expect.poll(() => completeCalls).toBe(1);
     await expect.poll(() => sessionNewCalls).toBe(2);
     expect(completePayloads[0]?.accuracy_history).toEqual([0]);
+    await page.waitForFunction((from) => (
+      Boolean(document.querySelector(`[data-square="${from}"] .piece`)?.dataset?.piece)
+    ), wrongFrom);
 
     const historyText = await page.locator('#move-list').textContent();
     const feedbackText = await page.locator('#move-feedback').textContent();
