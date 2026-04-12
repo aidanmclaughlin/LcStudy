@@ -16,7 +16,7 @@ import { getServerSession } from "next-auth";
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-import { ensureUser, getUserByEmail } from "@/lib/db";
+import { ensureUser } from "@/lib/db";
 
 // =============================================================================
 // Configuration
@@ -70,13 +70,18 @@ export const authOptions = {
      */
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.userId ?? token.sub ?? undefined;
+        if (session.user.email) {
+          const dbUser = await ensureUser({
+            email: session.user.email,
+            name: session.user.name ?? (typeof token.name === "string" ? token.name : null),
+            image: session.user.image ?? (typeof token.picture === "string" ? token.picture : null)
+          });
 
-        // Hydrate user details from database if missing
-        if (session.user.email && !session.user.name) {
-          const dbUser = await getUserByEmail(session.user.email);
-          session.user.name = dbUser?.name ?? session.user.name;
-          session.user.image = dbUser?.image ?? session.user.image;
+          session.user.id = dbUser.id;
+          session.user.name = dbUser.name ?? session.user.name;
+          session.user.image = dbUser.image ?? session.user.image;
+        } else {
+          session.user.id = token.userId ?? token.sub ?? undefined;
         }
       }
       return session;

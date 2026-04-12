@@ -82,6 +82,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     secret: process.env.NEXTAUTH_SECRET,
     token: { sub: user.id, userId: user.id, email: user.email, name: user.name },
   });
+  await sql`DELETE FROM users WHERE id = ${user.id};`;
 
   await context.addCookies([
     { name: 'next-auth.session-token', value: token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' },
