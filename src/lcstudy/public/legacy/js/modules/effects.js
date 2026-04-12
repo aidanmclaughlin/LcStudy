@@ -5,7 +5,7 @@
 
 import { CONFETTI_COLORS, CELEBRATION_COLORS } from './constants.js';
 import { getCorrectStreak } from './state.js';
-import { playSuccessChime, vibrateSuccess } from './audio.js';
+import { playSuccessChime } from './audio.js';
 
 /**
  * Flash the board with a colored outline effect.
@@ -134,7 +134,6 @@ export function celebrateSuccess(toSquare) {
   }
 
   playSuccessChime();
-  vibrateSuccess();
 
   // 7% chance of jackpot shimmer with extra confetti
   if (Math.random() < 0.07) {
@@ -174,21 +173,20 @@ export function createCelebrationConfetti(count = 150) {
 }
 
 /**
- * Update the attempts remaining display.
- * @param {number} remaining - Number of attempts left
+ * Update the move feedback display.
+ * @param {Object} result - Move score result
  */
-export function updateAttemptsRemaining(remaining) {
-  const attemptsElement = document.getElementById('attempts-remaining');
-  if (!attemptsElement) return;
+export function updateMoveFeedback(result = null) {
+  const feedbackElement = document.getElementById('move-feedback');
+  if (!feedbackElement) return;
 
-  if (remaining === 0) {
-    attemptsElement.textContent = 'auto-play';
-    attemptsElement.style.color = '#dc2626';
-  } else if (remaining <= 3) {
-    attemptsElement.textContent = `${remaining} left`;
-    attemptsElement.style.color = '#ef4444';
-  } else {
-    attemptsElement.textContent = `${remaining} left`;
-    attemptsElement.style.color = '#f59e0b';
+  if (!result) {
+    feedbackElement.textContent = 'Pick one move';
+    feedbackElement.style.color = '#94a3b8';
+    return;
   }
+
+  const accuracy = Number(result.accuracy || 0);
+  feedbackElement.textContent = `${accuracy.toFixed(1)}%`;
+  feedbackElement.style.color = accuracy >= 90 ? '#22c55e' : accuracy >= 65 ? '#f59e0b' : '#ef4444';
 }

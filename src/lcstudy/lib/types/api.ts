@@ -20,17 +20,26 @@ export interface SessionCreateResponse {
   flip: boolean;
   fen: string;
   starting_fen: string;
-  moves: Array<{ uci: string; san: string }>;
+  moves: Array<{
+    uci: string;
+    san: string;
+    analysis?: Array<{
+      uci: string;
+      san: string;
+      policy: number;
+      accuracy: number;
+      best: boolean;
+    }>;
+  }>;
   ply: number;
   maia_level: number;
 }
 
 /** Request body for completing a game session */
 export interface SessionCompleteRequest {
-  total_attempts?: number;
   total_moves?: number;
-  attempt_history?: number[];
-  average_retries?: number;
+  average_accuracy?: number;
+  accuracy_history?: number[];
   maia_level?: number;
   result?: string;
 }
@@ -50,14 +59,14 @@ export interface StatsTimelinePoint {
   gamesPlayed: number;
   wins: number;
   winRate: number;
-  avgAttempts: number;
-  cumulativeWinRate: number;
+  avgAccuracy: number;
+  cumulativeAccuracy: number;
 }
 
-/** Attempts data point in stats response */
-export interface StatsAttemptsPoint {
+/** Accuracy data point in stats response */
+export interface StatsAccuracyPoint {
   label: string;
-  attempts: number;
+  accuracy: number;
   solved: boolean;
 }
 
@@ -66,10 +75,10 @@ export interface StatsResponse {
   totalGames: number;
   solvedGames: number;
   winRate: number;
-  averageAttempts: number;
+  averageAccuracy: number;
   currentStreak: number;
   timeline: StatsTimelinePoint[];
-  attempts: StatsAttemptsPoint[];
+  accuracy: StatsAccuracyPoint[];
 }
 
 // =============================================================================
@@ -79,8 +88,9 @@ export interface StatsResponse {
 /** Single game entry in history response */
 export interface GameHistoryEntry {
   date: string;
-  average_retries: number;
+  average_accuracy: number;
   total_moves: number;
+  accuracy_history: number[];
   maia_level: number;
   result: "finished" | "incomplete";
 }

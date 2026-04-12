@@ -15,14 +15,14 @@ export interface TimelinePoint {
   gamesPlayed: number;
   wins: number;
   winRate: number;
-  avgAttempts: number;
-  cumulativeWinRate: number;
+  avgAccuracy: number;
+  cumulativeAccuracy: number;
 }
 
-/** A single game's attempts data */
-export interface AttemptsPoint {
+/** A single game's accuracy data */
+export interface AccuracyPoint {
   label: string;
-  attempts: number;
+  accuracy: number;
   solved: boolean;
 }
 
@@ -31,10 +31,10 @@ export interface UserStatsSummary {
   totalGames: number;
   solvedGames: number;
   winRate: number;
-  averageAttempts: number;
+  averageAccuracy: number;
   currentStreak: number;
   timeline: TimelinePoint[];
-  attempts: AttemptsPoint[];
+  accuracy: AccuracyPoint[];
 }
 
 // =============================================================================
@@ -55,19 +55,19 @@ export function computeStats(history: UserGameRow[]): UserStatsSummary {
   const totalGames = history.length;
   const solvedGames = history.filter((game) => game.solved).length;
   const winRate = solvedGames / totalGames;
-  const averageAttempts = calculateWeightedAverage(history);
+  const averageAccuracy = calculateWeightedAccuracy(history);
   const currentStreak = calculateStreak(history);
   const timeline = buildTimeline(history);
-  const attempts = buildAttemptsData(history);
+  const accuracy = buildAccuracyData(history);
 
   return {
     totalGames,
     solvedGames,
     winRate,
-    averageAttempts,
+    averageAccuracy,
     currentStreak,
     timeline,
-    attempts
+    accuracy
   };
 }
 
@@ -83,25 +83,25 @@ function createEmptyStats(): UserStatsSummary {
     totalGames: 0,
     solvedGames: 0,
     winRate: 0,
-    averageAttempts: 0,
+    averageAccuracy: 0,
     currentStreak: 0,
     timeline: [],
-    attempts: []
+    accuracy: []
   };
 }
 
 /**
- * Calculate the weighted average attempts per move across all games.
+ * Calculate the weighted average accuracy per move across all games.
  * Weighted by total moves in each game.
  */
-function calculateWeightedAverage(history: UserGameRow[]): number {
+function calculateWeightedAccuracy(history: UserGameRow[]): number {
   const totalMoves = history.reduce((sum, game) => sum + game.totalMoves, 0);
-  const totalAttempts = history.reduce((sum, game) => {
-    const gameAttempts = (game.averageRetries ?? 0) * game.totalMoves;
-    return sum + gameAttempts;
+  const totalAccuracy = history.reduce((sum, game) => {
+    const gameAccuracy = (game.averageAccuracy ?? 0) * game.totalMoves;
+    return sum + gameAccuracy;
   }, 0);
 
-  return totalMoves > 0 ? totalAttempts / totalMoves : 0;
+  return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
 }
 
 /**
@@ -130,20 +130,20 @@ function buildTimeline(history: UserGameRow[]): TimelinePoint[] {
     wins: number;
     total: number;
     moves: number;
-    attempts: number;
+    accuracy: number;
   }>();
 
   for (const game of history) {
     const key = game.playedAt.toISOString().slice(0, 10);
 
     if (!daily.has(key)) {
-      daily.set(key, { wins: 0, total: 0, moves: 0, attempts: 0 });
+      daily.set(key, { wins: 0, total: 0, moves: 0, accuracy: 0 });
     }
 
     const bucket = daily.get(key)!;
     bucket.total++;
     bucket.moves += game.totalMoves;
-    bucket.attempts += (game.averageRetries ?? 0) * game.totalMoves;
+    bucket.accuracy += (game.averageAccuracy ?? 0) * game.totalMoves;
 
     if (game.solved) {
       bucket.wins++;
@@ -153,21 +153,21 @@ function buildTimeline(history: UserGameRow[]): TimelinePoint[] {
   // Build timeline with cumulative stats
   const sortedDates = Array.from(daily.keys()).sort();
   const timeline: TimelinePoint[] = [];
-  let cumulativeWins = 0;
-  let cumulativeTotal = 0;
+  let cumulativeAccuracy = 0;
+  let cumulativeMoves = 0;
 
   for (const date of sortedDates) {
     const entry = daily.get(date)!;
-    cumulativeWins += entry.wins;
-    cumulativeTotal += entry.total;
+    cumulativeAccuracy += entry.accuracy;
+    cumulativeMoves += entry.moves;
 
     timeline.push({
       date,
       gamesPlayed: entry.total,
       wins: entry.wins,
       winRate: entry.wins / entry.total,
-      avgAttempts: entry.moves > 0 ? entry.attempts / entry.moves : 0,
-      cumulativeWinRate: cumulativeWins / cumulativeTotal
+      avgAccuracy: entry.moves > 0 ? entry.accuracy / entry.moves : 0,
+      cumulativeAccuracy: cumulativeMoves > 0 ? cumulativeAccuracy / cumulativeMoves : 0
     });
   }
 
@@ -175,12 +175,12 @@ function buildTimeline(history: UserGameRow[]): TimelinePoint[] {
 }
 
 /**
- * Build per-game attempts data for visualization.
+ * Build per-game accuracy data for visualization.
  */
-function buildAttemptsData(history: UserGameRow[]): AttemptsPoint[] {
+function buildAccuracyData(history: UserGameRow[]): AccuracyPoint[] {
   return history.map((game, idx) => ({
     label: `#${idx + 1}`,
-    attempts: game.averageRetries ?? 0,
+    accuracy: game.averageAccuracy ?? 0,
     solved: game.solved
   }));
 }

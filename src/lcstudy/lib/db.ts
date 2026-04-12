@@ -118,7 +118,7 @@ export async function ensureGameRecord(args: {
  */
 export async function getUserGameHistory(userId: string): Promise<UserGameRow[]> {
   const { rows } = await sql<UserGameDbRow>`
-    SELECT user_id, game_id, attempts, solved, accuracy, played_at, total_moves, average_retries, maia_level
+    SELECT user_id, game_id, attempts, solved, accuracy, played_at, total_moves, average_retries, average_accuracy, accuracy_history, maia_level
     FROM user_games
     WHERE user_id = ${userId}
     ORDER BY played_at ASC;
@@ -147,11 +147,22 @@ export async function getUserPlayedGameIds(userId: string): Promise<Set<string>>
  * @param params - Game result parameters
  */
 export async function recordGameResult(params: RecordGameResultParams): Promise<void> {
-  const { userId, gameId, attempts, solved, accuracy, totalMoves, averageRetries, maiaLevel } = params;
+  const {
+    userId,
+    gameId,
+    attempts,
+    solved,
+    accuracy,
+    totalMoves,
+    averageRetries,
+    averageAccuracy,
+    accuracyHistory,
+    maiaLevel
+  } = params;
 
   await sql`
-    INSERT INTO user_games (user_id, game_id, attempts, solved, accuracy, total_moves, average_retries, maia_level)
-    VALUES (${userId}, ${gameId}, ${attempts}, ${solved}, ${accuracy}, ${totalMoves}, ${averageRetries}, ${maiaLevel})
+    INSERT INTO user_games (user_id, game_id, attempts, solved, accuracy, total_moves, average_retries, average_accuracy, accuracy_history, maia_level)
+    VALUES (${userId}, ${gameId}, ${attempts}, ${solved}, ${accuracy}, ${totalMoves}, ${averageRetries}, ${averageAccuracy}, ${JSON.stringify(accuracyHistory)}, ${maiaLevel})
   `;
 }
 
@@ -313,6 +324,12 @@ function mapUserGameRow(row: UserGameDbRow): UserGameRow {
     playedAt: new Date(row.played_at),
     totalMoves: row.total_moves ?? 0,
     averageRetries: row.average_retries,
+    averageAccuracy: typeof row.average_accuracy === "string"
+      ? Number(row.average_accuracy)
+      : row.average_accuracy,
+    accuracyHistory: Array.isArray(row.accuracy_history)
+      ? row.accuracy_history.map((value: unknown) => Number(value))
+      : [],
     maiaLevel: row.maia_level
   };
 }

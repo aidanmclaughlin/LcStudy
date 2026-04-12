@@ -7,11 +7,11 @@ import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS } from './constants.js';
 import {
   getAccuracyChart,
   setAccuracyChart,
-  getAttemptsChart,
-  setAttemptsChart,
-  getGameAttempts,
-  getTotalAttempts,
-  getCumulativeAverages,
+  getMoveAccuracyChart,
+  setMoveAccuracyChart,
+  getMoveAccuracies,
+  getCumulativeAccuracies,
+  getGameHistory,
   getMoveHistory,
   getCurrentMoveIndex,
   getIsReviewingMoves
@@ -28,7 +28,7 @@ export function initializeCharts() {
   }
 
   initAccuracyChart();
-  initAttemptsChart();
+  initMoveAccuracyChart();
 }
 
 /**
@@ -44,7 +44,7 @@ function initAccuracyChart() {
       labels: [],
       datasets: [
         {
-          label: 'Average Retries',
+          label: 'Game Accuracy',
           data: [],
           borderColor: '#8b5cf6',
           backgroundColor: 'rgba(139, 92, 246, 0.08)',
@@ -67,6 +67,17 @@ function initAccuracyChart() {
           pointBorderWidth: 2,
           fill: false,
           tension: 0
+        },
+        {
+          label: 'Overall Accuracy',
+          data: [],
+          borderColor: '#60a5fa',
+          backgroundColor: 'rgba(96, 165, 250, 0.08)',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          fill: false,
+          tension: 0.3
         }
       ]
     },
@@ -84,7 +95,7 @@ function initAccuracyChart() {
             label: function(context) {
               const datasetIndex = context.datasetIndex;
               const index = context.dataIndex;
-              const value = context.formattedValue;
+              const value = `${context.formattedValue}%`;
 
               if (datasetIndex === 0) {
                 const dataset = context.chart.data.datasets[0] || {};
@@ -92,9 +103,11 @@ function initAccuracyChart() {
                 if (minIdx !== undefined && minIdx !== null && index === minIdx) {
                   return `Best: ${value}`;
                 }
-                return `Avg: ${value}`;
+                return `Game: ${value}`;
               } else if (datasetIndex === 1) {
                 return `Now: ${value}`;
+              } else if (datasetIndex === 2) {
+                return `Overall: ${value}`;
               }
               return value;
             }
@@ -109,7 +122,7 @@ function initAccuracyChart() {
             ...CHART_SCALE_OPTIONS.ticks,
             maxTicksLimit: 5,
             callback: function(value) {
-              return value.toFixed(1);
+              return `${value.toFixed(0)}%`;
             }
           }
         },
@@ -122,10 +135,10 @@ function initAccuracyChart() {
 }
 
 /**
- * Initialize the attempts per move chart (bar chart).
+ * Initialize the accuracy per move chart (bar chart).
  */
-function initAttemptsChart() {
-  const ctx = document.getElementById('attempts-chart')?.getContext('2d');
+function initMoveAccuracyChart() {
+  const ctx = document.getElementById('move-accuracy-chart')?.getContext('2d');
   if (!ctx) return;
 
   const chart = new window.Chart(ctx, {
@@ -133,9 +146,9 @@ function initAttemptsChart() {
     data: {
       labels: [],
       datasets: [{
-        label: 'Attempts',
+        label: 'Move Accuracy',
         data: [],
-        backgroundColor: '#f59e0b',
+        backgroundColor: '#22c55e',
         borderColor: 'transparent',
         borderWidth: 0,
         borderRadius: 4,
@@ -157,10 +170,13 @@ function initAttemptsChart() {
         y: {
           ...CHART_SCALE_OPTIONS,
           min: 0,
+          max: 100,
           ticks: {
             ...CHART_SCALE_OPTIONS.ticks,
-            stepSize: 1,
-            maxTicksLimit: 6
+            maxTicksLimit: 5,
+            callback: function(value) {
+              return `${value.toFixed(0)}%`;
+            }
           }
         },
         x: { display: false }
@@ -168,7 +184,7 @@ function initAttemptsChart() {
     }
   });
 
-  setAttemptsChart(chart);
+  setMoveAccuracyChart(chart);
 }
 
 /**
@@ -176,7 +192,7 @@ function initAttemptsChart() {
  */
 export function updateCharts() {
   updateAccuracyChart();
-  updateAttemptsChart();
+  updateMoveAccuracyChart();
 }
 
 /**
@@ -186,15 +202,16 @@ function updateAccuracyChart() {
   const chart = getAccuracyChart();
   if (!chart) return;
 
-  const cumulativeAverages = getCumulativeAverages();
-  const gameAttempts = getGameAttempts();
-  const totalAttempts = getTotalAttempts();
+  const cumulativeAccuracies = getCumulativeAccuracies();
+  const moveAccuracies = getMoveAccuracies();
+  const gameHistory = getGameHistory();
 
   const labels = [];
   const historicalData = [];
   const currentGameData = [];
+  const cumulativeData = [];
 
-  // Per-point styling for minimum highlight
+  // Per-point styling for best historical highlight
   const pointBgColors = [];
   const pointBdColors = [];
   const pointRadii = [];
@@ -202,10 +219,11 @@ function updateAccuracyChart() {
   const pointBorderWidths = [];
 
   // Add historical data points
-  for (let i = 0; i < cumulativeAverages.length; i++) {
+  for (let i = 0; i < cumulativeAccuracies.length; i++) {
     labels.push('');
-    historicalData.push(cumulativeAverages[i]);
+    historicalData.push(gameHistory[i]?.average_accuracy ?? null);
     currentGameData.push(null);
+    cumulativeData.push(cumulativeAccuracies[i]);
     pointBgColors.push('#8b5cf6');
     pointBdColors.push('#8b5cf6');
     pointRadii.push(0);
@@ -214,11 +232,12 @@ function updateAccuracyChart() {
   }
 
   // Add current game point
-  if (gameAttempts.length > 0) {
-    const currentGameAvg = totalAttempts / gameAttempts.length;
+  if (moveAccuracies.length > 0) {
+    const currentGameAvg = moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length;
     labels.push('');
     historicalData.push(null);
     currentGameData.push(currentGameAvg);
+    cumulativeData.push(null);
     pointBgColors.push('#8b5cf6');
     pointBdColors.push('#8b5cf6');
     pointRadii.push(0);
@@ -226,66 +245,70 @@ function updateAccuracyChart() {
     pointBorderWidths.push(0);
   }
 
-  // Find and highlight minimum historical value
-  let minIdxForTooltip = null;
-  if (cumulativeAverages.length > 0) {
-    let minVal = cumulativeAverages[0];
-    let minIdx = 0;
+  // Find and highlight maximum historical value
+  let bestIdxForTooltip = null;
+  if (cumulativeAccuracies.length > 0) {
+    let maxVal = cumulativeAccuracies[0];
+    let bestIdx = 0;
 
-    for (let i = 1; i < cumulativeAverages.length; i++) {
-      if (cumulativeAverages[i] < minVal) {
-        minVal = cumulativeAverages[i];
-        minIdx = i;
+    for (let i = 1; i < cumulativeAccuracies.length; i++) {
+      if (cumulativeAccuracies[i] > maxVal) {
+        maxVal = cumulativeAccuracies[i];
+        bestIdx = i;
       }
     }
 
-    // Apply red styling to minimum point
-    pointBgColors[minIdx] = '#e11d48';
-    pointBdColors[minIdx] = '#ffffff';
-    pointRadii[minIdx] = 5;
-    pointHoverRadii[minIdx] = 7;
-    pointBorderWidths[minIdx] = 2;
-    minIdxForTooltip = minIdx;
+    // Apply green styling to best point
+    pointBgColors[bestIdx] = '#10b981';
+    pointBdColors[bestIdx] = '#ffffff';
+    pointRadii[bestIdx] = 5;
+    pointHoverRadii[bestIdx] = 7;
+    pointBorderWidths[bestIdx] = 2;
+    bestIdxForTooltip = bestIdx;
   }
 
   // Update chart data
   chart.data.labels = labels;
   chart.data.datasets[0].data = historicalData;
   chart.data.datasets[1].data = currentGameData;
+  chart.data.datasets[2].data = cumulativeData;
   chart.data.datasets[0].pointBackgroundColor = pointBgColors;
   chart.data.datasets[0].pointBorderColor = pointBdColors;
   chart.data.datasets[0].pointRadius = pointRadii;
   chart.data.datasets[0].pointHoverRadius = pointHoverRadii;
   chart.data.datasets[0].pointBorderWidth = pointBorderWidths;
-  chart.data.datasets[0].customMinIndex = minIdxForTooltip;
+  chart.data.datasets[0].customMinIndex = bestIdxForTooltip;
 
   // Dynamically adjust Y axis to data range
-  const yVals = cumulativeAverages.filter(v => typeof v === 'number' && !isNaN(v));
-  if (gameAttempts.length > 0) {
-    const currentGameAvg = totalAttempts / gameAttempts.length;
+  const yVals = [
+    ...cumulativeAccuracies,
+    ...gameHistory.map(game => game.average_accuracy)
+  ].filter(v => typeof v === 'number' && !isNaN(v));
+  if (moveAccuracies.length > 0) {
+    const currentGameAvg = moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length;
     if (!isNaN(currentGameAvg)) yVals.push(currentGameAvg);
   }
 
   if (yVals.length > 0) {
     const minY = Math.min(...yVals);
     const maxY = Math.max(...yVals);
-    const pad = 0.2;
-    chart.options.scales.y.min = minY - pad;
-    chart.options.scales.y.max = maxY + pad;
+    const pad = 4;
+    chart.options.scales.y.min = Math.max(0, minY - pad);
+    chart.options.scales.y.max = Math.min(100, maxY + pad);
   }
 
   chart.update('none');
 }
 
 /**
- * Update the attempts bar chart.
+ * Update the accuracy per move bar chart.
  */
-function updateAttemptsChart() {
-  const chart = getAttemptsChart();
+function updateMoveAccuracyChart() {
+  const chart = getMoveAccuracyChart();
   if (!chart) return;
 
-  const gameAttempts = getGameAttempts();
-  if (gameAttempts.length === 0) return;
+  const moveAccuracies = getMoveAccuracies();
+  if (moveAccuracies.length === 0) return;
 
   const moveHistory = getMoveHistory();
   const currentMoveIndex = getCurrentMoveIndex();
@@ -305,18 +328,19 @@ function updateAttemptsChart() {
     }
   }
 
-  // Generate colors (green for current, amber for others)
-  const colors = gameAttempts.map((_, index) => {
+  // Generate colors by accuracy band.
+  const colors = moveAccuracies.map((accuracy, index) => {
     const isCurrentMove = isReviewingMoves && currentUserMoveIndex === index;
-    return isCurrentMove ? '#10b981' : '#f59e0b';
+    if (isCurrentMove) return '#60a5fa';
+    return accuracy >= 90 ? '#22c55e' : accuracy >= 65 ? '#f59e0b' : '#ef4444';
   });
 
   const borderColors = colors.map(color =>
-    color === '#10b981' ? '#059669' : '#d97706'
+    color === '#60a5fa' ? '#2563eb' : color
   );
 
-  chart.data.labels = gameAttempts.map(() => '');
-  chart.data.datasets[0].data = gameAttempts;
+  chart.data.labels = moveAccuracies.map(() => '');
+  chart.data.datasets[0].data = moveAccuracies;
   chart.data.datasets[0].backgroundColor = colors;
   chart.data.datasets[0].borderColor = borderColors;
 
@@ -324,10 +348,10 @@ function updateAttemptsChart() {
 }
 
 /**
- * Reset the attempts chart for a new game.
+ * Reset the move accuracy chart for a new game.
  */
-export function resetAttemptsChart() {
-  const chart = getAttemptsChart();
+export function resetMoveAccuracyChart() {
+  const chart = getMoveAccuracyChart();
   if (!chart) return;
 
   chart.data.labels = [];
@@ -339,19 +363,26 @@ export function resetAttemptsChart() {
  * Update the statistics display.
  */
 export function updateStatistics() {
-  const currentAverageElement = document.getElementById('avg-attempts');
+  const currentAverageElement = document.getElementById('avg-accuracy');
   if (!currentAverageElement) return;
 
-  const gameAttempts = getGameAttempts();
-  const totalAttempts = getTotalAttempts();
+  const moveAccuracies = getMoveAccuracies();
 
-  const avgAttempts = gameAttempts.length > 0 ? (totalAttempts / gameAttempts.length) : 0;
+  const avgAccuracy = moveAccuracies.length > 0
+    ? moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length
+    : 0;
   const prev = parseFloat(currentAverageElement.textContent || '0') || 0;
-  const next = parseFloat(avgAttempts.toFixed(1));
+  const next = parseFloat(avgAccuracy.toFixed(1));
 
   if (next !== prev) {
-    currentAverageElement.textContent = next.toFixed(1);
+    currentAverageElement.textContent = `${next.toFixed(1)}%`;
     currentAverageElement.classList.add('num-bounce');
     setTimeout(() => currentAverageElement.classList.remove('num-bounce'), 260);
+  }
+
+  const moveElement = document.getElementById('move-accuracy-summary');
+  if (moveElement) {
+    const latest = moveAccuracies.length > 0 ? moveAccuracies[moveAccuracies.length - 1] : 0;
+    moveElement.textContent = `${latest.toFixed(1)}% latest`;
   }
 }

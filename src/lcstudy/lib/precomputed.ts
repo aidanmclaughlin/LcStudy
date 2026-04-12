@@ -15,10 +15,20 @@ import { Chess } from "chess.js";
 // Types
 // =============================================================================
 
+/** LC0 evaluation for one legal move in the prompt position */
+export interface MoveEvaluation {
+  uci: string;
+  san: string;
+  policy: number;
+  accuracy: number;
+  best: boolean;
+}
+
 /** A single move in UCI and SAN notation */
 export interface PrecomputedMove {
   uci: string;
   san: string;
+  analysis?: MoveEvaluation[];
 }
 
 /** A round of play (player move + optional reply) */
@@ -102,6 +112,45 @@ function normalizeUci(move: {
   return `${move.from}${move.to}${move.promotion ?? ""}`.toLowerCase();
 }
 
+/**
+ * Decode compact LC0 analysis stored in PGN comments.
+ */
+function parseAnalysisComment(comment: string | undefined): MoveEvaluation[] | undefined {
+  if (!comment) {
+    return undefined;
+  }
+
+  const match = comment.match(/\[%lcstudy\s+([A-Za-z0-9_-]+)\]/);
+  if (!match) {
+    return undefined;
+  }
+
+  const raw = match[1].replace(/-/g, "+").replace(/_/g, "/");
+  const padded = raw.padEnd(Math.ceil(raw.length / 4) * 4, "=");
+  const payload = JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
+    v?: number;
+    moves?: Array<{
+      u: string;
+      s: string;
+      p: number;
+      a: number;
+    }>;
+    best?: string;
+  };
+
+  if (payload.v !== 1 || !Array.isArray(payload.moves) || !payload.best) {
+    throw new Error("Unsupported LC0 analysis comment");
+  }
+
+  return payload.moves.map((move) => ({
+    uci: move.u.toLowerCase(),
+    san: move.s,
+    policy: Number(move.p),
+    accuracy: Number(move.a),
+    best: move.u.toLowerCase() === payload.best?.toLowerCase()
+  }));
+}
+
 // =============================================================================
 // Public API
 // =============================================================================
@@ -148,12 +197,9 @@ function parsePgnFile(filePath: string): PrecomputedGame | null {
 
     const headers = chess.header() as Record<string, string | undefined | null>;
     const verboseMoves = chess.history({ verbose: true });
-
-    // Extract moves
-    const moves: PrecomputedMove[] = verboseMoves.map((move) => ({
-      uci: normalizeUci(move),
-      san: move.san
-    }));
+    const commentsByFen = new Map(
+      chess.getComments().map(({ fen, comment }) => [fen, comment])
+    );
 
     // Determine starting position
     const startingChess = new Chess();
@@ -169,6 +215,27 @@ function parsePgnFile(filePath: string): PrecomputedGame | null {
       }
     }
 
+    const replay = new Chess(startingChess.fen());
+    const moves: PrecomputedMove[] = [];
+
+    for (const move of verboseMoves) {
+      const applied = replay.move({
+        from: move.from,
+        to: move.to,
+        promotion: move.promotion
+      });
+
+      if (!applied) {
+        throw new Error(`Failed to replay move ${normalizeUci(move)}`);
+      }
+
+      moves.push({
+        uci: normalizeUci(move),
+        san: move.san,
+        analysis: parseAnalysisComment(commentsByFen.get(replay.fen()))
+      });
+    }
+
     // Build rounds (player move + opponent reply pairs)
     const leelaColor = determineLeelaColor(headers);
     const playerIsWhite = leelaColor === "w";
@@ -182,6 +249,11 @@ function parsePgnFile(filePath: string): PrecomputedGame | null {
         player: moves[idx],
         reply: moves[idx + 1]
       });
+    }
+
+    const missingAnalysis = rounds.find((round) => !round.player.analysis?.length);
+    if (missingAnalysis) {
+      throw new Error(`Missing LC0 analysis for player move ${missingAnalysis.player.uci}`);
     }
 
     const fileName = path.basename(filePath);

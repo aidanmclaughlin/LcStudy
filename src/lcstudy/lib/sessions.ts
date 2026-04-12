@@ -48,10 +48,9 @@ export interface CreateSessionResult {
 export interface FinalizeSessionInput {
   sessionId: string;
   userId: string;
-  attemptHistory: number[];
-  totalAttempts?: number;
   totalMoves?: number;
-  averageRetries?: number | null;
+  averageAccuracy?: number | null;
+  accuracyHistory: number[];
   maiaLevel?: number | null;
   result?: string;
 }
@@ -128,7 +127,7 @@ export async function createSessionForUser(
  * @throws Error if session not found or doesn't belong to user
  */
 export async function finalizeSession(input: FinalizeSessionInput): Promise<void> {
-  const { sessionId, userId, attemptHistory } = input;
+  const { sessionId, userId, accuracyHistory } = input;
 
   // Verify session ownership
   const session = await getSessionRecord(sessionId);
@@ -137,23 +136,23 @@ export async function finalizeSession(input: FinalizeSessionInput): Promise<void
   }
 
   // Calculate statistics
-  const movesCount = input.totalMoves ?? attemptHistory.length;
-  const attemptsSum = input.totalAttempts ??
-    (attemptHistory.length > 0
-      ? attemptHistory.reduce((sum, value) => sum + value, 0)
-      : 0);
-  const averageRetries = input.averageRetries ??
-    (movesCount > 0 ? attemptsSum / movesCount : null);
+  const movesCount = input.totalMoves ?? accuracyHistory.length;
+  const averageAccuracy = input.averageAccuracy ??
+    (accuracyHistory.length > 0
+      ? accuracyHistory.reduce((sum, value) => sum + value, 0) / accuracyHistory.length
+      : null);
 
   // Record the game result
   await recordGameResult({
     userId: session.userId,
     gameId: session.gameId,
-    attempts: attemptsSum,
+    attempts: movesCount,
     solved: (input.result ?? "finished") === "finished",
-    accuracy: averageRetries && averageRetries > 0 ? 1 / averageRetries : null,
+    accuracy: averageAccuracy,
     totalMoves: movesCount,
-    averageRetries,
+    averageRetries: null,
+    averageAccuracy,
+    accuracyHistory,
     maiaLevel: input.maiaLevel ?? session.maiaLevel
   });
 

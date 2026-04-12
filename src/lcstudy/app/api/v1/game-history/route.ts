@@ -23,8 +23,9 @@ export async function GET() {
 
   const payload: GameHistoryEntry[] = history.map((item) => ({
     date: item.playedAt.toISOString(),
-    average_retries: item.averageRetries ?? 0,
+    average_accuracy: item.averageAccuracy ?? 0,
     total_moves: item.totalMoves,
+    accuracy_history: item.accuracyHistory,
     maia_level: item.maiaLevel ?? 1500,
     result: item.solved ? "finished" : "incomplete"
   }));

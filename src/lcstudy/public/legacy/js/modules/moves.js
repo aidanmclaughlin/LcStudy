@@ -3,7 +3,6 @@
  * @module moves
  */
 
-import { ATTEMPT_LIMIT } from './constants.js';
 import {
   getSessionId,
   getSessionCache,
@@ -12,23 +11,20 @@ import {
   getCurrentFen,
   setCurrentFen,
   setLiveFen,
-  getCurrentMoveAttempts,
-  setCurrentMoveAttempts,
   getCorrectStreak,
   setCorrectStreak,
-  pushGameAttempt,
-  addToTotalAttempts,
+  pushMoveScore,
   incrementMoveCounter,
   pushPgnMove,
   pushMoveHistory,
-  getTotalAttempts,
   getMoveCounter
 } from './state.js';
 import { updateBoardFromFen } from './board.js';
-import { flashBoard, celebrateSuccess, showStreakPill, updateAttemptsRemaining } from './effects.js';
+import { flashBoard, celebrateSuccess, showStreakPill, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame, loadGameHistory } from './api.js';
+import { hapticMove, hapticSuccess, hapticError } from './haptics.js';
 
 /** Callback to start a new game */
 let onGameComplete = null;
@@ -165,6 +161,27 @@ export function getExpectedPlayerMove() {
 }
 
 /**
+ * Resolve a submitted UCI move to one LC0 analysis entry.
+ * @param {string} moveUci - Submitted move
+ * @param {Object} expectedInfo - Expected move info
+ * @returns {Object|null} Move evaluation
+ */
+function findMoveEvaluation(moveUci, expectedInfo) {
+  const analysis = expectedInfo.move.analysis || [];
+  let normalized = moveUci.toLowerCase();
+  let evaluation = analysis.find(item => item.uci.toLowerCase() === normalized);
+
+  if (!evaluation && normalized.length === 4) {
+    const promotionMatches = analysis.filter(item => item.uci.toLowerCase().startsWith(normalized));
+    if (promotionMatches.length === 1) {
+      evaluation = promotionMatches[0];
+    }
+  }
+
+  return evaluation || null;
+}
+
+/**
  * Apply a move to the board and update state.
  * @param {Object} moveDef - Move definition {uci, san}
  * @param {boolean} isUserMove - Whether this was the user's move
@@ -209,40 +226,41 @@ export function handleMaiaReply(round) {
 }
 
 /**
- * Complete the expected move (correct or auto-played).
+ * Complete the current prompt after one submitted legal move.
  * @param {Object} expectedInfo - Expected move info
- * @param {number} attemptsForMove - Number of attempts used
- * @param {boolean} isAutoPlay - Whether this was auto-played
+ * @param {Object} moveEvaluation - LC0 evaluation for the submitted move
+ * @param {boolean} isBestMove - Whether the submitted move matched Leela's move
  * @returns {Promise<boolean>} Success
  */
-export async function completeExpectedMove(expectedInfo, attemptsForMove, isAutoPlay) {
+export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestMove) {
   const moveResult = applyMoveToBoard(expectedInfo.move, true);
 
   if (!moveResult) {
     console.warn('Move application failed', expectedInfo.move);
     flashBoard('wrong');
+    hapticError();
     return false;
   }
 
-  if (isAutoPlay) {
-    flashBoard('illegal');
-    setCorrectStreak(0);
-  } else {
+  if (isBestMove) {
     flashBoard('success');
+    hapticSuccess();
     setCorrectStreak(getCorrectStreak() + 1);
 
     if (expectedInfo.move && typeof expectedInfo.move.uci === 'string') {
       const targetSquare = expectedInfo.move.uci.slice(2, 4);
       celebrateSuccess(targetSquare);
     }
+  } else {
+    flashBoard('wrong');
+    hapticError();
+    setCorrectStreak(0);
   }
 
   showStreakPill();
-  setCurrentMoveAttempts(0);
-  pushGameAttempt(attemptsForMove);
-  addToTotalAttempts(attemptsForMove);
+  pushMoveScore(moveEvaluation.accuracy);
   incrementMoveCounter();
-  updateAttemptsRemaining(ATTEMPT_LIMIT);
+  updateMoveFeedback(moveEvaluation);
 
   const sessionCache = getSessionCache();
   updateSessionCache({ currentIndex: expectedInfo.index + 1 });
@@ -264,7 +282,7 @@ export async function completeExpectedMove(expectedInfo, attemptsForMove, isAuto
   updateRoundIndexFromCurrentIndex();
 
   updateCharts();
-  updateStatistics(getTotalAttempts(), getMoveCounter());
+  updateStatistics(getMoveCounter());
   updatePgnDisplay();
 
   // Check if game is complete
@@ -284,7 +302,7 @@ export async function completeExpectedMove(expectedInfo, attemptsForMove, isAuto
 }
 
 /**
- * Submit a move attempt.
+ * Submit one move for the current prompt.
  * @param {string} moveUci - UCI move string (e.g., 'e2e4')
  */
 export async function submitMove(moveUci) {
@@ -318,26 +336,20 @@ export async function submitMove(moveUci) {
     roundIndex: sessionCache.roundIndex
   });
 
-  const attemptsForMove = getCurrentMoveAttempts() + 1;
+  const moveEvaluation = findMoveEvaluation(normalized, expectedInfo);
 
-  if (normalized !== expectedUci) {
-    // Wrong move
-    setCurrentMoveAttempts(attemptsForMove);
-    console.warn('Incorrect move', normalized, 'expected', expectedUci);
+  if (!moveEvaluation) {
+    console.warn('Illegal move', normalized);
     flashBoard('wrong');
-    updateAttemptsRemaining(Math.max(0, ATTEMPT_LIMIT - attemptsForMove));
+    hapticError();
     setCorrectStreak(0);
     showStreakPill();
     updateBoardFromFen(getCurrentFen());
-
-    // Auto-play if out of attempts
-    if (attemptsForMove >= ATTEMPT_LIMIT) {
-      console.info('Auto-playing move after reaching attempt limit', expectedInfo.move);
-      await completeExpectedMove(expectedInfo, ATTEMPT_LIMIT, true);
-    }
     return;
   }
 
-  // Correct move
-  await completeExpectedMove(expectedInfo, attemptsForMove, false);
+  hapticMove();
+  normalized = moveEvaluation.uci.toLowerCase();
+  const isBestMove = normalized === expectedUci;
+  await completeExpectedMove(expectedInfo, moveEvaluation, isBestMove);
 }

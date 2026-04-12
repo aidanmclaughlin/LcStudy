@@ -1,6 +1,9 @@
 # Node/Next.js
 node_modules/
 .next/
+test-results/
+playwright-report/
+e2e-screenshots/
 # Env files
 .env*
 .vercel

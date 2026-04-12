@@ -53,14 +53,8 @@ let chessEngine = null;
 // Game Progress State
 // =============================================================================
 
-/** Attempts per move for current game */
-let gameAttempts = [];
-
-/** Total attempts across all moves in current game */
-let totalAttempts = 0;
-
-/** Attempts on current move */
-let currentMoveAttempts = 0;
+/** Accuracy percentage for each submitted move in current game */
+let moveAccuracies = [];
 
 /** Current move number (1-indexed) */
 let moveCounter = 1;
@@ -71,8 +65,8 @@ let pgnMoves = [];
 /** Historical games data */
 let gameHistory = [];
 
-/** Running cumulative averages for chart */
-let cumulativeAverages = [];
+/** Running cumulative accuracy averages for chart */
+let cumulativeAccuracies = [];
 
 /** Current correct move streak */
 let correctStreak = 0;
@@ -100,8 +94,8 @@ let liveFen = STARTING_FEN;
 /** Chart.js accuracy chart instance */
 let accuracyChart = null;
 
-/** Chart.js attempts chart instance */
-let attemptsChart = null;
+/** Chart.js per-move accuracy chart instance */
+let moveAccuracyChart = null;
 
 // =============================================================================
 // Audio State
@@ -136,20 +130,18 @@ export function isBoardFlipped() { return boardIsFlipped; }
 export function getBoardObserver() { return boardObserver; }
 export function isRebuilding() { return isRebuildingBoard; }
 export function getChessEngine() { return chessEngine; }
-export function getGameAttempts() { return gameAttempts; }
-export function getTotalAttempts() { return totalAttempts; }
-export function getCurrentMoveAttempts() { return currentMoveAttempts; }
+export function getMoveAccuracies() { return moveAccuracies; }
 export function getMoveCounter() { return moveCounter; }
 export function getPgnMoves() { return pgnMoves; }
 export function getGameHistory() { return gameHistory; }
-export function getCumulativeAverages() { return cumulativeAverages; }
+export function getCumulativeAccuracies() { return cumulativeAccuracies; }
 export function getCorrectStreak() { return correctStreak; }
 export function getMoveHistory() { return moveHistory; }
 export function getCurrentMoveIndex() { return currentMoveIndex; }
 export function getIsReviewingMoves() { return isReviewingMoves; }
 export function getLiveFen() { return liveFen; }
 export function getAccuracyChart() { return accuracyChart; }
-export function getAttemptsChart() { return attemptsChart; }
+export function getMoveAccuracyChart() { return moveAccuracyChart; }
 export function isSoundEnabled() { return soundEnabled; }
 export function getAudioContext() { return audioContext; }
 export function getChartLoaderPromise() { return chartLoaderPromise; }
@@ -167,20 +159,18 @@ export function setBoardFlipped(flipped) { boardIsFlipped = flipped; }
 export function setBoardObserver(observer) { boardObserver = observer; }
 export function setIsRebuildingBoard(rebuilding) { isRebuildingBoard = rebuilding; }
 export function setChessEngine(engine) { chessEngine = engine; }
-export function setGameAttempts(attempts) { gameAttempts = attempts; }
-export function setTotalAttempts(total) { totalAttempts = total; }
-export function setCurrentMoveAttempts(attempts) { currentMoveAttempts = attempts; }
+export function setMoveAccuracies(accuracies) { moveAccuracies = accuracies; }
 export function setMoveCounter(counter) { moveCounter = counter; }
 export function setPgnMoves(moves) { pgnMoves = moves; }
 export function setGameHistory(history) { gameHistory = history; }
-export function setCumulativeAverages(averages) { cumulativeAverages = averages; }
+export function setCumulativeAccuracies(accuracies) { cumulativeAccuracies = accuracies; }
 export function setCorrectStreak(streak) { correctStreak = streak; }
 export function setMoveHistory(history) { moveHistory = history; }
 export function setCurrentMoveIndex(index) { currentMoveIndex = index; }
 export function setIsReviewingMoves(reviewing) { isReviewingMoves = reviewing; }
 export function setLiveFen(fen) { liveFen = fen; }
 export function setAccuracyChart(chart) { accuracyChart = chart; }
-export function setAttemptsChart(chart) { attemptsChart = chart; }
+export function setMoveAccuracyChart(chart) { moveAccuracyChart = chart; }
 export function setSoundEnabled(enabled) { soundEnabled = enabled; }
 export function setAudioContext(ctx) { audioContext = ctx; }
 export function setChartLoaderPromise(promise) { chartLoaderPromise = promise; }
@@ -213,20 +203,18 @@ export function resetSessionCache() {
  * Reset all game progress state for a new game.
  */
 export function resetGameProgress() {
-  gameAttempts = [];
-  totalAttempts = 0;
-  currentMoveAttempts = 0;
+  moveAccuracies = [];
   moveCounter = 1;
   pgnMoves = [];
   correctStreak = 0;
 }
 
 /**
- * Add an attempt count to the game attempts array.
- * @param {number} attempts - Number of attempts for the move
+ * Add an accuracy result for the submitted move.
+ * @param {number} accuracy - Accuracy percentage
  */
-export function pushGameAttempt(attempts) {
-  gameAttempts.push(attempts);
+export function pushMoveScore(accuracy) {
+  moveAccuracies.push(accuracy);
 }
 
 /**
@@ -235,14 +223,6 @@ export function pushGameAttempt(attempts) {
  */
 export function pushPgnMove(san) {
   pgnMoves.push(san);
-}
-
-/**
- * Increment total attempts counter.
- * @param {number} amount - Amount to add
- */
-export function addToTotalAttempts(amount) {
-  totalAttempts += amount;
 }
 
 /**

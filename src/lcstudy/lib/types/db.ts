@@ -32,6 +32,8 @@ export interface UserGameRow {
   playedAt: Date;
   totalMoves: number;
   averageRetries: number | null;
+  averageAccuracy: number | null;
+  accuracyHistory: number[];
   maiaLevel: number | null;
 }
 
@@ -45,6 +47,8 @@ export interface UserGameDbRow {
   played_at: Date;
   total_moves: number | null;
   average_retries: number | null;
+  average_accuracy: string | number | null;
+  accuracy_history: unknown;
   maia_level: number | null;
 }
 
@@ -57,6 +61,8 @@ export interface RecordGameResultParams {
   accuracy: number | null;
   totalMoves: number;
   averageRetries: number | null;
+  averageAccuracy: number | null;
+  accuracyHistory: number[];
   maiaLevel: number | null;
 }
 

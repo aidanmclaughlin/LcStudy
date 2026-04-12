@@ -7,13 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:migrate": "node scripts/db-migrate.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "test:e2e": "playwright test e2e-smoke.spec.js --browser=webkit"
   },
   "dependencies": {
     "@vercel/postgres": "^0.10.0",
     "chart.js": "^4.4.1",
     "chess.js": "^1.0.0",
     "clsx": "^2.1.1",
+    "ios-haptics": "^0.1.4",
     "next": "^14.1.0",
     "next-auth": "^4.24.7",
     "react": "^18.2.0",
@@ -22,6 +24,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^20.10.5",
     "@types/react": "^18.2.39",
     "@types/react-dom": "^18.2.15",

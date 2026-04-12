@@ -5,7 +5,7 @@
  * @module main
  */
 
-import { MAIA_LEVELS, ATTEMPT_LIMIT, STARTING_FEN } from './modules/constants.js';
+import { MAIA_LEVELS, STARTING_FEN } from './modules/constants.js';
 import {
   setSessionId,
   updateSessionCache,
@@ -21,7 +21,7 @@ import { loadDependencies } from './modules/loaders.js';
 import { initBoard, setFlip, updateBoardFromFen, setMoveSubmitCallback } from './modules/board.js';
 import { initializeCharts } from './modules/charts.js';
 import { initAudioUnlockListeners, unlockAudio } from './modules/audio.js';
-import { updateAttemptsRemaining } from './modules/effects.js';
+import { updateMoveFeedback } from './modules/effects.js';
 import { updatePgnDisplay } from './modules/pgn.js';
 import { loadGameHistory, createSession } from './modules/api.js';
 import {
@@ -133,7 +133,7 @@ async function startNewGame() {
   // Update UI
   updateBoardFromFen(currentFen);
   updatePgnDisplay();
-  updateAttemptsRemaining(ATTEMPT_LIMIT);
+  updateMoveFeedback();
 
   // Set up audio unlock listeners
   initAudioUnlockListeners();

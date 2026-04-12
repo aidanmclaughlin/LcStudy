@@ -18,6 +18,7 @@ import {
   getIsReviewingMoves
 } from './state.js';
 import { unlockAudio } from './audio.js';
+import { hapticSelect } from './haptics.js';
 
 /** Callback for when a move is submitted */
 let onMoveSubmit = null;
@@ -168,6 +169,7 @@ function handleSquareClick(event) {
       if (pieceCode.startsWith(playerColor)) {
         setSelectedSquare(square);
         event.currentTarget.classList.add('selected');
+        hapticSelect();
       }
     }
   } else {
@@ -176,7 +178,7 @@ function handleSquareClick(event) {
       // Clicked same square - deselect
       clearSelection();
     } else {
-      // Clicked different square - attempt move
+      // Clicked different square - submit move
       const move = selectedSq + square;
       clearSelection();
 

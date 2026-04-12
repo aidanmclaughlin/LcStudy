@@ -7,7 +7,7 @@
  *
  * Layout:
  * - Board column: Chessboard powered by chessboard-element
- * - Sidebar: Header, charts (attempts over time, per-move), move history
+ * - Sidebar: Header, charts (accuracy over games, per-move accuracy), move history
  */
 
 import Script from "next/script";
@@ -55,9 +55,9 @@ export default async function HomePage() {
             {/* Accuracy Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2>Avg Attempts Over Time</h2>
+                <h2>Accuracy Over Time</h2>
                 <span className="panel-metric">
-                  Current Average: <span id="avg-attempts">0</span>
+                  Current: <span id="avg-accuracy">0%</span>
                 </span>
               </div>
               <div className="chart-container">
@@ -65,17 +65,20 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Attempts Chart Panel */}
+            {/* Move Accuracy Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2>Attempts per Move</h2>
-                <span id="attempts-remaining" className="panel-metric panel-metric--accent">
-                  10 left
+                <h2>Accuracy per Move</h2>
+                <span id="move-feedback" className="panel-metric panel-metric--accent">
+                  Pick one move
                 </span>
               </div>
               <div className="chart-container">
-                <canvas id="attempts-chart" />
+                <canvas id="move-accuracy-chart" />
               </div>
+              <span id="move-accuracy-summary" className="panel-metric">
+                0.0% latest
+              </span>
             </div>
 
             {/* Move History Panel */}

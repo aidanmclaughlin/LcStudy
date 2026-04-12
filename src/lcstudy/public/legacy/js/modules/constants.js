@@ -3,9 +3,6 @@
  * @module constants
  */
 
-/** Maximum attempts allowed per move before auto-play */
-export const ATTEMPT_LIMIT = 10;
-
 /** CDN URL for Chart.js library */
 export const CHART_JS_CDN = 'https://cdn.jsdelivr.net/npm/chart.js';
 

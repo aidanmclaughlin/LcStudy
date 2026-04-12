@@ -6,18 +6,16 @@
 import {
   getSessionId,
   getSessionCache,
-  getGameAttempts,
-  getTotalAttempts,
+  getMoveAccuracies,
   getGameHistory,
   setGameHistory,
-  getCumulativeAverages,
-  setCumulativeAverages
+  setCumulativeAccuracies
 } from './state.js';
 import { updateCharts } from './charts.js';
 
 /**
  * Fetch game history from the server.
- * Updates gameHistory and cumulativeAverages state.
+ * Updates gameHistory and cumulative accuracy state.
  */
 export async function loadGameHistory() {
   try {
@@ -28,8 +26,8 @@ export async function loadGameHistory() {
     setGameHistory(history);
 
     // Calculate cumulative averages (weighted by total moves)
-    const averages = calculateCumulativeAverages(history);
-    setCumulativeAverages(averages);
+    const averages = calculateCumulativeAccuracies(history);
+    setCumulativeAccuracies(averages);
 
     updateCharts();
   } catch (e) {
@@ -38,24 +36,24 @@ export async function loadGameHistory() {
 }
 
 /**
- * Calculate cumulative weighted averages from game history.
+ * Calculate cumulative weighted accuracy from game history.
  * @param {Array} history - Array of game history entries
- * @returns {number[]} Array of cumulative averages
+ * @returns {number[]} Array of cumulative accuracies
  */
-function calculateCumulativeAverages(history) {
+function calculateCumulativeAccuracies(history) {
   const averages = [];
   let totalMovesSoFar = 0;
-  let totalAttemptsSoFar = 0;
+  let totalAccuracySoFar = 0;
 
   for (const game of history) {
     const gameMoves = game.total_moves || 0;
-    const gameAttempts = game.average_retries * gameMoves;
+    const gameAccuracy = (game.average_accuracy || 0) * gameMoves;
 
     totalMovesSoFar += gameMoves;
-    totalAttemptsSoFar += gameAttempts;
+    totalAccuracySoFar += gameAccuracy;
 
     const cumulativeAvg = totalMovesSoFar > 0
-      ? totalAttemptsSoFar / totalMovesSoFar
+      ? totalAccuracySoFar / totalMovesSoFar
       : 0;
 
     averages.push(cumulativeAvg);
@@ -70,24 +68,24 @@ function calculateCumulativeAverages(history) {
  */
 export async function saveCompletedGame(result) {
   const sessionId = getSessionId();
-  const gameAttempts = getGameAttempts();
+  const moveAccuracies = getMoveAccuracies();
 
-  if (!sessionId || gameAttempts.length === 0) {
+  if (!sessionId || moveAccuracies.length === 0) {
     return;
   }
 
   const sessionCache = getSessionCache();
   const maiaLevel = sessionCache.maiaLevel || window.currentMaiaLevel || 1500;
-  const totalMoves = gameAttempts.length;
-  const totalAttemptsForGame = getTotalAttempts();
-  const attemptHistory = [...gameAttempts];
-  const averageRetries = totalMoves > 0 ? totalAttemptsForGame / totalMoves : 0;
+  const totalMoves = moveAccuracies.length;
+  const accuracyHistory = [...moveAccuracies];
+  const averageAccuracy = totalMoves > 0
+    ? accuracyHistory.reduce((sum, value) => sum + value, 0) / totalMoves
+    : 0;
 
   console.debug('saveCompletedGame payload', {
     sessionId,
     totalMoves,
-    totalAttemptsForGame,
-    attemptHistory
+    averageAccuracy
   });
 
   try {
@@ -97,10 +95,9 @@ export async function saveCompletedGame(result) {
       credentials: 'same-origin',
       cache: 'no-store',
       body: JSON.stringify({
-        total_attempts: totalAttemptsForGame,
         total_moves: totalMoves,
-        attempt_history: attemptHistory,
-        average_retries: averageRetries,
+        average_accuracy: averageAccuracy,
+        accuracy_history: accuracyHistory,
         maia_level: maiaLevel,
         result: result
       })
@@ -116,16 +113,17 @@ export async function saveCompletedGame(result) {
   // Update local history
   const gameHistory = getGameHistory();
   gameHistory.push({
-    average_retries: averageRetries,
+    average_accuracy: averageAccuracy,
     total_moves: totalMoves,
+    accuracy_history: accuracyHistory,
     maia_level: maiaLevel,
     result: result
   });
   setGameHistory(gameHistory);
 
-  // Recalculate cumulative averages
-  const averages = calculateCumulativeAverages(gameHistory);
-  setCumulativeAverages(averages);
+  // Recalculate cumulative accuracy
+  const averages = calculateCumulativeAccuracies(gameHistory);
+  setCumulativeAccuracies(averages);
 
   updateCharts();
 }
