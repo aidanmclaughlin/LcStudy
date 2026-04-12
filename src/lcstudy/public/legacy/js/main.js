@@ -122,6 +122,9 @@ async function startNewGame() {
   resetMoveAccuracyChart();
   updateStatistics();
   initSoundSettings();
+  setCurrentFen(startingFen);
+  setLiveFen(startingFen);
+  updateBoardFromFen(startingFen);
 
   // Apply historical moves
   if (Array.isArray(sessionCache.moves) && sessionCache.moves.length > 0) {

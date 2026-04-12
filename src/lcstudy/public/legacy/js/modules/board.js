@@ -133,6 +133,71 @@ export function updateBoardFromFen(fen) {
   applyLastMoveHighlights();
 }
 
+function updatePieceElement(pieceEl, pieceCode) {
+  pieceEl.dataset.piece = pieceCode;
+  pieceEl.style.backgroundImage = `url(${getPieceImageUrl(pieceCode)})`;
+}
+
+function removePieceOn(square) {
+  document.querySelector(`[data-square="${square}"] .piece`)?.remove();
+}
+
+function moveRookForCastle(color, kingside) {
+  const rank = color === 'w' ? '1' : '8';
+  const rookFrom = `${kingside ? 'h' : 'a'}${rank}`;
+  const rookTo = `${kingside ? 'f' : 'd'}${rank}`;
+  const fromEl = document.querySelector(`[data-square="${rookFrom}"]`);
+  const toEl = document.querySelector(`[data-square="${rookTo}"]`);
+  const rook = fromEl?.querySelector('.piece');
+
+  if (!rook || !toEl) return;
+
+  removePieceOn(rookTo);
+  toEl.appendChild(rook);
+  rook.style.visibility = '';
+}
+
+/**
+ * Apply one completed legal move to the existing DOM without repainting the board.
+ * @param {{from: string, to: string, moveResult: Object}} applied - Applied move details
+ * @returns {boolean} Whether the move was applied to the DOM
+ */
+export function updateBoardAfterMove(applied) {
+  const move = applied?.moveResult;
+  if (!move) return false;
+
+  const from = applied.from || move.from;
+  const to = applied.to || move.to;
+  const fromEl = document.querySelector(`[data-square="${from}"]`);
+  const toEl = document.querySelector(`[data-square="${to}"]`);
+  const piece = fromEl?.querySelector('.piece');
+
+  if (!piece || !toEl) return false;
+
+  const flags = String(move.flags || '');
+  const pieceType = String(move.promotion || move.piece || '').toUpperCase();
+  const pieceCode = `${move.color}${pieceType}`;
+
+  if (flags.includes('e')) {
+    removePieceOn(`${to[0]}${from[1]}`);
+  } else {
+    removePieceOn(to);
+  }
+
+  updatePieceElement(piece, pieceCode);
+  toEl.appendChild(piece);
+  piece.style.visibility = '';
+
+  if (flags.includes('k')) {
+    moveRookForCastle(move.color, true);
+  } else if (flags.includes('q')) {
+    moveRookForCastle(move.color, false);
+  }
+
+  applyLastMoveHighlights();
+  return true;
+}
+
 /**
  * Set the board flip state (for playing as black).
  * @param {boolean} flip - Whether to flip the board

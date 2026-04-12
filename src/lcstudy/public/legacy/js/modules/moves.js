@@ -19,7 +19,7 @@ import {
   getMoveCounter,
   setLastMoveHighlight
 } from './state.js';
-import { animateMove, updateBoardFromFen } from './board.js';
+import { animateMove, updateBoardAfterMove } from './board.js';
 import { flashBoard, celebrateSuccess, showStreakPill, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
@@ -284,7 +284,9 @@ function applyMoveToEngine(moveDef, isUserMove) {
 }
 
 function finishMoveOnBoard(applied) {
-  updateBoardFromFen(applied.fenAfter);
+  if (!updateBoardAfterMove(applied)) {
+    console.warn('Move DOM update failed', applied);
+  }
 }
 
 /**
