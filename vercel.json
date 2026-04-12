@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run build --prefix src/lcstudy",
+  "installCommand": "npm install --prefix src/lcstudy",
+  "outputDirectory": "src/lcstudy/.next",
+  "framework": "nextjs"
+}
