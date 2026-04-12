@@ -1,0 +1,13 @@
+{
+  "name": "lcstudy",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix src/lcstudy",
+    "db:migrate": "npm run db:migrate --prefix src/lcstudy",
+    "lint": "npm run lint --prefix src/lcstudy",
+    "test:e2e": "npm run test:e2e --prefix src/lcstudy"
+  },
+  "dependencies": {
+    "next": "14.2.32"
+  }
+}

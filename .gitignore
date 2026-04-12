@@ -26,6 +26,7 @@ coverage.xml
 # Logs and local tool artifacts
 *.log
 .claude/
+node_modules/
 
 # IDE
 .idea/
