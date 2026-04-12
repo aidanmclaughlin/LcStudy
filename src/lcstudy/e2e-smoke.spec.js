@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { test, devices } = require('@playwright/test');
+const { test, devices, expect } = require('@playwright/test');
 const { encode } = require('next-auth/jwt');
 const { Chess } = require('chess.js');
 
@@ -277,24 +277,36 @@ test.describe('desktop checkmate', () => {
     ]);
 
     const fixture = buildFinalMateSession();
+    let sessionNewCalls = 0;
+    let completeCalls = 0;
+    const completePayloads = [];
+
     await page.route('**/api/v1/game-history', route => route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ history: [] }),
     }));
-    await page.route('**/api/v1/session/new', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(fixture),
-    }));
-    await page.route('**/api/v1/session/*/complete', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ ok: true }),
-    }));
+    await page.route('**/api/v1/session/new', route => {
+      sessionNewCalls += 1;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(fixture),
+      });
+    });
+    await page.route('**/api/v1/session/*/complete', async route => {
+      completeCalls += 1;
+      completePayloads.push(route.request().postDataJSON());
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
+      });
+    });
 
     await page.goto('/', { waitUntil: 'networkidle' });
     await page.waitForSelector('#board .piece');
+    expect(sessionNewCalls).toBe(1);
 
     await squareClick(page, 'a2');
     await squareClick(page, 'a5');
@@ -304,6 +316,14 @@ test.describe('desktop checkmate', () => {
     ));
     await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
     await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
+    await page.waitForTimeout(3200);
+    expect(sessionNewCalls).toBe(1);
+    expect(completeCalls).toBe(0);
+
+    await page.locator('#new').click();
+    await expect.poll(() => completeCalls).toBe(1);
+    await expect.poll(() => sessionNewCalls).toBe(2);
+    expect(completePayloads[0]?.accuracy_history).toEqual([0]);
 
     const historyText = await page.locator('#move-list').textContent();
     const feedbackText = await page.locator('#move-feedback').textContent();

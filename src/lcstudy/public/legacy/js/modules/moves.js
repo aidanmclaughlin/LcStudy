@@ -26,15 +26,27 @@ import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame, loadGameHistory } from './api.js';
 import { hapticMove, hapticSuccess, hapticError } from './haptics.js';
 
-/** Callback to start a new game */
-let onGameComplete = null;
+/** Whether the completed mate should be saved when the player starts another game */
+let pendingMateCompletion = false;
 
 /**
- * Set the callback for when a game completes.
- * @param {function(): Promise<void>} callback
+ * Clear pending completion state after starting a fresh game.
  */
-export function setGameCompleteCallback(callback) {
-  onGameComplete = callback;
+export function clearPendingCompletedGame() {
+  pendingMateCompletion = false;
+}
+
+/**
+ * Save a completed mate only when the player manually starts the next game.
+ * @returns {Promise<boolean>} Whether a completed game was saved
+ */
+export async function savePendingCompletedGame() {
+  if (!pendingMateCompletion) return false;
+
+  await saveCompletedGame('finished');
+  await loadGameHistory();
+  pendingMateCompletion = false;
+  return true;
 }
 
 /**
@@ -304,14 +316,8 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   // Check if game is complete
   const updatedCache = getSessionCache();
   if (updatedCache.currentIndex >= updatedCache.moves.length) {
-    await saveCompletedGame('finished');
-    await loadGameHistory();
-
-    if (onGameComplete) {
-      setTimeout(async () => {
-        await onGameComplete();
-      }, 2500);
-    }
+    const chessEngine = getChessEngine();
+    pendingMateCompletion = Boolean(chessEngine?.isCheckmate?.());
   }
 
   return true;

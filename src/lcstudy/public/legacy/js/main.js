@@ -31,7 +31,8 @@ import {
   coerceIndex,
   applyMoveToBoard,
   isPlayerMove,
-  setGameCompleteCallback
+  clearPendingCompletedGame,
+  savePendingCompletedGame
 } from './modules/moves.js';
 import { initKeyboardNavigation } from './modules/history.js';
 
@@ -57,6 +58,8 @@ async function startNewGame() {
   // Create session on server
   const data = await createSession(maiaLevel);
   if (!data) return;
+
+  clearPendingCompletedGame();
 
   // Update session state
   setSessionId(data.id);
@@ -154,9 +157,6 @@ async function bootstrap() {
     // Set up move submission callback
     setMoveSubmitCallback(submitMove);
 
-    // Set up game complete callback
-    setGameCompleteCallback(startNewGame);
-
     // Load history and start game
     await loadGameHistory();
     await startNewGame();
@@ -175,6 +175,7 @@ async function bootstrap() {
 // New game button
 document.getElementById('new')?.addEventListener('click', async () => {
   try { unlockAudio(); } catch (e) {}
+  await savePendingCompletedGame();
   await startNewGame();
 });
 
