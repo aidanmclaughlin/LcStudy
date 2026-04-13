@@ -255,7 +255,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const metricText = await page.locator('#avg-accuracy').textContent();
   const feedbackText = await page.locator('#move-feedback').textContent();
   const historyText = await page.locator('#move-list').textContent();
-  if (!metricText?.includes('pp') || !feedbackText?.includes('%')) {
+  if (!metricText?.includes('%') || !feedbackText?.includes('%')) {
     throw new Error(`Expected accuracy metrics, got ${metricText} / ${feedbackText}`);
   }
   if (feedbackText.includes('100.0')) {

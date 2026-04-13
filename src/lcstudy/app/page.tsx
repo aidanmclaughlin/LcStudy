@@ -66,7 +66,7 @@ export default async function HomePage() {
               <div className="panel-section-heading">
                 <h2>Accuracy Over Time</h2>
                 <span className="panel-metric">
-                  Delta: <span id="avg-accuracy">0.0 pp</span>
+                  10-game: <span id="avg-accuracy">0.0%</span>
                 </span>
               </div>
               <div className="chart-container">

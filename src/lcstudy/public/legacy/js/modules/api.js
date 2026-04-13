@@ -11,7 +11,7 @@ import {
   setGameHistory,
   setCumulativeAccuracies
 } from './state.js';
-import { updateCharts } from './charts.js';
+import { updateCharts, updateStatistics } from './charts.js';
 
 /**
  * Fetch game history from the server.
@@ -30,6 +30,7 @@ export async function loadGameHistory() {
     setCumulativeAccuracies(averages);
 
     updateCharts();
+    updateStatistics();
   } catch (e) {
     console.warn('Failed to load game history:', e);
   }
