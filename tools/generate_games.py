@@ -330,7 +330,7 @@ def generate_game(
     game.headers["LcStudyLeelaNet"] = network_name(leela_net)
     game.headers["LcStudyLeelaSearch"] = leela_budget.label()
     game.headers["LcStudyMaiaSearch"] = maia_budget.label()
-    game.headers["LcStudyMaiaTemperature"] = str(maia_temperature)
+    game.headers["LcStudyMaiaTemperature"] = f"{maia_temperature:.6g}"
     game.headers["LcStudyMaiaPolicyTemperature"] = str(maia_policy_temp)
     game.headers["LcStudyMaiaTempDecayMoves"] = str(maia_temp_decay_moves)
     game.headers["LcStudyMaiaTempCutoffMove"] = str(maia_temp_cutoff_move)
@@ -410,6 +410,9 @@ def main():
     parser.add_argument("--leela-movetime-ms", type=int, default=DEFAULT_LEELA_MOVETIME_MS)
     parser.add_argument("--maia-nodes", type=int, default=DEFAULT_MAIA_NODES)
     parser.add_argument("--maia-temperature", type=float, default=1.0)
+    parser.add_argument("--maia-temperature-random", action="store_true")
+    parser.add_argument("--maia-temperature-random-min", type=float, default=0.0)
+    parser.add_argument("--maia-temperature-random-max", type=float, default=1.0)
     parser.add_argument("--maia-policy-temp", type=float, default=1.0)
     parser.add_argument("--maia-temp-decay-moves", type=int, default=22)
     parser.add_argument("--maia-temp-cutoff-move", type=int, default=20)
@@ -436,6 +439,12 @@ def main():
         return 1
     if args.maia_temperature < 0 or args.maia_policy_temp <= 0:
         print("Error: Maia temperatures must be non-negative, and policy temp must be positive")
+        return 1
+    if args.maia_temperature_random and (
+        args.maia_temperature_random_min < 0
+        or args.maia_temperature_random_max <= args.maia_temperature_random_min
+    ):
+        print("Error: --maia-temperature-random requires 0 <= min < max")
         return 1
     if args.seed is not None:
         random.seed(args.seed)
@@ -473,7 +482,7 @@ def main():
     print(f"  Maia search: {maia_budget.label()}/move")
     print(
         "  Maia temp: "
-        f"{args.maia_temperature} "
+        f"{'random()' if args.maia_temperature_random else args.maia_temperature} "
         f"(policy={args.maia_policy_temp}, decay={args.maia_temp_decay_moves}, "
         f"cutoff={args.maia_temp_cutoff_move}, endgame={args.maia_temp_endgame}, "
         f"value-cutoff={args.maia_temp_value_cutoff})"
@@ -501,6 +510,12 @@ def main():
         attempts += 1
         level = random.choice(available_maia)
         maia_net = find_network(f"maia-{level}")
+        maia_temperature = (
+            args.maia_temperature_random_min
+            + (args.maia_temperature_random_max - args.maia_temperature_random_min) * random.random()
+            if args.maia_temperature_random
+            else args.maia_temperature
+        )
 
         try:
             pgn, plies, result = generate_game(
@@ -513,7 +528,7 @@ def main():
                 args.leela_backend,
                 leela_config,
                 args.maia_backend,
-                args.maia_temperature,
+                maia_temperature,
                 args.maia_policy_temp,
                 args.maia_temp_decay_moves,
                 args.maia_temp_cutoff_move,
@@ -536,7 +551,10 @@ def main():
             success += 1
             total_plies += plies
             color = "W" if "PLAYER" in pgn.split("[White")[1].split("]")[0] else "B"
-            print(f"  [{success}/{args.count}] {fname} - L={color}, M={level}, {plies}p")
+            print(
+                f"  [{success}/{args.count}] {fname} - "
+                f"L={color}, M={level}, T={maia_temperature:.3f}, {plies}p"
+            )
 
         except Exception as e:
             print(f"  [ERROR] {attempts}: {e}")

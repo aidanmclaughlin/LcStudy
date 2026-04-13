@@ -36,13 +36,13 @@ python tools/generate_games.py \
   --count 100 \
   --replace-output \
   --leela-net BT4-it332 \
-  --leela-movetime-ms 5000 \
+  --leela-movetime-ms 3000 \
   --maia-nodes 1 \
-  --maia-temperature 1.0 \
+  --maia-temperature-random \
   --maia-policy-temp 1.0 \
-  --maia-temp-decay-moves 22 \
-  --maia-temp-cutoff-move 20 \
-  --maia-temp-endgame 0.25 \
+  --maia-temp-decay-moves 10 \
+  --maia-temp-cutoff-move 10 \
+  --maia-temp-endgame 0.0 \
   --maia-temp-value-cutoff 25 \
   --seed 20260412 \
   --require-result
@@ -55,7 +55,7 @@ Games are saved to `src/lcstudy/data/pgn/` and will be included in the next Verc
 
 ### Lambda Cloud generation
 
-Use a single Lambda Cloud GPU instance. Keep the whole replacement batch on one instance type with the same `--leela-movetime-ms` value, and keep Maia at `--maia-nodes 1` with Maia-only temperature sampling so it stays policy-driven but not deterministic.
+Use a single Lambda Cloud GPU instance. Keep the whole batch on one instance type with the same `--leela-movetime-ms` value, and keep Maia at `--maia-nodes 1` with opening-only temperature sampling so it stays policy-driven after the first 10 moves.
 
 Launch the instance with the default Lambda Stack image, add your SSH key, then copy Maia weights from this Mac:
 
@@ -89,16 +89,16 @@ python3 tools/generate_games.py \
   --count 2 \
   --output /tmp/lcstudy-pgn-smoke \
   --leela-net BT4-it332 \
-  --leela-movetime-ms 5000 \
+  --leela-movetime-ms 3000 \
   --maia-nodes 1 \
-  --maia-temperature 1.0 \
+  --maia-temperature-random \
   --maia-policy-temp 1.0 \
-  --maia-temp-decay-moves 22 \
-  --maia-temp-cutoff-move 20 \
-  --maia-temp-endgame 0.25 \
+  --maia-temp-decay-moves 10 \
+  --maia-temp-cutoff-move 10 \
+  --maia-temp-endgame 0.0 \
   --maia-temp-value-cutoff 25 \
   --no-leela-config \
-  --leela-backend cuda-fp16 \
+  --leela-backend cuda \
   --seed 20260412 \
   --require-result
 
@@ -106,16 +106,16 @@ python3 tools/generate_games.py \
   --count 100 \
   --replace-output \
   --leela-net BT4-it332 \
-  --leela-movetime-ms 5000 \
+  --leela-movetime-ms 3000 \
   --maia-nodes 1 \
-  --maia-temperature 1.0 \
+  --maia-temperature-random \
   --maia-policy-temp 1.0 \
-  --maia-temp-decay-moves 22 \
-  --maia-temp-cutoff-move 20 \
-  --maia-temp-endgame 0.25 \
+  --maia-temp-decay-moves 10 \
+  --maia-temp-cutoff-move 10 \
+  --maia-temp-endgame 0.0 \
   --maia-temp-value-cutoff 25 \
   --no-leela-config \
-  --leela-backend cuda-fp16 \
+  --leela-backend cuda \
   --seed 20260412 \
   --require-result
 ```
