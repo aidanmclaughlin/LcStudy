@@ -407,7 +407,9 @@ def main():
     parser.add_argument("--output", "-o", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--max-plies", type=int, default=MAX_PLIES)
     parser.add_argument("--leela-net", default=DEFAULT_LEELA_NET)
-    parser.add_argument("--leela-movetime-ms", type=int, default=DEFAULT_LEELA_MOVETIME_MS)
+    leela_search = parser.add_mutually_exclusive_group()
+    leela_search.add_argument("--leela-movetime-ms", type=int, default=DEFAULT_LEELA_MOVETIME_MS)
+    leela_search.add_argument("--leela-nodes", type=int, default=None)
     parser.add_argument("--maia-nodes", type=int, default=DEFAULT_MAIA_NODES)
     parser.add_argument("--maia-temperature", type=float, default=1.0)
     parser.add_argument("--maia-temperature-random", action="store_true")
@@ -431,8 +433,11 @@ def main():
     if args.count < 1:
         print("Error: --count must be at least 1")
         return 1
-    if args.leela_movetime_ms < 1:
+    if args.leela_movetime_ms is not None and args.leela_movetime_ms < 1:
         print("Error: --leela-movetime-ms must be positive")
+        return 1
+    if args.leela_nodes is not None and args.leela_nodes < 1:
+        print("Error: --leela-nodes must be positive")
         return 1
     if args.maia_nodes < 1:
         print("Error: --maia-nodes must be positive")
@@ -449,7 +454,11 @@ def main():
     if args.seed is not None:
         random.seed(args.seed)
 
-    leela_budget = SearchBudget(movetime_ms=args.leela_movetime_ms)
+    leela_budget = (
+        SearchBudget(nodes=args.leela_nodes)
+        if args.leela_nodes is not None
+        else SearchBudget(movetime_ms=args.leela_movetime_ms)
+    )
     maia_budget = SearchBudget(nodes=args.maia_nodes)
     leela_config = None if args.no_leela_config else args.leela_config
 

@@ -31,12 +31,12 @@ python tools/generate_games.py
 # Generate 100 games
 python tools/generate_games.py --count 100 --seed 20260412
 
-# Generate a replacement set with the stable best net and fixed search time
+# Generate a replacement set with the stable best net and fixed Leela node budget
 python tools/generate_games.py \
   --count 100 \
   --replace-output \
   --leela-net BT4-it332 \
-  --leela-movetime-ms 3000 \
+  --leela-nodes 200 \
   --maia-nodes 1 \
   --maia-temperature-random \
   --maia-policy-temp 1.0 \
@@ -48,6 +48,7 @@ python tools/generate_games.py \
   --require-result
 ```
 
+Use `--leela-nodes <n>` instead of `--leela-movetime-ms` when you need the Leela search budget to stay consistent across different GPU types.
 `--replace-output` writes the new batch in a temporary folder first. Existing PGNs are deleted only after the requested replacement batch completes.
 Use `--require-result` for production batches so every saved PGN reaches a real game result.
 
@@ -55,7 +56,7 @@ Games are saved to `src/lcstudy/data/pgn/` and will be included in the next Verc
 
 ### Lambda Cloud generation
 
-Use a single Lambda Cloud GPU instance. Keep the whole batch on one instance type with the same `--leela-movetime-ms` value, and keep Maia at `--maia-nodes 1` with opening-only temperature sampling so it stays policy-driven after the first 10 moves.
+Use a single Lambda Cloud GPU instance. Keep the whole batch on one instance type with the same `--leela-nodes` value, and keep Maia at `--maia-nodes 1` with opening-only temperature sampling so it stays policy-driven after the first 10 moves.
 
 Launch the instance with the default Lambda Stack image, add your SSH key, then copy Maia weights from this Mac:
 
@@ -89,7 +90,7 @@ python3 tools/generate_games.py \
   --count 2 \
   --output /tmp/lcstudy-pgn-smoke \
   --leela-net BT4-it332 \
-  --leela-movetime-ms 3000 \
+  --leela-nodes 200 \
   --maia-nodes 1 \
   --maia-temperature-random \
   --maia-policy-temp 1.0 \
@@ -106,7 +107,7 @@ python3 tools/generate_games.py \
   --count 100 \
   --replace-output \
   --leela-net BT4-it332 \
-  --leela-movetime-ms 3000 \
+  --leela-nodes 200 \
   --maia-nodes 1 \
   --maia-temperature-random \
   --maia-policy-temp 1.0 \
