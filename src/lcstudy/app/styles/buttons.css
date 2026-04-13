@@ -157,3 +157,25 @@ body.zen-mode .zen-exit {
   60% { transform: scale(1.08); opacity: 1; }
   100% { transform: scale(1); }
 }
+
+@media (max-width: 600px) {
+  .panel-header .btn-sm,
+  .panel-header .streak-pill {
+    min-width: 0;
+    padding: 6px clamp(8px, 2.8vw, 12px);
+    font-size: clamp(0.64rem, 2.8vw, 0.7rem);
+    white-space: nowrap;
+  }
+
+  .panel-header .btn-sm.btn-icon {
+    width: clamp(27px, 8vw, 30px);
+    min-width: clamp(27px, 8vw, 30px);
+    height: clamp(27px, 8vw, 30px);
+    padding: 0;
+  }
+
+  .panel-header .zen-icon {
+    width: 15px;
+    height: 15px;
+  }
+}
