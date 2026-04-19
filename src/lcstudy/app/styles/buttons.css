@@ -96,6 +96,31 @@
   transform: translateX(-50%) rotate(-45deg);
 }
 
+.review-button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.7);
+  box-shadow: none;
+}
+
+.review-icon {
+  width: 10px;
+  height: 10px;
+  display: block;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+.review-icon-prev {
+  transform: translateX(2px) rotate(-135deg);
+}
+
+.review-icon-next {
+  transform: translateX(-2px) rotate(45deg);
+}
+
 .zen-exit {
   display: none;
   position: fixed;
@@ -177,5 +202,11 @@ body.zen-mode .zen-exit {
   .panel-header .zen-icon {
     width: 15px;
     height: 15px;
+  }
+
+  .review-button {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
   }
 }

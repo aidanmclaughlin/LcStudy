@@ -363,8 +363,9 @@ export function resetMoveAccuracyChart() {
  * Update the statistics display.
  */
 export function updateStatistics() {
-  const currentAverageElement = document.getElementById('avg-accuracy');
-  if (!currentAverageElement) return;
+  const tenGameElement = document.getElementById('avg-accuracy');
+  const gameAccuracyElement = document.getElementById('game-accuracy');
+  const moveElement = document.getElementById('move-feedback');
 
   const moveAccuracies = getMoveAccuracies();
   const gameHistory = getGameHistory();
@@ -379,17 +380,26 @@ export function updateStatistics() {
   const tenGameAccuracy = recentGames.length > 0
     ? recentGames.reduce((sum, value) => sum + value, 0) / recentGames.length
     : 0;
-  const prev = parseFloat(currentAverageElement.textContent || '0') || 0;
-  const next = parseFloat(tenGameAccuracy.toFixed(1));
 
-  if (next !== prev) {
-    currentAverageElement.textContent = `${next.toFixed(1)}%`;
-    currentAverageElement.classList.add('num-bounce');
-    setTimeout(() => currentAverageElement.classList.remove('num-bounce'), 260);
+  updateStatNumber(tenGameElement, tenGameAccuracy);
+  updateStatNumber(gameAccuracyElement, avgAccuracy);
+
+  if (moveElement && moveAccuracies.length === 0) {
+    moveElement.textContent = 'Pick move';
+    moveElement.style.color = '#94a3b8';
+    moveElement.classList.add('stat-value--muted');
   }
+}
 
-  const moveElement = document.getElementById('move-accuracy-summary');
-  if (moveElement) {
-    moveElement.textContent = `Game avg ${avgAccuracy.toFixed(1)}%`;
+function updateStatNumber(element, value) {
+  if (!element) return;
+
+  const next = Number(value || 0);
+  const prev = parseFloat(element.textContent || '0') || 0;
+
+  if (Number(next.toFixed(1)) !== Number(prev.toFixed(1))) {
+    element.textContent = `${next.toFixed(1)}%`;
+    element.classList.add('num-bounce');
+    setTimeout(() => element.classList.remove('num-bounce'), 260);
   }
 }

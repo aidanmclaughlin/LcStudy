@@ -101,3 +101,16 @@ export function handleKeyPress(event) {
 export function initKeyboardNavigation() {
   document.addEventListener('keydown', handleKeyPress);
 }
+
+/**
+ * Initialize on-screen move review controls.
+ */
+export function initMoveReviewButtons() {
+  document.getElementById('review-prev')?.addEventListener('click', () => {
+    navigateToMove(getCurrentMoveIndex() - 1);
+  });
+
+  document.getElementById('review-next')?.addEventListener('click', () => {
+    navigateToMove(getCurrentMoveIndex() + 1);
+  });
+}

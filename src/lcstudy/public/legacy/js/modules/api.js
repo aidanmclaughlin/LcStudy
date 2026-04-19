@@ -127,6 +127,7 @@ export async function saveCompletedGame(result) {
   setCumulativeAccuracies(averages);
 
   updateCharts();
+  updateStatistics();
 }
 
 /**

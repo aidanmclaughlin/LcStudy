@@ -205,6 +205,9 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const [firstFrom, firstTo] = moveParts(firstMove.uci);
   const [firstReplyFrom] = moveParts(firstReply.uci);
   await dragMove(page, firstFrom, firstTo);
+  await page.waitForSelector('.accuracy-burst');
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: 'e2e-screenshots/02a-accuracy-burst.png', fullPage: true });
   await page.waitForTimeout(120);
   expect(await pieceAt(page, firstReplyFrom)).not.toBeNull();
   await page.waitForFunction((replySan) => (
@@ -230,6 +233,9 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await squareClick(page, altTo);
   await page.waitForTimeout(120);
   expect(await pieceAt(page, secondFrom)).not.toBeNull();
+  await page.waitForSelector('.accuracy-burst');
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: 'e2e-screenshots/03a-low-accuracy-burst.png', fullPage: true });
   await page.waitForFunction((replySan) => (
     (document.querySelector('#move-list')?.textContent || '').includes(replySan)
   ), secondReply.san);
@@ -247,24 +253,33 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await requireMoveHighlight(page, 'user', secondMove);
   await requireMoveHighlight(page, 'opponent', secondReply);
   await page.screenshot({ path: 'e2e-screenshots/05-review-forward.png', fullPage: true });
+  await expect(page.locator('#review-prev')).toBeVisible();
+  await page.locator('#review-prev').click();
+  await expect(page.locator('#board')).toHaveClass(/reviewing-moves/);
+  await page.screenshot({ path: 'e2e-screenshots/06-review-button-back.png', fullPage: true });
+  await page.locator('#review-next').click();
+  await expect(page.locator('#board')).not.toHaveClass(/reviewing-moves/);
+  await page.screenshot({ path: 'e2e-screenshots/07-review-button-forward.png', fullPage: true });
 
   const haptics = await page.evaluate(() => window.__haptics || []);
   if (haptics.length < 8) {
     throw new Error(`Expected haptics for select/move/success/error, got ${haptics.length}`);
   }
   const metricText = await page.locator('#avg-accuracy').textContent();
+  const gameMetricText = await page.locator('#game-accuracy').textContent();
   const feedbackText = await page.locator('#move-feedback').textContent();
   const historyText = await page.locator('#move-list').textContent();
-  if (!metricText?.includes('%') || !feedbackText?.includes('%')) {
-    throw new Error(`Expected accuracy metrics, got ${metricText} / ${feedbackText}`);
+  if (!metricText?.includes('%') || !gameMetricText?.includes('%') || !feedbackText?.includes('%')) {
+    throw new Error(`Expected accuracy metrics, got ${metricText} / ${gameMetricText} / ${feedbackText}`);
   }
   if (feedbackText.includes('100.0')) {
     throw new Error(`Expected legal wrong move accuracy below 100%, got ${feedbackText}`);
   }
   console.log(JSON.stringify({
-    screenshots: 5,
+    screenshots: 9,
     haptics: haptics.length,
     metricText,
+    gameMetricText,
     feedbackText,
     historyText,
     firstMove: firstMove.uci,

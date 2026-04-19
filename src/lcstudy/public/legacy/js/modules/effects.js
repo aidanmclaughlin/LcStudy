@@ -7,6 +7,18 @@ import { CONFETTI_COLORS, CELEBRATION_COLORS } from './constants.js';
 import { getCorrectStreak } from './state.js';
 import { playSuccessChime } from './audio.js';
 
+function accuracyTone(accuracy) {
+  if (accuracy >= 90) {
+    return { color: '#22c55e', glow: 'rgba(34, 197, 94, 0.58)' };
+  }
+
+  if (accuracy >= 65) {
+    return { color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.58)' };
+  }
+
+  return { color: '#ef4444', glow: 'rgba(239, 68, 68, 0.62)' };
+}
+
 /**
  * Flash the board with a colored outline effect.
  * @param {'success' | 'wrong' | 'illegal'} result - Type of feedback to show
@@ -197,6 +209,44 @@ export function createCelebrationConfetti(count = 150) {
 }
 
 /**
+ * Clear any visible move accuracy burst.
+ */
+export function clearAccuracyBursts() {
+  document.querySelectorAll('.accuracy-burst').forEach((burst) => {
+    try { burst.remove(); } catch (e) {}
+  });
+}
+
+/**
+ * Show a large accuracy percentage over the board after a scored move.
+ * @param {number} accuracy - Move accuracy percentage
+ */
+export function showAccuracyBurst(accuracy) {
+  const board = document.getElementById('board');
+  if (!board) return;
+
+  clearAccuracyBursts();
+
+  const numeric = Math.max(0, Math.min(100, Number(accuracy) || 0));
+  const rect = board.getBoundingClientRect();
+  const burst = document.createElement('div');
+  const tone = accuracyTone(numeric);
+
+  burst.className = 'accuracy-burst';
+  burst.textContent = `${numeric.toFixed(0)}%`;
+  burst.style.setProperty('--accuracy-burst-x', `${rect.left + rect.width / 2}px`);
+  burst.style.setProperty('--accuracy-burst-y', `${rect.top + rect.height / 2}px`);
+  burst.style.setProperty('--accuracy-burst-color', tone.color);
+  burst.style.setProperty('--accuracy-burst-glow', tone.glow);
+
+  document.body.appendChild(burst);
+
+  setTimeout(() => {
+    try { burst.remove(); } catch (e) {}
+  }, 1240);
+}
+
+/**
  * Update the move feedback display.
  * @param {Object} result - Move score result
  */
@@ -205,24 +255,30 @@ export function updateMoveFeedback(result = null) {
   if (!feedbackElement) return;
 
   if (!result) {
-    feedbackElement.textContent = 'Pick one move';
+    feedbackElement.textContent = 'Pick move';
     feedbackElement.style.color = '#94a3b8';
+    feedbackElement.classList.add('stat-value--muted');
     return;
   }
 
   if (result.illegal) {
     feedbackElement.textContent = 'Illegal move';
     feedbackElement.style.color = '#94a3b8';
+    feedbackElement.classList.add('stat-value--muted');
     return;
   }
 
   if (result.bestMoveSan || result.bestMoveUci) {
     feedbackElement.textContent = `Best: ${result.bestMoveSan || result.bestMoveUci}`;
     feedbackElement.style.color = '#f59e0b';
+    feedbackElement.classList.remove('stat-value--muted');
     return;
   }
 
   const accuracy = Number(result.accuracy || 0);
+  const tone = accuracyTone(accuracy);
+
   feedbackElement.textContent = `${accuracy.toFixed(1)}%`;
-  feedbackElement.style.color = accuracy >= 90 ? '#22c55e' : accuracy >= 65 ? '#f59e0b' : '#ef4444';
+  feedbackElement.style.color = tone.color;
+  feedbackElement.classList.remove('stat-value--muted');
 }

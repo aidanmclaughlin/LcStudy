@@ -20,7 +20,7 @@ import {
   setLastMoveHighlight
 } from './state.js';
 import { animateMove, showMoveHint, updateBoardAfterMove } from './board.js';
-import { flashBoard, celebrateSuccess, celebrateCheckmate, showStreakPill, updateMoveFeedback } from './effects.js';
+import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, showStreakPill, showAccuracyBurst, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
@@ -306,6 +306,7 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     setCorrectStreak(0);
 
     await sleep(Math.min(380, Math.max(WRONG_MOVE_REVEAL_DELAY_MS, shakeDuration * 0.55)));
+    showAccuracyBurst(moveEvaluation.accuracy);
     updateMoveFeedback({
       ...moveEvaluation,
       bestMoveSan: expectedInfo.move.san,
@@ -324,6 +325,7 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
 
   if (isBestMove) {
     flashBoard('success');
+    showAccuracyBurst(100);
     hapticSuccess();
     setCorrectStreak(getCorrectStreak() + 1);
 
@@ -341,6 +343,8 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   pushMoveScore(scoreEvaluation.accuracy);
   incrementMoveCounter();
   updateMoveFeedback(scoreEvaluation);
+  updateCharts();
+  updateStatistics(getMoveCounter());
 
   const sessionCache = getSessionCache();
   updateSessionCache({ currentIndex: expectedInfo.index + 1 });
@@ -418,6 +422,8 @@ export async function submitMove(moveUci) {
       movesLength: sessionCache.moves.length,
       roundIndex: sessionCache.roundIndex
     });
+
+    clearAccuracyBursts();
 
     const moveEvaluation = findMoveEvaluation(normalized, expectedInfo);
 

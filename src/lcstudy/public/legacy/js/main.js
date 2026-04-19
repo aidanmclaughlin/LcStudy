@@ -33,7 +33,7 @@ import {
   isPlayerMove,
   clearPendingCompletedGame
 } from './modules/moves.js';
-import { initKeyboardNavigation } from './modules/history.js';
+import { initKeyboardNavigation, initMoveReviewButtons } from './modules/history.js';
 
 /**
  * Initialize sound settings.
@@ -177,6 +177,7 @@ async function bootstrap() {
 
     // Set up keyboard navigation
     initKeyboardNavigation();
+    initMoveReviewButtons();
   } catch (err) {
     console.error('LcStudy bootstrap failed', err);
   }
