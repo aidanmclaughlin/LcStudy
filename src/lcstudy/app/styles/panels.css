@@ -78,7 +78,7 @@
 /* Accuracy summary */
 .panel-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   padding: 10px;
   flex-shrink: 0;
@@ -89,7 +89,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 9px 10px;
+  padding: 9px 8px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: var(--radius-md);
   background: rgba(15, 23, 42, 0.46);
@@ -105,7 +105,7 @@
 
 .stat-value {
   color: var(--text-primary);
-  font-size: clamp(1rem, 2vw, 1.28rem);
+  font-size: 1.08rem;
   font-weight: 800;
   line-height: 1.05;
   white-space: nowrap;
@@ -244,10 +244,10 @@
   }
 
   .stat-label {
-    font-size: clamp(0.56rem, 2.4vw, 0.64rem);
+    font-size: 0.54rem;
   }
 
   .stat-value {
-    font-size: clamp(0.86rem, 4.1vw, 1.08rem);
+    font-size: 0.86rem;
   }
 }

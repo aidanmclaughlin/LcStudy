@@ -363,6 +363,7 @@ export function resetMoveAccuracyChart() {
  * Update the statistics display.
  */
 export function updateStatistics() {
+  const allTimeElement = document.getElementById('all-time-accuracy');
   const tenGameElement = document.getElementById('avg-accuracy');
   const gameAccuracyElement = document.getElementById('game-accuracy');
   const moveElement = document.getElementById('move-feedback');
@@ -380,7 +381,9 @@ export function updateStatistics() {
   const tenGameAccuracy = recentGames.length > 0
     ? recentGames.reduce((sum, value) => sum + value, 0) / recentGames.length
     : 0;
+  const allTimeAccuracy = calculateWeightedGameAccuracy(gameHistory);
 
+  updateStatNumber(allTimeElement, allTimeAccuracy);
   updateStatNumber(tenGameElement, tenGameAccuracy);
   updateStatNumber(gameAccuracyElement, avgAccuracy);
 
@@ -389,6 +392,22 @@ export function updateStatistics() {
     moveElement.style.color = '#94a3b8';
     moveElement.classList.add('stat-value--muted');
   }
+}
+
+function calculateWeightedGameAccuracy(gameHistory) {
+  let totalMoves = 0;
+  let totalAccuracy = 0;
+
+  for (const game of gameHistory) {
+    const moves = Number(game.total_moves || 0);
+    const accuracy = Number(game.average_accuracy || 0);
+    if (!Number.isFinite(moves) || !Number.isFinite(accuracy) || moves <= 0) continue;
+
+    totalMoves += moves;
+    totalAccuracy += accuracy * moves;
+  }
+
+  return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
 }
 
 function updateStatNumber(element, value) {

@@ -64,6 +64,10 @@ export default async function HomePage() {
             {/* Accuracy Summary Panel */}
             <div className="panel panel-stats" aria-label="Accuracy summary">
               <div className="stat-tile">
+                <span className="stat-label">All-time</span>
+                <span id="all-time-accuracy" className="stat-value">0.0%</span>
+              </div>
+              <div className="stat-tile">
                 <span className="stat-label">10-game</span>
                 <span id="avg-accuracy" className="stat-value">0.0%</span>
               </div>

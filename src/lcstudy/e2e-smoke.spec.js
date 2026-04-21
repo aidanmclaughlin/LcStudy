@@ -265,12 +265,13 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   if (haptics.length < 8) {
     throw new Error(`Expected haptics for select/move/success/error, got ${haptics.length}`);
   }
+  const allTimeMetricText = await page.locator('#all-time-accuracy').textContent();
   const metricText = await page.locator('#avg-accuracy').textContent();
   const gameMetricText = await page.locator('#game-accuracy').textContent();
   const feedbackText = await page.locator('#move-feedback').textContent();
   const historyText = await page.locator('#move-list').textContent();
-  if (!metricText?.includes('%') || !gameMetricText?.includes('%') || !feedbackText?.includes('%')) {
-    throw new Error(`Expected accuracy metrics, got ${metricText} / ${gameMetricText} / ${feedbackText}`);
+  if (!allTimeMetricText?.includes('%') || !metricText?.includes('%') || !gameMetricText?.includes('%') || !feedbackText?.includes('%')) {
+    throw new Error(`Expected accuracy metrics, got ${allTimeMetricText} / ${metricText} / ${gameMetricText} / ${feedbackText}`);
   }
   if (feedbackText.includes('100.0')) {
     throw new Error(`Expected legal wrong move accuracy below 100%, got ${feedbackText}`);
@@ -278,6 +279,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   console.log(JSON.stringify({
     screenshots: 9,
     haptics: haptics.length,
+    allTimeMetricText,
     metricText,
     gameMetricText,
     feedbackText,
