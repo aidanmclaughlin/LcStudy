@@ -205,8 +205,9 @@ function updateHoursLeftChart() {
   chart.data.datasets[0].data = hoursData;
 
   const finiteHours = hoursData.filter((value) => Number.isFinite(value));
+  const minHours = finiteHours.length > 0 ? Math.min(...finiteHours) : 0;
   const maxHours = finiteHours.length > 0 ? Math.max(...finiteHours) : 0;
-  chart.options.scales.y.min = 0;
+  chart.options.scales.y.min = minHours;
   chart.options.scales.y.max = maxHours > 0 ? maxHours * 1.08 : 1;
 
   chart.update('none');

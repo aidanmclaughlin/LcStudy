@@ -325,11 +325,14 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     state.setGameHistory(originalHistory);
     state.setMoveAccuracies(originalMoves);
     charts.updateCharts();
+    const finalHours = chart.data.datasets[0].data.filter(Number.isFinite);
 
     return {
       label: chart.data.datasets[0].label,
-      pointCount: chart.data.datasets[0].data.filter(Number.isFinite).length,
+      pointCount: finalHours.length,
       axisSample: chart.options.scales.y.ticks.callback(1200),
+      axisMinimum: chart.options.scales.y.min,
+      dataMinimum: Math.min(...finalHours),
       normalHours,
       slowerHours,
     };
@@ -337,6 +340,8 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   expect(hoursChart.label).toBe('Hours Left');
   expect(hoursChart.pointCount).toBeGreaterThan(10);
   expect(hoursChart.axisSample).toBe('1.2kh');
+  expect(hoursChart.axisMinimum).toBeGreaterThan(0);
+  expect(hoursChart.axisMinimum).toBeCloseTo(hoursChart.dataMinimum, 8);
   expect(hoursChart.slowerHours / hoursChart.normalHours).toBeCloseTo(2, 5);
   console.log(JSON.stringify({
     screenshots: 9,
