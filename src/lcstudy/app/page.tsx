@@ -7,14 +7,14 @@
  *
  * Layout:
  * - Board column: Chessboard powered by chessboard-element
- * - Sidebar: Header, charts (accuracy over games, per-move accuracy), move history
+ * - Sidebar: Stats, charts (accuracy over games, per-move accuracy), move history
  */
 
 import Script from "next/script";
 import { redirect } from "next/navigation";
 
 import { getAuthSession } from "@/lib/auth";
-import { AuthControls } from "@/components/auth-controls";
+import { CompletionSignOutButton } from "@/components/auth-controls";
 
 export default async function HomePage() {
   const session = await getAuthSession();
@@ -33,34 +33,42 @@ export default async function HomePage() {
           <div className="board-column">
             <div className="board-shell">
               <div id="board" className="board-surface" />
+              <div
+                id="completion-overlay"
+                className="completion-overlay"
+                aria-live="polite"
+                aria-hidden="true"
+                hidden
+              >
+                <div className="completion-dock">
+                  <div className="completion-copy">
+                    <span className="completion-kicker">Checkmate</span>
+                    <span className="completion-title">Game complete</span>
+                  </div>
+                  <div className="completion-actions">
+                    <button
+                      id="completion-review"
+                      className="btn btn-sm completion-review"
+                      type="button"
+                    >
+                      Review
+                    </button>
+                    <button
+                      id="completion-new"
+                      className="btn btn-sm"
+                      type="button"
+                    >
+                      New Game
+                    </button>
+                    <CompletionSignOutButton />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Sidebar Panels */}
           <div className="sidebar">
-            {/* Header Panel */}
-            <div className="panel panel-header">
-              <span className="header-title">LcStudy</span>
-              <div className="panel-header-controls">
-                <span id="streak-pill" className="streak-pill">
-                  Streak x1
-                </span>
-                <button id="new" className="btn btn-sm">
-                  New Game
-                </button>
-                <button
-                  id="zen-toggle"
-                  className="btn btn-sm btn-icon"
-                  type="button"
-                  aria-label="Enter zen mode"
-                  aria-pressed="false"
-                >
-                  <span className="zen-icon" aria-hidden="true" />
-                </button>
-                <AuthControls />
-              </div>
-            </div>
-
             {/* Accuracy Summary Panel */}
             <div className="panel panel-stats" aria-label="Accuracy summary">
               <div className="stat-tile">
@@ -76,7 +84,7 @@ export default async function HomePage() {
                 <span id="game-accuracy" className="stat-value">0.0%</span>
               </div>
               <div className="stat-tile">
-                <span className="stat-label">Last move</span>
+                <span className="stat-label">Move</span>
                 <span id="move-feedback" className="stat-value stat-value--muted">
                   Pick move
                 </span>
@@ -87,6 +95,13 @@ export default async function HomePage() {
             <div className="panel panel-chart">
               <div className="panel-section-heading">
                 <h2>Accuracy Over Time</h2>
+                <span
+                  id="accuracy-chart-count"
+                  className="panel-count"
+                  title="Games played with estimated hours remaining to the 90% rolling average target"
+                >
+                  0 played / --h left
+                </span>
               </div>
               <div className="chart-container">
                 <canvas id="accuracy-chart" />
@@ -97,6 +112,7 @@ export default async function HomePage() {
             <div className="panel panel-chart">
               <div className="panel-section-heading">
                 <h2>Accuracy per Move</h2>
+                <span id="move-chart-count" className="panel-count">0 moves</span>
               </div>
               <div className="chart-container">
                 <canvas id="move-accuracy-chart" />
@@ -135,14 +151,6 @@ export default async function HomePage() {
           </div>
         </div>
       </div>
-      <button
-        id="zen-exit"
-        className="btn btn-icon zen-exit"
-        type="button"
-        aria-label="Exit zen mode"
-      >
-        <span className="zen-exit-icon" aria-hidden="true" />
-      </button>
     </>
   );
 }

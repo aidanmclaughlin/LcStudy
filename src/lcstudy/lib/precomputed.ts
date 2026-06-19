@@ -48,6 +48,8 @@ export interface PrecomputedGame {
     white?: string;
     black?: string;
     result?: string;
+    maiaLevel?: number;
+    maiaSearch?: string;
   };
   startingFen: string;
 }
@@ -58,6 +60,8 @@ export interface PrecomputedGame {
 
 /** Cached games (loaded once on first access) */
 let cachedGames: PrecomputedGame[] | null = null;
+let cachedGameIds: string[] | null = null;
+const cachedGamesById = new Map<string, PrecomputedGame>();
 
 // =============================================================================
 // Helper Functions
@@ -110,6 +114,12 @@ function normalizeUci(move: {
   promotion?: string | undefined;
 }): string {
   return `${move.from}${move.to}${move.promotion ?? ""}`.toLowerCase();
+}
+
+function parseMaiaLevel(headers: Record<string, string | undefined | null>): number | undefined {
+  const text = `${headers.White ?? ""} ${headers.Black ?? ""}`;
+  const match = text.match(/Maia\s+(\d{3,4})/i);
+  return match ? Number(match[1]) : undefined;
 }
 
 /**
@@ -165,16 +175,10 @@ export function loadPrecomputedGames(): PrecomputedGame[] {
     return cachedGames;
   }
 
-  const pgnDir = path.join(process.cwd(), "data", "pgn");
-  const files = fs
-    .readdirSync(pgnDir)
-    .filter((file) => file.endsWith(".pgn"))
-    .sort();
-
   const games: PrecomputedGame[] = [];
 
-  for (const file of files) {
-    const game = parsePgnFile(path.join(pgnDir, file));
+  for (const id of loadPrecomputedGameIds()) {
+    const game = getPrecomputedGameById(id);
     if (game) {
       games.push(game);
     }
@@ -182,6 +186,37 @@ export function loadPrecomputedGames(): PrecomputedGame[] {
 
   cachedGames = games;
   return games;
+}
+
+/**
+ * Load the cheap precomputed game index without parsing PGN contents.
+ * @returns Sorted game IDs
+ */
+function loadPrecomputedGameIds(): string[] {
+  if (cachedGameIds) {
+    return cachedGameIds;
+  }
+
+  cachedGameIds = fs
+    .readdirSync(getPgnDir())
+    .filter((file) => file.endsWith(".pgn"))
+    .sort()
+    .map((file) => file.replace(/\.pgn$/i, ""));
+
+  return cachedGameIds;
+}
+
+function getPgnDir(): string {
+  return path.join(process.cwd(), "data", "pgn");
+}
+
+function getPgnPathForId(id: string): string | null {
+  const ids = loadPrecomputedGameIds();
+  if (!ids.includes(id)) {
+    return null;
+  }
+
+  return path.join(getPgnDir(), `${id}.pgn`);
 }
 
 /**
@@ -266,7 +301,9 @@ function parsePgnFile(filePath: string): PrecomputedGame | null {
         event: normalizeHeader(headers.Event),
         white: normalizeHeader(headers.White),
         black: normalizeHeader(headers.Black),
-        result: normalizeHeader(headers.Result)
+        result: normalizeHeader(headers.Result),
+        maiaLevel: parseMaiaLevel(headers),
+        maiaSearch: normalizeHeader(headers.LcStudyMaiaSearch)
       },
       startingFen: startingChess.fen()
     };
@@ -282,7 +319,23 @@ function parsePgnFile(filePath: string): PrecomputedGame | null {
  * @returns Game or undefined if not found
  */
 export function getPrecomputedGameById(id: string): PrecomputedGame | undefined {
-  return loadPrecomputedGames().find((game) => game.id === id);
+  const cached = cachedGamesById.get(id);
+  if (cached) {
+    return cached;
+  }
+
+  const pgnPath = getPgnPathForId(id);
+  if (!pgnPath) {
+    return undefined;
+  }
+
+  const game = parsePgnFile(pgnPath);
+  if (!game) {
+    return undefined;
+  }
+
+  cachedGamesById.set(id, game);
+  return game;
 }
 
 /**
@@ -291,12 +344,34 @@ export function getPrecomputedGameById(id: string): PrecomputedGame | undefined 
  * @returns A precomputed game
  */
 export function pickPrecomputedGame(excludedIds: Set<string>): PrecomputedGame {
-  const games = loadPrecomputedGames();
-  const unplayed = games.filter((game) => !excludedIds.has(game.id));
+  const ids = loadPrecomputedGameIds();
+  const unplayed = ids.filter((id) => !excludedIds.has(id));
 
   // Use unplayed games if available, otherwise pick from all
-  const pool = unplayed.length > 0 ? unplayed : games;
-  const index = Math.floor(Math.random() * pool.length);
+  const pool = unplayed.length > 0 ? unplayed : ids;
+  const game = pickParsableGameFromIds(pool) ?? pickParsableGameFromIds(ids);
 
-  return pool[index];
+  if (!game) {
+    throw new Error("No precomputed games available");
+  }
+
+  return game;
+}
+
+function pickParsableGameFromIds(ids: string[]): PrecomputedGame | null {
+  if (ids.length === 0) {
+    return null;
+  }
+
+  const start = Math.floor(Math.random() * ids.length);
+
+  for (let offset = 0; offset < ids.length; offset++) {
+    const id = ids[(start + offset) % ids.length];
+    const game = getPrecomputedGameById(id);
+    if (game) {
+      return game;
+    }
+  }
+
+  return null;
 }

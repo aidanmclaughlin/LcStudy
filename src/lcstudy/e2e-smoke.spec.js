@@ -174,16 +174,22 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
 
   await context.addInitScript(() => {
     window.__haptics = [];
+    window.__vibrateCalls = [];
     try {
-      Object.defineProperty(navigator, 'vibrate', { value: undefined, configurable: true });
+      Object.defineProperty(navigator, 'vibrate', {
+        configurable: true,
+        value(pattern) {
+          window.__vibrateCalls.push(pattern);
+          return false;
+        },
+      });
     } catch (_) {}
-    const originalClick = HTMLLabelElement.prototype.click;
-    HTMLLabelElement.prototype.click = function patchedClick() {
-      if (this.querySelector && this.querySelector('input[switch]')) {
+
+    document.addEventListener('change', (event) => {
+      if (event.target?.matches?.('input[switch][data-lcstudy-haptic-switch]')) {
         window.__haptics.push({ type: 'ios-switch', at: Date.now() });
       }
-      return originalClick.call(this);
-    };
+    });
   });
 
   const sessionResponsePromise = page.waitForResponse((resp) => (
@@ -192,13 +198,9 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.goto('/', { waitUntil: 'networkidle' });
   const sessionData = await (await sessionResponsePromise).json();
   await page.waitForSelector('#board .piece');
+  await expect(page.locator('#completion-overlay')).toBeHidden();
+  await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
   await page.screenshot({ path: 'e2e-screenshots/01-initial-iphone.png', fullPage: true });
-  await page.locator('#zen-toggle').click();
-  await expect(page.locator('body')).toHaveClass(/zen-mode/);
-  await expect(page.locator('#zen-exit')).toBeVisible();
-  await page.screenshot({ path: 'e2e-screenshots/01b-zen-mode.png', fullPage: true });
-  await page.locator('#zen-exit').click();
-  await expect(page.locator('body')).not.toHaveClass(/zen-mode/);
 
   const firstMove = sessionData.moves[sessionData.ply];
   const firstReply = sessionData.moves[sessionData.ply + 1];
@@ -262,9 +264,12 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.screenshot({ path: 'e2e-screenshots/07-review-button-forward.png', fullPage: true });
 
   const haptics = await page.evaluate(() => window.__haptics || []);
+  const vibrateCalls = await page.evaluate(() => window.__vibrateCalls || []);
   if (haptics.length < 8) {
     throw new Error(`Expected haptics for select/move/success/error, got ${haptics.length}`);
   }
+  expect(vibrateCalls).toEqual([]);
+  await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
   const allTimeMetricText = await page.locator('#all-time-accuracy').textContent();
   const metricText = await page.locator('#avg-accuracy').textContent();
   const gameMetricText = await page.locator('#game-accuracy').textContent();
@@ -279,6 +284,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   console.log(JSON.stringify({
     screenshots: 9,
     haptics: haptics.length,
+    hapticBackend: 'ios-switch',
     allTimeMetricText,
     metricText,
     gameMetricText,
@@ -395,16 +401,22 @@ test.describe('desktop checkmate', () => {
     ), expectedMate.san);
     await page.waitForSelector('.confetti');
     await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
+    await expect(page.locator('#completion-overlay')).toBeVisible();
+    await expect(page.locator('#completion-new')).toBeVisible();
+    await expect(page.locator('.completion-signout')).toBeVisible();
     await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
     await expect.poll(() => completeCalls).toBe(1);
     await page.waitForTimeout(3200);
     expect(sessionNewCalls).toBe(1);
     expect(completePayloads[0]?.accuracy_history).toEqual([legalWrong.accuracy]);
+    expect(completePayloads[0]?.duration_ms).toBeGreaterThan(0);
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 
-    await page.keyboard.press('ArrowLeft');
+    await page.locator('#completion-review').click();
     await page.waitForTimeout(300);
+    await expect(page.locator('#completion-overlay')).toBeHidden();
+    await expect(page.locator('#board')).toHaveClass(/reviewing-moves/);
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
     await page.keyboard.press('ArrowLeft');
@@ -414,9 +426,15 @@ test.describe('desktop checkmate', () => {
     await page.waitForTimeout(300);
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
+    await expect(page.locator('#completion-overlay')).toBeHidden();
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(300);
+    await expect(page.locator('#board')).not.toHaveClass(/reviewing-moves/);
+    await expect(page.locator('#completion-overlay')).toBeVisible();
 
-    await page.locator('#new').click();
+    await page.locator('#completion-new').click();
     await expect.poll(() => sessionNewCalls).toBe(2);
+    await expect(page.locator('#completion-overlay')).toBeHidden();
     expect(completeCalls).toBe(1);
     await page.waitForFunction((from) => (
       Boolean(document.querySelector(`[data-square="${from}"] .piece`)?.dataset?.piece)

@@ -46,7 +46,7 @@ The app ships with seed PGN files, but you can generate more using the offline t
 2. Install Python dependency: `pip install chess`
 3. Download networks to `~/.lcstudy/nets/`:
    - `BT4-it332.pb.gz` from [lczero.org](https://lczero.org/play/networks/bestnets/)
-   - `maia-1100.pb.gz` through `maia-1900.pb.gz` from [maia-chess releases](https://github.com/CSSLab/maia-chess/releases)
+   - `maia-1100.pb.gz` through `maia-1900.pb.gz`, plus `maia-2200.pb.gz`, from [maia-chess releases](https://github.com/CSSLab/maia-chess/releases)
 
 ### Generate games
 

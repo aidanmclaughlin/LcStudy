@@ -7,11 +7,14 @@ import {
   getSessionId,
   getSessionCache,
   getMoveAccuracies,
+  getGameDurationMs,
   getGameHistory,
   setGameHistory,
   setCumulativeAccuracies
 } from './state.js';
 import { updateCharts, updateStatistics } from './charts.js';
+
+const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 
 /**
  * Fetch game history from the server.
@@ -19,7 +22,10 @@ import { updateCharts, updateStatistics } from './charts.js';
  */
 export async function loadGameHistory() {
   try {
-    const res = await fetch('/api/v1/game-history');
+    const res = await fetch('/api/v1/game-history', {
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
     const data = await res.json();
     const history = data.history || [];
 
@@ -82,12 +88,16 @@ export async function saveCompletedGame(result) {
   const averageAccuracy = totalMoves > 0
     ? accuracyHistory.reduce((sum, value) => sum + value, 0) / totalMoves
     : 0;
+  const durationMs = getGameDurationMs();
 
-  console.debug('saveCompletedGame payload', {
-    sessionId,
-    totalMoves,
-    averageAccuracy
-  });
+  if (DEBUG_LOGS) {
+    console.debug('saveCompletedGame payload', {
+      sessionId,
+      totalMoves,
+      averageAccuracy,
+      durationMs
+    });
+  }
 
   try {
     const res = await fetch(`/api/v1/session/${sessionId}/complete`, {
@@ -100,6 +110,7 @@ export async function saveCompletedGame(result) {
         average_accuracy: averageAccuracy,
         accuracy_history: accuracyHistory,
         maia_level: maiaLevel,
+        duration_ms: durationMs,
         result: result
       })
     });
@@ -118,6 +129,7 @@ export async function saveCompletedGame(result) {
     total_moves: totalMoves,
     accuracy_history: accuracyHistory,
     maia_level: maiaLevel,
+    duration_ms: durationMs,
     result: result
   });
   setGameHistory(gameHistory);
@@ -142,6 +154,8 @@ export async function createSession(maiaLevel) {
     const res = await fetch('/api/v1/session/new', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      cache: 'no-store',
       body: JSON.stringify(payload)
     });
 

@@ -17,6 +17,15 @@ import {
   getIsReviewingMoves
 } from './state.js';
 
+let lastAccuracyChartSignature = '';
+let lastMoveChartSignature = '';
+const chartHeadingCounts = {};
+const GM_ACCURACY_TARGET = 90;
+const GM_ACCURACY_CEILING = 95;
+const GM_ACCURACY_EXPONENT = 0.5;
+let lastGoalSignature = '';
+let lastGoalProjection = null;
+
 /**
  * Initialize both Chart.js charts.
  * Must be called after Chart.js is loaded.
@@ -44,7 +53,7 @@ function initAccuracyChart() {
       labels: [],
       datasets: [
         {
-          label: 'Game Accuracy',
+          label: 'Overall Accuracy',
           data: [],
           borderColor: '#8b5cf6',
           backgroundColor: 'rgba(139, 92, 246, 0.08)',
@@ -55,29 +64,18 @@ function initAccuracyChart() {
           pointHoverRadius: 5
         },
         {
-          label: 'Current Game',
+          label: 'Current Overall',
           data: [],
           borderColor: '#22c55e',
           backgroundColor: 'rgba(34, 197, 94, 0.15)',
-          borderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 7,
+          borderWidth: 0,
+          pointRadius: 0,
+          pointHoverRadius: 0,
           pointBackgroundColor: '#22c55e',
           pointBorderColor: '#15803d',
-          pointBorderWidth: 2,
+          pointBorderWidth: 0,
           fill: false,
           tension: 0
-        },
-        {
-          label: 'Overall Accuracy',
-          data: [],
-          borderColor: '#60a5fa',
-          backgroundColor: 'rgba(96, 165, 250, 0.08)',
-          borderWidth: 2,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          fill: false,
-          tension: 0.3
         }
       ]
     },
@@ -98,16 +96,9 @@ function initAccuracyChart() {
               const value = `${context.formattedValue}%`;
 
               if (datasetIndex === 0) {
-                const dataset = context.chart.data.datasets[0] || {};
-                const minIdx = dataset.customMinIndex;
-                if (minIdx !== undefined && minIdx !== null && index === minIdx) {
-                  return `Best: ${value}`;
-                }
-                return `Game: ${value}`;
+                return `Overall: ${value}`;
               } else if (datasetIndex === 1) {
                 return `Now: ${value}`;
-              } else if (datasetIndex === 2) {
-                return `Overall: ${value}`;
               }
               return value;
             }
@@ -196,7 +187,7 @@ export function updateCharts() {
 }
 
 /**
- * Update the accuracy chart with cumulative averages and current game.
+ * Update the accuracy chart with cumulative overall averages.
  */
 function updateAccuracyChart() {
   const chart = getAccuracyChart();
@@ -205,13 +196,29 @@ function updateAccuracyChart() {
   const cumulativeAccuracies = getCumulativeAccuracies();
   const moveAccuracies = getMoveAccuracies();
   const gameHistory = getGameHistory();
+  updateAccuracyGoalCount(gameHistory, moveAccuracies);
+
+  const visibleStartIndex = findLowestAccuracyIndex(cumulativeAccuracies);
+  const visibleCumulative = cumulativeAccuracies.slice(visibleStartIndex);
+  const includeCurrentGame = moveAccuracies.length > 0 && !isCurrentGameAlreadySaved(gameHistory, moveAccuracies);
+  const currentOverallAvg = includeCurrentGame
+    ? calculateCurrentOverallAccuracy(gameHistory, moveAccuracies)
+    : null;
+  const nextSignature = [
+    visibleStartIndex,
+    visibleCumulative.length,
+    visibleCumulative.at(-1) ?? '',
+    currentOverallAvg ?? '',
+    gameHistory.length
+  ].join('|');
+
+  if (nextSignature === lastAccuracyChartSignature) return;
+  lastAccuracyChartSignature = nextSignature;
 
   const labels = [];
-  const historicalData = [];
-  const currentGameData = [];
   const cumulativeData = [];
+  const currentGameData = [];
 
-  // Per-point styling for best historical highlight
   const pointBgColors = [];
   const pointBdColors = [];
   const pointRadii = [];
@@ -219,11 +226,10 @@ function updateAccuracyChart() {
   const pointBorderWidths = [];
 
   // Add historical data points
-  for (let i = 0; i < cumulativeAccuracies.length; i++) {
+  for (let i = 0; i < visibleCumulative.length; i++) {
     labels.push('');
-    historicalData.push(gameHistory[i]?.average_accuracy ?? null);
+    cumulativeData.push(visibleCumulative[i]);
     currentGameData.push(null);
-    cumulativeData.push(cumulativeAccuracies[i]);
     pointBgColors.push('#8b5cf6');
     pointBdColors.push('#8b5cf6');
     pointRadii.push(0);
@@ -232,12 +238,10 @@ function updateAccuracyChart() {
   }
 
   // Add current game point
-  if (moveAccuracies.length > 0) {
-    const currentGameAvg = moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length;
+  if (currentOverallAvg !== null) {
     labels.push('');
-    historicalData.push(null);
-    currentGameData.push(currentGameAvg);
     cumulativeData.push(null);
+    currentGameData.push(currentOverallAvg);
     pointBgColors.push('#8b5cf6');
     pointBdColors.push('#8b5cf6');
     pointRadii.push(0);
@@ -245,56 +249,39 @@ function updateAccuracyChart() {
     pointBorderWidths.push(0);
   }
 
-  // Find and highlight maximum historical value
-  let bestIdxForTooltip = null;
-  if (cumulativeAccuracies.length > 0) {
-    let maxVal = cumulativeAccuracies[0];
-    let bestIdx = 0;
-
-    for (let i = 1; i < cumulativeAccuracies.length; i++) {
-      if (cumulativeAccuracies[i] > maxVal) {
-        maxVal = cumulativeAccuracies[i];
-        bestIdx = i;
-      }
-    }
-
-    // Apply green styling to best point
-    pointBgColors[bestIdx] = '#10b981';
-    pointBdColors[bestIdx] = '#ffffff';
-    pointRadii[bestIdx] = 5;
-    pointHoverRadii[bestIdx] = 7;
-    pointBorderWidths[bestIdx] = 2;
-    bestIdxForTooltip = bestIdx;
-  }
-
   // Update chart data
   chart.data.labels = labels;
-  chart.data.datasets[0].data = historicalData;
+  chart.data.datasets[0].data = cumulativeData;
   chart.data.datasets[1].data = currentGameData;
-  chart.data.datasets[2].data = cumulativeData;
   chart.data.datasets[0].pointBackgroundColor = pointBgColors;
   chart.data.datasets[0].pointBorderColor = pointBdColors;
   chart.data.datasets[0].pointRadius = pointRadii;
   chart.data.datasets[0].pointHoverRadius = pointHoverRadii;
   chart.data.datasets[0].pointBorderWidth = pointBorderWidths;
-  chart.data.datasets[0].customMinIndex = bestIdxForTooltip;
+  chart.data.datasets[0].customMinIndex = null;
 
   // Dynamically adjust Y axis to data range
   const yVals = [
-    ...cumulativeAccuracies,
-    ...gameHistory.map(game => game.average_accuracy)
+    ...visibleCumulative
   ].filter(v => typeof v === 'number' && !isNaN(v));
-  if (moveAccuracies.length > 0) {
-    const currentGameAvg = moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length;
-    if (!isNaN(currentGameAvg)) yVals.push(currentGameAvg);
+  if (currentOverallAvg !== null) {
+    if (!isNaN(currentOverallAvg)) yVals.push(currentOverallAvg);
   }
 
   if (yVals.length > 0) {
     const minY = Math.min(...yVals);
     const maxY = Math.max(...yVals);
     const pad = 4;
-    chart.options.scales.y.min = Math.max(0, minY - pad);
-    chart.options.scales.y.max = Math.min(100, maxY + pad);
+    let axisMin = Math.max(0, minY);
+    let axisMax = Math.min(100, maxY + pad);
+
+    if (axisMax <= axisMin) {
+      axisMin = Math.max(0, axisMin - pad);
+      axisMax = Math.min(100, Math.max(axisMax, axisMin + pad));
+    }
+
+    chart.options.scales.y.min = axisMin;
+    chart.options.scales.y.max = axisMax;
   }
 
   chart.update('none');
@@ -308,11 +295,19 @@ function updateMoveAccuracyChart() {
   if (!chart) return;
 
   const moveAccuracies = getMoveAccuracies();
-  if (moveAccuracies.length === 0) return;
+  updateChartCount('move-chart-count', moveAccuracies.length, 'move');
 
   const moveHistory = getMoveHistory();
   const currentMoveIndex = getCurrentMoveIndex();
   const isReviewingMoves = getIsReviewingMoves();
+  const nextSignature = [
+    moveAccuracies.length,
+    moveAccuracies.at(-1) ?? '',
+    isReviewingMoves ? currentMoveIndex : -1
+  ].join('|');
+
+  if (nextSignature === lastMoveChartSignature) return;
+  lastMoveChartSignature = nextSignature;
 
   // Calculate which user move is currently being reviewed
   let currentUserMoveIndex = -1;
@@ -356,6 +351,8 @@ export function resetMoveAccuracyChart() {
 
   chart.data.labels = [];
   chart.data.datasets[0].data = [];
+  lastMoveChartSignature = '';
+  updateChartCount('move-chart-count', 0, 'move');
   chart.update('none');
 }
 
@@ -408,6 +405,318 @@ function calculateWeightedGameAccuracy(gameHistory) {
   }
 
   return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
+}
+
+function calculateCurrentOverallAccuracy(gameHistory, moveAccuracies) {
+  let totalMoves = 0;
+  let totalAccuracy = 0;
+
+  for (const game of gameHistory) {
+    const moves = Number(game.total_moves || 0);
+    const accuracy = Number(game.average_accuracy || 0);
+    if (!Number.isFinite(moves) || !Number.isFinite(accuracy) || moves <= 0) continue;
+
+    totalMoves += moves;
+    totalAccuracy += accuracy * moves;
+  }
+
+  for (const accuracy of moveAccuracies) {
+    const numeric = Number(accuracy || 0);
+    if (!Number.isFinite(numeric)) continue;
+
+    totalMoves += 1;
+    totalAccuracy += numeric;
+  }
+
+  return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
+}
+
+function findLowestAccuracyIndex(values) {
+  if (!Array.isArray(values) || values.length === 0) return 0;
+
+  let lowestIndex = 0;
+  let lowestValue = Number(values[0]);
+
+  for (let i = 1; i < values.length; i++) {
+    const value = Number(values[i]);
+    if (Number.isFinite(value) && value < lowestValue) {
+      lowestValue = value;
+      lowestIndex = i;
+    }
+  }
+
+  return lowestIndex;
+}
+
+function isCurrentGameAlreadySaved(gameHistory, moveAccuracies) {
+  const lastGame = Array.isArray(gameHistory) ? gameHistory.at(-1) : null;
+  const history = Array.isArray(lastGame?.accuracy_history) ? lastGame.accuracy_history : null;
+
+  if (!history || history.length !== moveAccuracies.length) return false;
+
+  return history.every((value, index) => Number(value) === Number(moveAccuracies[index]));
+}
+
+function updateChartCount(id, count, singular) {
+  const next = `${count} ${count === 1 ? singular : `${singular}s`}`;
+  let element = chartHeadingCounts[id];
+
+  if (!element) {
+    element = document.getElementById(id);
+    chartHeadingCounts[id] = element;
+  }
+
+  if (element && element.textContent !== next) {
+    element.textContent = next;
+  }
+}
+
+function updateAccuracyGoalCount(gameHistory, moveAccuracies) {
+  const completedGames = Array.isArray(gameHistory) ? gameHistory.length : 0;
+  const projectedAccuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
+  const projection = projectAccuracyGoal(gameHistory, moveAccuracies);
+  const rollingGoalReached = isRollingAccuracyGoalReached(projectedAccuracies);
+  const minimumFutureGames = minimumFutureGamesForRollingTarget(projectedAccuracies);
+  const targetGames = projection
+    ? resolveTargetGames(completedGames, projection.targetGame, rollingGoalReached, minimumFutureGames)
+    : completedGames;
+  const remainingGames = Math.max(0, targetGames - completedGames);
+  const averageDurationMs = calculateAverageGameDurationMs(gameHistory);
+  const hoursLeft = projection && averageDurationMs !== null
+    ? remainingGames * averageDurationMs
+    : null;
+  const next = projection
+    ? `${formatGameCount(completedGames)} played / ${formatHoursLeft(hoursLeft)} left`
+    : `${formatGameCount(completedGames)} played / --h left`;
+  let element = chartHeadingCounts['accuracy-chart-count'];
+
+  if (!element) {
+    element = document.getElementById('accuracy-chart-count');
+    chartHeadingCounts['accuracy-chart-count'] = element;
+  }
+
+  if (element) {
+    if (element.textContent !== next) {
+      element.textContent = next;
+    }
+    element.title = projection
+      ? buildHoursLeftTitle(completedGames, targetGames, remainingGames, averageDurationMs, hoursLeft, minimumFutureGames)
+      : `Need 10 completed games to estimate the ${GM_ACCURACY_TARGET}% target`;
+  }
+}
+
+function resolveTargetGames(completedGames, rawTargetGame, rollingGoalReached, minimumFutureGames) {
+  if (rollingGoalReached) return completedGames;
+
+  const projectedTargetGames = Number.isFinite(rawTargetGame)
+    ? Math.round(rawTargetGame)
+    : completedGames;
+  const lowerBoundTargetGames = Number.isFinite(minimumFutureGames)
+    ? completedGames + minimumFutureGames
+    : completedGames + 1;
+
+  return Math.max(projectedTargetGames, lowerBoundTargetGames);
+}
+
+function buildHoursLeftTitle(completedGames, targetGames, remainingGames, averageDurationMs, hoursLeft, minimumFutureGames) {
+  if (averageDurationMs === null || hoursLeft === null) {
+    return `${formatGameCount(completedGames)} played; play one timed game to estimate hours left to ${GM_ACCURACY_TARGET}%`;
+  }
+
+  const parts = [
+    `${formatGameCount(completedGames)} played`,
+    `${formatGameCount(targetGames)} target games`,
+    `${formatGameCount(remainingGames)} estimated remaining`,
+    `${formatGameLength(averageDurationMs)} avg game length`,
+    `${formatHoursLeft(hoursLeft)} left to ${GM_ACCURACY_TARGET}%`
+  ];
+
+  if (Number.isFinite(minimumFutureGames) && minimumFutureGames > 0) {
+    parts.push(`${formatGameCount(minimumFutureGames)} game rolling-window minimum`);
+  }
+
+  return parts.join(', ');
+}
+
+function projectAccuracyGoal(gameHistory, moveAccuracies) {
+  const accuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
+  if (accuracies.length < 10) return null;
+
+  const signature = accuracies
+    .map((accuracy) => Number(accuracy || 0).toFixed(2))
+    .join('|');
+  if (signature === lastGoalSignature) return lastGoalProjection;
+
+  const points = buildTenGameBlocks(accuracies);
+  const fit = fitBoundedLearningCurve(points);
+  const targetGame = solveBoundedTargetGame(fit);
+  lastGoalSignature = signature;
+  lastGoalProjection = Number.isFinite(targetGame)
+    ? { ...fit, targetGame }
+    : null;
+
+  return lastGoalProjection;
+}
+
+function getProjectedGameAccuracies(gameHistory, moveAccuracies) {
+  const accuracies = Array.isArray(gameHistory)
+    ? gameHistory
+        .map((game) => Number(game.average_accuracy))
+        .filter((accuracy) => Number.isFinite(accuracy))
+    : [];
+
+  if (Array.isArray(moveAccuracies) && moveAccuracies.length > 0) {
+    const currentGameAccuracy = moveAccuracies.reduce((sum, value) => sum + Number(value || 0), 0) / moveAccuracies.length;
+    if (Number.isFinite(currentGameAccuracy)) {
+      accuracies.push(currentGameAccuracy);
+    }
+  }
+
+  return accuracies;
+}
+
+function isRollingAccuracyGoalReached(accuracies) {
+  if (!Array.isArray(accuracies) || accuracies.length < 10) return false;
+  return average(accuracies.slice(-10)) >= GM_ACCURACY_TARGET;
+}
+
+function minimumFutureGamesForRollingTarget(accuracies) {
+  if (!Array.isArray(accuracies) || accuracies.length < 10) return null;
+  const lastTen = accuracies.slice(-10);
+  if (average(lastTen) >= GM_ACCURACY_TARGET) return 0;
+
+  for (let futureGames = 1; futureGames <= 10; futureGames++) {
+    const futureWindow = [
+      ...lastTen.slice(futureGames),
+      ...Array(futureGames).fill(100)
+    ];
+
+    if (average(futureWindow) >= GM_ACCURACY_TARGET) {
+      return futureGames;
+    }
+  }
+
+  return 10;
+}
+
+function buildTenGameBlocks(accuracies) {
+  const points = [];
+
+  for (let start = 0; start + 10 <= accuracies.length; start += 10) {
+    points.push({
+      x: start + 10,
+      y: average(accuracies.slice(start, start + 10))
+    });
+  }
+
+  if (points.at(-1)?.x !== accuracies.length) {
+    points.push({
+      x: accuracies.length,
+      y: average(accuracies.slice(-10))
+    });
+  }
+
+  return points;
+}
+
+function fitBoundedLearningCurve(points) {
+  let best = null;
+  const decayFactors = new Float64Array(points.length);
+
+  for (let logOffset = Math.log(20); logOffset <= Math.log(20000); logOffset += 0.025) {
+    const offset = Math.exp(logOffset);
+    let floorNumerator = 0;
+    let floorDenominator = 0;
+
+    for (let index = 0; index < points.length; index++) {
+      const point = points[index];
+      const decay = Math.pow(offset / (point.x + offset), GM_ACCURACY_EXPONENT);
+      decayFactors[index] = decay;
+      floorNumerator += decay * (point.y - GM_ACCURACY_CEILING * (1 - decay));
+      floorDenominator += decay * decay;
+    }
+
+    const unconstrainedFloor = floorDenominator > 0
+      ? floorNumerator / floorDenominator
+      : 65;
+    const floor = Math.max(55, Math.min(68, unconstrainedFloor));
+    let error = 0;
+
+    for (let index = 0; index < points.length; index++) {
+      const decay = decayFactors[index];
+      const prediction = GM_ACCURACY_CEILING * (1 - decay) + floor * decay;
+      const residual = points[index].y - prediction;
+      error += residual * residual;
+    }
+
+    if (!best || error < best.error) {
+      best = { floor, offset, error };
+    }
+  }
+
+  return best || { floor: 65, offset: 750, error: 0 };
+}
+
+function solveBoundedTargetGame(fit) {
+  if (!fit || GM_ACCURACY_CEILING <= GM_ACCURACY_TARGET) return Infinity;
+
+  const ratio = (GM_ACCURACY_CEILING - GM_ACCURACY_TARGET) / (GM_ACCURACY_CEILING - fit.floor);
+  if (ratio <= 0 || ratio >= 1) return Infinity;
+
+  return fit.offset * (Math.pow(ratio, -1 / GM_ACCURACY_EXPONENT) - 1);
+}
+
+function average(values) {
+  return values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
+}
+
+function formatGameCount(count) {
+  const numeric = Number(count || 0);
+  if (!Number.isFinite(numeric)) return '0';
+  if (numeric >= 10000) {
+    return `${(numeric / 1000).toFixed(1)}k`;
+  }
+  return Math.round(numeric).toLocaleString();
+}
+
+function calculateAverageGameDurationMs(gameHistory) {
+  if (!Array.isArray(gameHistory)) return null;
+
+  let count = 0;
+  let total = 0;
+
+  for (const game of gameHistory) {
+    const duration = Number(game.duration_ms);
+    if (!Number.isFinite(duration) || duration <= 0) continue;
+
+    count += 1;
+    total += duration;
+  }
+
+  return count > 0 ? total / count : null;
+}
+
+function formatHoursLeft(durationMs) {
+  const numeric = Number(durationMs);
+  if (!Number.isFinite(numeric)) return '--h';
+
+  const hours = Math.max(0, numeric / 3600000);
+  if (hours >= 1000) return `${Math.round(hours).toLocaleString()}h`;
+  if (hours >= 10) return `${Math.round(hours)}h`;
+  if (hours >= 1) return `${hours.toFixed(1)}h`;
+  if (hours === 0) return '0h';
+  return `${Math.max(0.1, hours).toFixed(1)}h`;
+}
+
+function formatGameLength(durationMs) {
+  const numeric = Number(durationMs);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '--';
+
+  const minutes = numeric / 60000;
+  if (minutes >= 60) return `${(minutes / 60).toFixed(1)}h/game`;
+  if (minutes >= 10) return `${Math.round(minutes)}m/game`;
+  if (minutes >= 1) return `${minutes.toFixed(1)}m/game`;
+  return `${Math.max(1, Math.round(numeric / 1000))}s/game`;
 }
 
 function updateStatNumber(element, value) {

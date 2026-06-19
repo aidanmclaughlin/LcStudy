@@ -15,6 +15,33 @@
   touch-action: none;
 }
 
+#board.is-loading {
+  cursor: wait;
+}
+
+#board.is-loading::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  background: rgba(15, 23, 42, 0.08);
+  animation: boardLoadingPulse 900ms ease-in-out infinite alternate;
+}
+
+#board.is-loading .square {
+  cursor: wait;
+}
+
+#board.is-loading .piece {
+  cursor: wait;
+}
+
+@keyframes boardLoadingPulse {
+  from { opacity: 0.16; }
+  to { opacity: 0.42; }
+}
+
 /* Square */
 .square {
   display: flex;

@@ -41,6 +41,7 @@ export interface SessionCompleteRequest {
   average_accuracy?: number;
   accuracy_history?: number[];
   maia_level?: number;
+  duration_ms?: number | null;
   result?: string;
 }
 
@@ -92,6 +93,7 @@ export interface GameHistoryEntry {
   total_moves: number;
   accuracy_history: number[];
   maia_level: number;
+  duration_ms: number | null;
   result: "finished" | "incomplete";
 }
 

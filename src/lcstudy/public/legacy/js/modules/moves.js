@@ -20,7 +20,7 @@ import {
   setLastMoveHighlight
 } from './state.js';
 import { animateMove, showMoveHint, updateBoardAfterMove } from './board.js';
-import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, showStreakPill, showAccuracyBurst, updateMoveFeedback } from './effects.js';
+import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, showAccuracyBurst, updateMoveFeedback } from './effects.js';
 import { updateCharts, updateStatistics } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
@@ -32,6 +32,7 @@ let movePlaybackInProgress = false;
 
 const AUTO_PLAY_DELAY_MS = 320;
 const WRONG_MOVE_REVEAL_DELAY_MS = 180;
+const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 
 /**
  * Clear pending completion state after starting a fresh game.
@@ -339,7 +340,6 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     ? { ...moveEvaluation, accuracy: 100 }
     : moveEvaluation;
 
-  showStreakPill();
   pushMoveScore(scoreEvaluation.accuracy);
   incrementMoveCounter();
   updateMoveFeedback(scoreEvaluation);
@@ -365,8 +365,6 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   updateSessionCache({ roundIndex: coerceIndex(expectedInfo.roundIndex) + 1 });
   updateRoundIndexFromCurrentIndex();
 
-  updateCharts();
-  updateStatistics(getMoveCounter());
   updatePgnDisplay();
 
   // Check if game is complete
@@ -412,16 +410,18 @@ export async function submitMove(moveUci) {
       normalized += expectedUci[4];
     }
 
-    console.debug('submitMove', {
-      input: moveUci,
-      normalized,
-      expected: expectedUci,
-      expectedIndex: expectedInfo.index,
-      currentIndex: sessionCache.currentIndex,
-      flip: sessionCache.flip,
-      movesLength: sessionCache.moves.length,
-      roundIndex: sessionCache.roundIndex
-    });
+    if (DEBUG_LOGS) {
+      console.debug('submitMove', {
+        input: moveUci,
+        normalized,
+        expected: expectedUci,
+        expectedIndex: expectedInfo.index,
+        currentIndex: sessionCache.currentIndex,
+        flip: sessionCache.flip,
+        movesLength: sessionCache.moves.length,
+        roundIndex: sessionCache.roundIndex
+      });
+    }
 
     clearAccuracyBursts();
 

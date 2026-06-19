@@ -104,8 +104,9 @@ python3 tools/generate_games.py \
   --require-result
 
 python3 tools/generate_games.py \
-  --count 100 \
-  --replace-output \
+  --count 1000 \
+  --maia-levels 1100,1200,1300,1400,1500,1600,1700,1800,1900,2200 \
+  --maia-search-variants 2200:2,2200:4,2200:8 \
   --leela-net BT4-it332 \
   --leela-nodes 200 \
   --maia-nodes 1 \

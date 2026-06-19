@@ -47,55 +47,6 @@
   height: 28px;
 }
 
-.zen-icon,
-.zen-exit-icon {
-  position: relative;
-  width: 16px;
-  height: 16px;
-  display: block;
-}
-
-.zen-icon {
-  background:
-    linear-gradient(currentColor, currentColor) left top / 7px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) left top / 2px 7px no-repeat,
-    linear-gradient(currentColor, currentColor) right top / 7px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) right top / 2px 7px no-repeat,
-    linear-gradient(currentColor, currentColor) left bottom / 7px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) left bottom / 2px 7px no-repeat,
-    linear-gradient(currentColor, currentColor) right bottom / 7px 2px no-repeat,
-    linear-gradient(currentColor, currentColor) right bottom / 2px 7px no-repeat;
-}
-
-.zen-icon::before {
-  content: '';
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.8;
-}
-
-.zen-exit-icon::before,
-.zen-exit-icon::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 2px;
-  height: 100%;
-  border-radius: 2px;
-  background: currentColor;
-}
-
-.zen-exit-icon::before {
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.zen-exit-icon::after {
-  transform: translateX(-50%) rotate(-45deg);
-}
-
 .review-button {
   width: 30px;
   min-width: 30px;
@@ -121,25 +72,6 @@
   transform: translateX(-2px) rotate(45deg);
 }
 
-.zen-exit {
-  display: none;
-  position: fixed;
-  top: max(18px, env(safe-area-inset-top));
-  right: max(18px, env(safe-area-inset-right));
-  z-index: 10000;
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  background: rgba(15, 23, 42, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.28);
-}
-
-body.zen-mode .zen-exit {
-  display: inline-flex;
-}
-
 /* Pill badge */
 .pill {
   display: inline-flex;
@@ -152,58 +84,7 @@ body.zen-mode .zen-exit {
   border: 1px solid rgba(139, 92, 246, 0.25);
 }
 
-/* Streak pill */
-.streak-pill {
-  display: none;
-  background: rgba(234, 179, 8, 0.12);
-  color: #fcd34d;
-  border: 0;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  font-size: 0.7rem;
-  padding: 6px 14px;
-  min-width: 76px;
-  text-align: center;
-  box-sizing: border-box;
-}
-
-.streak-pill.show {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.streak-pop {
-  animation: streakPop 300ms ease-out;
-}
-
-@keyframes streakPop {
-  0% { transform: scale(0.9); opacity: 0.6; }
-  60% { transform: scale(1.08); opacity: 1; }
-  100% { transform: scale(1); }
-}
-
 @media (max-width: 600px) {
-  .panel-header .btn-sm,
-  .panel-header .streak-pill {
-    min-width: 0;
-    padding: 6px clamp(8px, 2.8vw, 12px);
-    font-size: clamp(0.64rem, 2.8vw, 0.7rem);
-    white-space: nowrap;
-  }
-
-  .panel-header .btn-sm.btn-icon {
-    width: clamp(27px, 8vw, 30px);
-    min-width: clamp(27px, 8vw, 30px);
-    height: clamp(27px, 8vw, 30px);
-    padding: 0;
-  }
-
-  .panel-header .zen-icon {
-    width: 15px;
-    height: 15px;
-  }
-
   .review-button {
     width: 34px;
     min-width: 34px;

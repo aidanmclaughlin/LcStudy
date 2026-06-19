@@ -4,8 +4,11 @@
  */
 
 import { CONFETTI_COLORS, CELEBRATION_COLORS } from './constants.js';
-import { getCorrectStreak } from './state.js';
 import { playSuccessChime } from './audio.js';
+
+const BOARD_FLASH_CLASSES = ['board-flash-green', 'board-shake', 'board-flash-gray'];
+let boardFlashFrame = 0;
+let boardFlashTimer = 0;
 
 function accuracyTone(accuracy) {
   if (accuracy >= 90) {
@@ -17,6 +20,31 @@ function accuracyTone(accuracy) {
   }
 
   return { color: '#ef4444', glow: 'rgba(239, 68, 68, 0.62)' };
+}
+
+export function showCompletionOverlay() {
+  const overlay = document.getElementById('completion-overlay');
+  if (!overlay) return;
+
+  overlay.hidden = false;
+  overlay.removeAttribute('inert');
+  overlay.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => overlay.classList.add('is-visible'));
+}
+
+export function hideCompletionOverlay() {
+  const overlay = document.getElementById('completion-overlay');
+  if (!overlay) return;
+
+  overlay.classList.remove('is-visible');
+  overlay.setAttribute('aria-hidden', 'true');
+  overlay.setAttribute('inert', '');
+
+  window.setTimeout(() => {
+    if (!overlay.classList.contains('is-visible')) {
+      overlay.hidden = true;
+    }
+  }, 180);
 }
 
 /**
@@ -44,15 +72,27 @@ export function flashBoard(result, intensity = 1) {
   boardEl.style.setProperty('--shake-twist', `${force * 1.4}deg`);
   boardEl.style.setProperty('--shake-duration', `${duration}ms`);
 
-  // Remove existing classes and force reflow
-  boardEl.classList.remove('board-flash-green', 'board-shake', 'board-flash-gray');
-  boardEl.offsetHeight; // Force reflow
+  const isRestart = BOARD_FLASH_CLASSES.some((name) => boardEl.classList.contains(name));
+  if (boardFlashFrame) cancelAnimationFrame(boardFlashFrame);
+  if (boardFlashTimer) clearTimeout(boardFlashTimer);
+  boardEl.classList.remove(...BOARD_FLASH_CLASSES);
 
-  boardEl.classList.add(className);
+  const startAnimation = () => {
+    boardFlashFrame = 0;
+    boardEl.classList.add(className);
+    boardFlashTimer = window.setTimeout(() => {
+      boardFlashTimer = 0;
+      boardEl.classList.remove(className);
+    }, duration);
+  };
 
-  setTimeout(() => {
-    boardEl.classList.remove(className);
-  }, duration);
+  if (isRestart) {
+    boardFlashFrame = requestAnimationFrame(() => {
+      boardFlashFrame = requestAnimationFrame(startAnimation);
+    });
+  } else {
+    startAnimation();
+  }
 
   return duration;
 }
@@ -81,6 +121,9 @@ export function successPulseAtSquare(square) {
  * @param {number} [count=16] - Number of particles
  */
 export function createConfettiBurst(x, y, count = 16) {
+  const fragment = document.createDocumentFragment();
+  const particles = [];
+
   for (let i = 0; i < count; i++) {
     const particle = document.createElement('div');
     particle.className = 'confetti-burst';
@@ -96,12 +139,12 @@ export function createConfettiBurst(x, y, count = 16) {
     particle.style.setProperty('--dx', dx + 'px');
     particle.style.setProperty('--dy', dy + 'px');
 
-    document.body.appendChild(particle);
-
-    setTimeout(() => {
-      try { document.body.removeChild(particle); } catch (e) {}
-    }, 700);
+    particles.push(particle);
+    fragment.appendChild(particle);
   }
+
+  document.body.appendChild(fragment);
+  setTimeout(() => particles.forEach((particle) => particle.remove()), 700);
 }
 
 /**
@@ -122,24 +165,6 @@ export function shimmerJackpot() {
 }
 
 /**
- * Show/update the streak pill display.
- */
-export function showStreakPill() {
-  const pill = document.getElementById('streak-pill');
-  if (!pill) return;
-
-  const streak = getCorrectStreak();
-
-  if (streak >= 2) {
-    pill.textContent = `Streak x${streak}`;
-    pill.classList.add('show', 'streak-pop');
-    setTimeout(() => pill.classList.remove('streak-pop'), 320);
-  } else {
-    pill.classList.remove('show');
-  }
-}
-
-/**
  * Full celebration effect for a correct move.
  * Combines pulse, confetti, sound, and haptics.
  * @param {string} toSquare - Destination square of the move
@@ -148,10 +173,12 @@ export function celebrateSuccess(toSquare) {
   successPulseAtSquare(toSquare);
 
   const el = document.querySelector(`[data-square="${toSquare}"]`);
+  let centerX = null;
+  let centerY = null;
   if (el) {
     const rect = el.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    centerX = rect.left + rect.width / 2;
+    centerY = rect.top + rect.height / 2;
     createConfettiBurst(centerX, centerY, 16);
   }
 
@@ -160,9 +187,8 @@ export function celebrateSuccess(toSquare) {
   // 7% chance of jackpot shimmer with extra confetti
   if (Math.random() < 0.07) {
     shimmerJackpot();
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      createConfettiBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, 24);
+    if (centerX !== null && centerY !== null) {
+      createConfettiBurst(centerX, centerY, 24);
     }
   }
 }
@@ -179,6 +205,7 @@ export function celebrateCheckmate(toSquare) {
   }
 
   createCelebrationConfetti(90);
+  showCompletionOverlay();
 }
 
 /**
@@ -186,6 +213,9 @@ export function celebrateCheckmate(toSquare) {
  * @param {number} [count=150] - Number of confetti pieces
  */
 export function createCelebrationConfetti(count = 150) {
+  const fragment = document.createDocumentFragment();
+  const pieces = [];
+
   for (let i = 0; i < count; i++) {
     const confetti = document.createElement('div');
     confetti.className = 'confetti';
@@ -198,14 +228,12 @@ export function createCelebrationConfetti(count = 150) {
     confetti.style.animationDelay = Math.random() * 0.5 + 's';
     confetti.style.animationDuration = Math.random() * 2 + 2 + 's';
 
-    document.body.appendChild(confetti);
-
-    setTimeout(() => {
-      if (confetti.parentNode) {
-        confetti.parentNode.removeChild(confetti);
-      }
-    }, 4000);
+    pieces.push(confetti);
+    fragment.appendChild(confetti);
   }
+
+  document.body.appendChild(fragment);
+  setTimeout(() => pieces.forEach((confetti) => confetti.remove()), 4000);
 }
 
 /**
@@ -258,6 +286,20 @@ export function updateMoveFeedback(result = null) {
     feedbackElement.textContent = 'Pick move';
     feedbackElement.style.color = '#94a3b8';
     feedbackElement.classList.add('stat-value--muted');
+    return;
+  }
+
+  if (result.loading) {
+    feedbackElement.textContent = 'Loading';
+    feedbackElement.style.color = '#94a3b8';
+    feedbackElement.classList.add('stat-value--muted');
+    return;
+  }
+
+  if (result.error) {
+    feedbackElement.textContent = 'Retry';
+    feedbackElement.style.color = '#ef4444';
+    feedbackElement.classList.remove('stat-value--muted');
     return;
   }
 

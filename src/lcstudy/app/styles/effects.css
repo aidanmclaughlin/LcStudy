@@ -3,22 +3,30 @@
  */
 
 /* Board flash effects */
-.board-flash-green {
-  animation: boardOk 600ms ease;
-}
-
 .board-shake {
   animation: boardShake var(--shake-duration, 400ms) ease;
+  will-change: transform;
 }
 
-.board-flash-gray {
-  animation: boardGray 600ms ease;
+.board-flash-green::after,
+.board-flash-gray::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  border: 10px solid var(--board-flash-color);
+  opacity: 0;
+  animation: boardFlash 300ms ease;
+  will-change: opacity;
 }
 
-@keyframes boardOk {
-  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-  50% { box-shadow: 0 0 0 12px rgba(34, 197, 94, 0.8); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+.board-flash-green::after {
+  --board-flash-color: rgba(34, 197, 94, 0.8);
+}
+
+.board-flash-gray::after {
+  --board-flash-color: rgba(107, 114, 128, 0.6);
 }
 
 @keyframes boardShake {
@@ -35,10 +43,9 @@
   }
 }
 
-@keyframes boardGray {
-  0% { box-shadow: 0 0 0 0 rgba(107, 114, 128, 0); }
-  50% { box-shadow: 0 0 0 12px rgba(107, 114, 128, 0.6); }
-  100% { box-shadow: 0 0 0 0 rgba(107, 114, 128, 0); }
+@keyframes boardFlash {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 
 /* Move accuracy burst */
@@ -59,6 +66,7 @@
     0 0 22px var(--accuracy-burst-glow, rgba(34, 197, 94, 0.5));
   transform: translate(-50%, -50%) scale(0.8);
   animation: accuracyBurst 1120ms cubic-bezier(0.17, 0.88, 0.28, 1.18) forwards;
+  will-change: transform, opacity;
 }
 
 @keyframes accuracyBurst {
@@ -120,4 +128,123 @@
 
 @keyframes shimmerSweep {
   to { transform: translateX(120%); opacity: 0; }
+}
+
+/* Checkmate action dock */
+.completion-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: clamp(12px, 3vmin, 24px);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.completion-overlay[hidden] {
+  display: none;
+}
+
+.completion-overlay.is-visible {
+  pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#board.reviewing-moves + .completion-overlay {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.completion-dock {
+  width: min(92%, 520px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.2);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 22px 48px rgba(2, 6, 23, 0.36);
+  backdrop-filter: blur(18px);
+}
+
+.completion-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.completion-kicker {
+  color: #86efac;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.completion-title {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.completion-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.completion-review,
+.completion-signout {
+  background: rgba(30, 41, 59, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: none;
+}
+
+.completion-signout {
+  color: #fecaca;
+}
+
+.completion-signout:disabled {
+  opacity: 0.62;
+  cursor: default;
+  transform: none;
+}
+
+@media (max-width: 600px) {
+  .completion-overlay {
+    padding: 10px;
+  }
+
+  .completion-dock {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 11px;
+  }
+
+  .completion-copy {
+    align-items: center;
+  }
+
+  .completion-actions {
+    justify-content: center;
+  }
+
+  .completion-actions .btn-sm {
+    min-width: 88px;
+  }
 }

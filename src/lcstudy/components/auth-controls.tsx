@@ -211,3 +211,18 @@ export function AuthControls() {
     </div>
   );
 }
+
+export function CompletionSignOutButton() {
+  const { status } = useSession();
+
+  return (
+    <button
+      type="button"
+      className="btn btn-sm completion-signout"
+      disabled={status === "loading"}
+      onClick={() => signOut({ callbackUrl: "/signin" })}
+    >
+      Logout
+    </button>
+  );
+}

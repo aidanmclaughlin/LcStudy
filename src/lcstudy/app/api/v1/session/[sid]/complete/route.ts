@@ -37,6 +37,7 @@ export async function POST(
       averageAccuracy: payload.average_accuracy,
       accuracyHistory: payload.accuracy_history ?? [],
       maiaLevel: payload.maia_level,
+      durationMs: payload.duration_ms ?? null,
       result: payload.result ?? "finished"
     });
   } catch (error: unknown) {

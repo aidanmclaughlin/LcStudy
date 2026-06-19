@@ -23,7 +23,6 @@ import {
   type SessionRecord
 } from "@/lib/db";
 import {
-  getPrecomputedGameById,
   pickPrecomputedGame,
   type PrecomputedGame
 } from "@/lib/precomputed";
@@ -52,6 +51,7 @@ export interface FinalizeSessionInput {
   averageAccuracy?: number | null;
   accuracyHistory: number[];
   maiaLevel?: number | null;
+  durationMs?: number | null;
   result?: string;
 }
 
@@ -75,15 +75,15 @@ export async function createSessionForUser(
 ): Promise<CreateSessionResult> {
   const { userId, maiaLevel } = options;
 
-  // Ensure only one active session per user
-  await deleteSessionsForUser(userId);
-
-  // Pick a game the user hasn't played yet
-  const playedGameIds = await getUserPlayedGameIds(userId);
+  const [, playedGameIds] = await Promise.all([
+    deleteSessionsForUser(userId),
+    getUserPlayedGameIds(userId)
+  ]);
   const game = pickPrecomputedGame(playedGameIds);
+  const effectiveMaiaLevel = game.metadata.maiaLevel ?? maiaLevel;
 
   // Ensure the game exists in the database
-  await ensureGameRecord({ id: game.id, source: game });
+  await ensureGameRecord({ id: game.id, source: buildGameRecordSource(game) });
 
   // Initialize chess engine for move validation
   const sessionId = randomUUID();
@@ -112,12 +112,24 @@ export async function createSessionForUser(
     fen: chess.fen(),
     ply,
     flip,
-    maiaLevel,
+    maiaLevel: effectiveMaiaLevel,
     moveHistory: [],
     attemptsHistory: []
   });
 
   return { session, game };
+}
+
+function buildGameRecordSource(game: PrecomputedGame) {
+  return {
+    id: game.id,
+    precomputed: true,
+    leelaColor: game.leelaColor,
+    startingFen: game.startingFen,
+    metadata: game.metadata,
+    totalMoves: game.moves.length,
+    totalRounds: game.rounds.length
+  };
 }
 
 /**
@@ -153,7 +165,8 @@ export async function finalizeSession(input: FinalizeSessionInput): Promise<void
     averageRetries: null,
     averageAccuracy,
     accuracyHistory,
-    maiaLevel: input.maiaLevel ?? session.maiaLevel
+    maiaLevel: input.maiaLevel ?? session.maiaLevel,
+    durationMs: input.durationMs ?? null
   });
 
   // Clean up the session

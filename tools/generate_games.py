@@ -11,7 +11,7 @@ Requirements:
 You'll also need:
     - lc0 binary (install via brew install lc0)
     - Leela network (~/.lcstudy/nets/BT4-it332.pb.gz)
-    - Maia networks (~/.lcstudy/nets/maia-1100.pb.gz through maia-1900.pb.gz)
+    - Maia networks (~/.lcstudy/nets/maia-1100.pb.gz through maia-1900.pb.gz, plus maia-2200.pb.gz)
 """
 
 import argparse
@@ -45,7 +45,7 @@ NETS_DIR = Path.home() / ".lcstudy" / "nets"
 OUTPUT_DIR = Path(__file__).parent.parent / "src" / "lcstudy" / "data" / "pgn"
 APPLE_SILICON_CONFIG = Path(__file__).parent / "lc0-apple-silicon.config"
 
-MAIA_LEVELS = list(range(1100, 2000, 100))
+MAIA_LEVELS = list(range(1100, 2000, 100)) + [2200]
 
 DEFAULT_LEELA_NET = "BT4-it332"
 DEFAULT_LEELA_MOVETIME_MS = 5_000
@@ -73,6 +73,15 @@ class SearchBudget:
         if self.movetime_ms is not None:
             return f"{self.movetime_ms}ms"
         return f"{self.nodes} nodes"
+
+
+@dataclass(frozen=True)
+class MaiaSpec:
+    level: int
+    nodes: int
+
+    def label(self) -> str:
+        return f"{self.level}@{self.nodes}n"
 
 
 class UciEngine:
@@ -237,6 +246,42 @@ def network_name(path: Path) -> str:
         if name.endswith(suffix):
             return name[: -len(suffix)]
     return path.stem
+
+
+def parse_int_list(raw: str, label: str) -> list[int]:
+    values: list[int] = []
+    for item in raw.split(","):
+        value = item.strip()
+        if not value:
+            continue
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid {label} value: {value}") from exc
+        values.append(parsed)
+    return values
+
+
+def parse_maia_search_variants(raw: str) -> list[MaiaSpec]:
+    specs: list[MaiaSpec] = []
+    if not raw.strip():
+        return specs
+
+    for item in raw.split(","):
+        value = item.strip()
+        if not value:
+            continue
+        try:
+            level_raw, nodes_raw = value.split(":", 1)
+            level = int(level_raw)
+            nodes = int(nodes_raw)
+        except ValueError as exc:
+            raise ValueError(f"Invalid Maia search variant: {value}") from exc
+        if nodes < 1:
+            raise ValueError(f"Invalid Maia search nodes: {value}")
+        specs.append(MaiaSpec(level=level, nodes=nodes))
+
+    return specs
 
 
 def normalize_engine_uci(raw_uci: str, legal_uci: set[str]) -> str:
@@ -411,6 +456,16 @@ def main():
     leela_search.add_argument("--leela-movetime-ms", type=int, default=DEFAULT_LEELA_MOVETIME_MS)
     leela_search.add_argument("--leela-nodes", type=int, default=None)
     parser.add_argument("--maia-nodes", type=int, default=DEFAULT_MAIA_NODES)
+    parser.add_argument(
+        "--maia-levels",
+        default=",".join(str(level) for level in MAIA_LEVELS),
+        help="Comma-separated Maia base levels to sample",
+    )
+    parser.add_argument(
+        "--maia-search-variants",
+        default="",
+        help="Extra Maia level:nodes specs, e.g. 2200:2,2200:4,2200:8",
+    )
     parser.add_argument("--maia-temperature", type=float, default=1.0)
     parser.add_argument("--maia-temperature-random", action="store_true")
     parser.add_argument("--maia-temperature-random-min", type=float, default=0.0)
@@ -442,6 +497,12 @@ def main():
     if args.maia_nodes < 1:
         print("Error: --maia-nodes must be positive")
         return 1
+    try:
+        requested_maia_levels = parse_int_list(args.maia_levels, "--maia-levels")
+        extra_maia_specs = parse_maia_search_variants(args.maia_search_variants)
+    except ValueError as e:
+        print(f"Error: {e}")
+        return 1
     if args.maia_temperature < 0 or args.maia_policy_temp <= 0:
         print("Error: Maia temperatures must be non-negative, and policy temp must be positive")
         return 1
@@ -459,7 +520,6 @@ def main():
         if args.leela_nodes is not None
         else SearchBudget(movetime_ms=args.leela_movetime_ms)
     )
-    maia_budget = SearchBudget(nodes=args.maia_nodes)
     leela_config = None if args.no_leela_config else args.leela_config
 
     print("Checking setup...")
@@ -478,17 +538,27 @@ def main():
         print(f"Error: {e}")
         return 1
 
-    available_maia = [l for l in MAIA_LEVELS if (NETS_DIR / f"maia-{l}.pb.gz").exists()]
-    if not available_maia:
+    base_maia_specs = [
+        MaiaSpec(level=level, nodes=args.maia_nodes)
+        for level in requested_maia_levels
+        if (NETS_DIR / f"maia-{level}.pb.gz").exists()
+    ]
+    extra_maia_specs = [
+        spec
+        for spec in extra_maia_specs
+        if (NETS_DIR / f"maia-{spec.level}.pb.gz").exists()
+    ]
+    maia_specs = base_maia_specs + extra_maia_specs
+    if not maia_specs:
         print(f"Error: No Maia networks in {NETS_DIR}")
         return 1
-    print(f"  Maia: {available_maia}")
+    print(f"  Maia: {[spec.label() for spec in maia_specs]}")
 
     args.output.mkdir(parents=True, exist_ok=True)
     existing = len(list(args.output.glob("*.pgn")))
     print(f"  Output: {args.output.name}/ ({existing} existing)")
     print(f"  Leela search: {leela_budget.label()}/move")
-    print(f"  Maia search: {maia_budget.label()}/move")
+    print(f"  Maia search: {[spec.label() for spec in maia_specs]}")
     print(
         "  Maia temp: "
         f"{'random()' if args.maia_temperature_random else args.maia_temperature} "
@@ -517,8 +587,9 @@ def main():
 
     while success < args.count and attempts < max_attempts:
         attempts += 1
-        level = random.choice(available_maia)
-        maia_net = find_network(f"maia-{level}")
+        maia_spec = random.choice(maia_specs)
+        maia_net = find_network(f"maia-{maia_spec.level}")
+        maia_budget = SearchBudget(nodes=maia_spec.nodes)
         maia_temperature = (
             args.maia_temperature_random_min
             + (args.maia_temperature_random_max - args.maia_temperature_random_min) * random.random()
@@ -531,7 +602,7 @@ def main():
                 lc0_path,
                 leela_net,
                 maia_net,
-                level,
+                maia_spec.level,
                 leela_budget,
                 maia_budget,
                 args.leela_backend,
@@ -562,7 +633,7 @@ def main():
             color = "W" if "PLAYER" in pgn.split("[White")[1].split("]")[0] else "B"
             print(
                 f"  [{success}/{args.count}] {fname} - "
-                f"L={color}, M={level}, T={maia_temperature:.3f}, {plies}p"
+                f"L={color}, M={maia_spec.label()}, T={maia_temperature:.3f}, {plies}p"
             )
 
         except Exception as e:

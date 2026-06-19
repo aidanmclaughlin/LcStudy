@@ -13,15 +13,17 @@ import {
   setCurrentFen,
   setLiveFen,
   resetGameProgress,
+  startGameTimer,
   resetMoveHistoryState,
   getSessionCache,
   setSoundEnabled
 } from './modules/state.js';
 import { loadDependencies } from './modules/loaders.js';
-import { initBoard, setFlip, updateBoardFromFen, setMoveSubmitCallback } from './modules/board.js';
-import { initializeCharts, resetMoveAccuracyChart, updateStatistics } from './modules/charts.js';
+import { initBoard, setBoardInputEnabled, setFlip, setReviewingIndicator, updateBoardFromFen, setMoveSubmitCallback } from './modules/board.js';
+import { initializeCharts, resetMoveAccuracyChart, updateCharts, updateStatistics } from './modules/charts.js';
 import { initAudioUnlockListeners, unlockAudio } from './modules/audio.js';
-import { updateMoveFeedback } from './modules/effects.js';
+import { initializeHaptics } from './modules/haptics.js';
+import { hideCompletionOverlay, updateMoveFeedback } from './modules/effects.js';
 import { updatePgnDisplay } from './modules/pgn.js';
 import { loadGameHistory, createSession } from './modules/api.js';
 import {
@@ -33,7 +35,10 @@ import {
   isPlayerMove,
   clearPendingCompletedGame
 } from './modules/moves.js';
-import { initKeyboardNavigation, initMoveReviewButtons } from './modules/history.js';
+import { initKeyboardNavigation, initMoveReviewButtons, navigateToMove } from './modules/history.js';
+
+const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
+let activeGameLoadId = 0;
 
 /**
  * Initialize sound settings.
@@ -46,27 +51,37 @@ function initSoundSettings() {
   } catch (e) {}
 }
 
-function setZenMode(enabled) {
-  document.body.classList.toggle('zen-mode', enabled);
-
-  const toggle = document.getElementById('zen-toggle');
-  if (toggle) {
-    toggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-    toggle.setAttribute('aria-label', enabled ? 'Exit zen mode' : 'Enter zen mode');
-  }
-}
-
 /**
  * Start a new game session.
  */
 async function startNewGame() {
+  const loadId = ++activeGameLoadId;
+  setBoardInputEnabled(false);
+  updateMoveFeedback({ loading: true });
+  hideCompletionOverlay();
+  setReviewingIndicator(false);
+
   // Pick random Maia level
   const maiaLevel = MAIA_LEVELS[Math.floor(Math.random() * MAIA_LEVELS.length)];
   window.currentMaiaLevel = maiaLevel;
 
   // Create session on server
-  const data = await createSession(maiaLevel);
-  if (!data) return;
+  let data = null;
+  try {
+    data = await createSession(maiaLevel);
+  } catch (error) {
+    if (loadId === activeGameLoadId) {
+      updateMoveFeedback({ error: true });
+    }
+    throw error;
+  }
+
+  if (loadId !== activeGameLoadId) return;
+
+  if (!data) {
+    updateMoveFeedback({ error: true });
+    return;
+  }
 
   clearPendingCompletedGame();
 
@@ -89,16 +104,18 @@ async function startNewGame() {
   sessionCache.rounds = buildRoundsFromMoves(sessionCache.moves);
   updateRoundIndexFromCurrentIndex();
 
-  console.debug('Session initialized', {
-    sessionId: data.id,
-    gameId: sessionCache.gameId,
-    moves: sessionCache.moves.length,
-    currentIndex: sessionCache.currentIndex,
-    flip: sessionCache.flip,
-    roundIndex: sessionCache.roundIndex,
-    totalRounds: sessionCache.rounds.length,
-    nextRound: sessionCache.rounds[sessionCache.roundIndex] || null
-  });
+  if (DEBUG_LOGS) {
+    console.debug('Session initialized', {
+      sessionId: data.id,
+      gameId: sessionCache.gameId,
+      moves: sessionCache.moves.length,
+      currentIndex: sessionCache.currentIndex,
+      flip: sessionCache.flip,
+      roundIndex: sessionCache.roundIndex,
+      totalRounds: sessionCache.rounds.length,
+      nextRound: sessionCache.rounds[sessionCache.roundIndex] || null
+    });
+  }
 
   // Initialize chess engine
   const startingFen = data.starting_fen || STARTING_FEN;
@@ -106,6 +123,7 @@ async function startNewGame() {
 
   if (typeof window.Chess !== 'function') {
     console.error('chess.js not available');
+    updateMoveFeedback({ error: true });
     return;
   }
 
@@ -119,6 +137,7 @@ async function startNewGame() {
   resetGameProgress();
   resetMoveHistoryState();
   resetMoveAccuracyChart();
+  updateCharts();
   updateStatistics();
   initSoundSettings();
   setCurrentFen(startingFen);
@@ -151,6 +170,8 @@ async function startNewGame() {
   updateBoardFromFen(currentFen);
   updatePgnDisplay();
   updateMoveFeedback();
+  startGameTimer();
+  setBoardInputEnabled(true);
 
   // Set up audio unlock listeners
   initAudioUnlockListeners();
@@ -166,14 +187,18 @@ async function bootstrap() {
 
     // Initialize UI
     initBoard();
+    initializeHaptics();
+    setBoardInputEnabled(false);
     initializeCharts();
 
     // Set up move submission callback
     setMoveSubmitCallback(submitMove);
 
-    // Load history and start game
-    await loadGameHistory();
-    await startNewGame();
+    // Load history and start the first game in parallel.
+    await Promise.all([
+      loadGameHistory(),
+      startNewGame()
+    ]);
 
     // Set up keyboard navigation
     initKeyboardNavigation();
@@ -187,24 +212,13 @@ async function bootstrap() {
 // Event Listeners
 // =============================================================================
 
-// New game button
-document.getElementById('new')?.addEventListener('click', async () => {
+document.getElementById('completion-new')?.addEventListener('click', async () => {
   try { unlockAudio(); } catch (e) {}
   await startNewGame();
 });
 
-document.getElementById('zen-toggle')?.addEventListener('click', () => {
-  setZenMode(!document.body.classList.contains('zen-mode'));
-});
-
-document.getElementById('zen-exit')?.addEventListener('click', () => {
-  setZenMode(false);
-});
-
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') {
-    setZenMode(false);
-  }
+document.getElementById('completion-review')?.addEventListener('click', () => {
+  navigateToMove(-2);
 });
 
 // =============================================================================

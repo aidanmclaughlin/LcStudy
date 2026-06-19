@@ -35,6 +35,7 @@ export interface UserGameRow {
   averageAccuracy: number | null;
   accuracyHistory: number[];
   maiaLevel: number | null;
+  durationMs: number | null;
 }
 
 /** Raw game row from database query */
@@ -50,6 +51,7 @@ export interface UserGameDbRow {
   average_accuracy: string | number | null;
   accuracy_history: unknown;
   maia_level: number | null;
+  duration_ms: number | null;
 }
 
 /** Parameters for recording a game result */
@@ -64,6 +66,7 @@ export interface RecordGameResultParams {
   averageAccuracy: number | null;
   accuracyHistory: number[];
   maiaLevel: number | null;
+  durationMs: number | null;
 }
 
 // =============================================================================

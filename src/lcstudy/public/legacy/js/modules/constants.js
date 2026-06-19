@@ -32,7 +32,7 @@ export const PIECE_IMAGES = {
 export const PIECE_CODES = ['wK', 'wQ', 'wR', 'wB', 'wN', 'wP', 'bK', 'bQ', 'bR', 'bB', 'bN', 'bP'];
 
 /** Available Maia difficulty levels */
-export const MAIA_LEVELS = [1100, 1300, 1500, 1700, 1900];
+export const MAIA_LEVELS = [1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2200];
 
 /** Confetti colors for celebration effects */
 export const CONFETTI_COLORS = ['#f59e0b', '#fbbf24', '#f87171', '#34d399', '#60a5fa', '#a78bfa'];

@@ -71,6 +71,9 @@ let cumulativeAccuracies = [];
 /** Current correct move streak */
 let correctStreak = 0;
 
+/** High-resolution start timestamp for the current game */
+let gameStartedAtMs = null;
+
 // =============================================================================
 // Move Navigation State
 // =============================================================================
@@ -139,6 +142,10 @@ export function getPgnMoves() { return pgnMoves; }
 export function getGameHistory() { return gameHistory; }
 export function getCumulativeAccuracies() { return cumulativeAccuracies; }
 export function getCorrectStreak() { return correctStreak; }
+export function getGameDurationMs() {
+  if (gameStartedAtMs === null || typeof performance === 'undefined') return null;
+  return Math.max(0, Math.round(performance.now() - gameStartedAtMs));
+}
 export function getMoveHistory() { return moveHistory; }
 export function getCurrentMoveIndex() { return currentMoveIndex; }
 export function getIsReviewingMoves() { return isReviewingMoves; }
@@ -169,6 +176,9 @@ export function setPgnMoves(moves) { pgnMoves = moves; }
 export function setGameHistory(history) { gameHistory = history; }
 export function setCumulativeAccuracies(accuracies) { cumulativeAccuracies = accuracies; }
 export function setCorrectStreak(streak) { correctStreak = streak; }
+export function startGameTimer() {
+  gameStartedAtMs = typeof performance !== 'undefined' ? performance.now() : null;
+}
 export function setMoveHistory(history) { moveHistory = history; }
 export function setCurrentMoveIndex(index) { currentMoveIndex = index; }
 export function setIsReviewingMoves(reviewing) { isReviewingMoves = reviewing; }
@@ -212,6 +222,7 @@ export function resetGameProgress() {
   moveCounter = 1;
   pgnMoves = [];
   correctStreak = 0;
+  gameStartedAtMs = null;
 }
 
 /**
@@ -249,12 +260,29 @@ export function incrementMoveCounter() {
  * @param {{from: string, to: string}|null} moveSquares - Move source/destination
  */
 export function pushMoveHistory(fen, san, isUserMove, moveSquares = null) {
+  const previousHighlights = moveHistory.length > 0
+    ? moveHistory[moveHistory.length - 1].highlights
+    : { user: null, opponent: null };
+  const highlightKey = isUserMove ? 'user' : 'opponent';
+  const highlights = {
+    user: previousHighlights?.user ? { ...previousHighlights.user } : null,
+    opponent: previousHighlights?.opponent ? { ...previousHighlights.opponent } : null
+  };
+
+  if (moveSquares?.from && moveSquares?.to) {
+    highlights[highlightKey] = {
+      from: moveSquares.from,
+      to: moveSquares.to
+    };
+  }
+
   moveHistory.push({
     fen,
     san,
     isUserMove,
     from: moveSquares?.from || null,
-    to: moveSquares?.to || null
+    to: moveSquares?.to || null,
+    highlights
   });
 }
 
@@ -277,20 +305,13 @@ export function setLastMoveHighlight(isUserMove, moveSquares) {
  * @returns {{user: Object|null, opponent: Object|null}}
  */
 export function getMoveHighlightsForIndex(targetIndex) {
-  const highlights = { user: null, opponent: null };
-  const maxIndex = Math.min(targetIndex, moveHistory.length - 1);
+  const move = moveHistory[Math.min(targetIndex, moveHistory.length - 1)];
+  const highlights = move?.highlights;
 
-  for (let idx = 0; idx <= maxIndex; idx++) {
-    const move = moveHistory[idx];
-    if (!move?.from || !move?.to) continue;
-
-    highlights[move.isUserMove ? 'user' : 'opponent'] = {
-      from: move.from,
-      to: move.to
-    };
-  }
-
-  return highlights;
+  return {
+    user: highlights?.user || null,
+    opponent: highlights?.opponent || null
+  };
 }
 
 /**

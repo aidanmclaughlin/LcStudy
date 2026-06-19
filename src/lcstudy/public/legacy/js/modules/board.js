@@ -27,6 +27,14 @@ import { hapticSelect } from './haptics.js';
 let onMoveSubmit = null;
 let pointerStart = null;
 let suppressedClick = null;
+let boardElement = null;
+let boardInputEnabled = false;
+
+const boardsWithListeners = new WeakSet();
+const squareEls = new Map();
+const pieceElsBySquare = new Map();
+const activeHighlightSquares = new Set();
+const activeHintSquares = new Set();
 
 const LAST_MOVE_CLASSES = [
   'last-user-move',
@@ -49,6 +57,46 @@ const MOVE_HINT_CLASSES = [
  */
 export function setMoveSubmitCallback(callback) {
   onMoveSubmit = callback;
+}
+
+export function setBoardInputEnabled(enabled) {
+  boardInputEnabled = Boolean(enabled);
+  const boardEl = getBoardElement();
+
+  if (boardEl) {
+    boardEl.classList.toggle('is-loading', !boardInputEnabled);
+    boardEl.setAttribute('aria-busy', String(!boardInputEnabled));
+  }
+
+  if (!boardInputEnabled) {
+    pointerStart = null;
+    suppressedClick = null;
+    clearSelection();
+  }
+}
+
+function getBoardElement() {
+  if (boardElement?.isConnected) return boardElement;
+
+  boardElement = document.getElementById('board');
+  return boardElement;
+}
+
+function getEventSquare(event) {
+  const boardEl = getBoardElement();
+  const squareEl = event.target?.closest?.('.square');
+
+  return squareEl && boardEl?.contains(squareEl) ? squareEl : null;
+}
+
+function addBoardEventListeners(boardEl) {
+  if (boardsWithListeners.has(boardEl)) return;
+
+  boardEl.addEventListener('click', handleSquareClick);
+  boardEl.addEventListener('pointerdown', handlePointerDown);
+  boardEl.addEventListener('pointerup', handlePointerUp);
+  boardEl.addEventListener('pointercancel', handlePointerCancel);
+  boardsWithListeners.add(boardEl);
 }
 
 /**
@@ -86,10 +134,15 @@ export function parseFen(fen) {
  * Create the board HTML structure.
  */
 export function createBoardHtml() {
-  const boardEl = document.getElementById('board');
+  const boardEl = getBoardElement();
   if (!boardEl) return;
 
   boardEl.innerHTML = '';
+  squareEls.clear();
+  pieceElsBySquare.clear();
+  activeHighlightSquares.clear();
+  activeHintSquares.clear();
+  addBoardEventListeners(boardEl);
 
   for (let rank = 8; rank >= 1; rank--) {
     for (let file = 0; file < 8; file++) {
@@ -99,14 +152,22 @@ export function createBoardHtml() {
 
       squareEl.className = `square ${isLight ? 'light' : 'dark'}`;
       squareEl.dataset.square = square;
-      squareEl.addEventListener('click', handleSquareClick);
-      squareEl.addEventListener('pointerdown', handlePointerDown);
-      squareEl.addEventListener('pointerup', handlePointerUp);
-      squareEl.addEventListener('pointercancel', handlePointerCancel);
 
+      squareEls.set(square, squareEl);
       boardEl.appendChild(squareEl);
     }
   }
+}
+
+function createPieceElement(pieceCode, flipped) {
+  const pieceEl = document.createElement('div');
+
+  pieceEl.className = 'piece';
+  pieceEl.style.backgroundImage = `url(${getPieceImageUrl(pieceCode)})`;
+  pieceEl.dataset.piece = pieceCode;
+  pieceEl.classList.toggle('flipped', flipped);
+
+  return pieceEl;
 }
 
 /**
@@ -114,24 +175,34 @@ export function createBoardHtml() {
  * @param {string} fen - FEN string
  */
 export function updateBoardFromFen(fen) {
-  // Remove existing pieces
-  document.querySelectorAll('.piece').forEach(p => p.remove());
-
   const position = parseFen(fen);
   const flipped = isBoardFlipped();
+  const occupiedSquares = new Set(Object.keys(position));
+
+  for (const [square, pieceEl] of Array.from(pieceElsBySquare.entries())) {
+    if (!occupiedSquares.has(square)) {
+      pieceEl.remove();
+      pieceElsBySquare.delete(square);
+    }
+  }
 
   for (const [square, piece] of Object.entries(position)) {
-    const pieceEl = document.createElement('div');
-    pieceEl.className = 'piece';
-    pieceEl.style.backgroundImage = `url(${getPieceImageUrl(piece)})`;
-    pieceEl.dataset.piece = piece;
+    const squareEl = squareEls.get(square);
+    if (!squareEl) continue;
 
-    if (flipped) {
-      pieceEl.classList.add('flipped');
+    let pieceEl = pieceElsBySquare.get(square);
+
+    if (!pieceEl) {
+      pieceEl = createPieceElement(piece, flipped);
+      squareEl.appendChild(pieceEl);
+      pieceElsBySquare.set(square, pieceEl);
+      continue;
     }
 
-    const squareEl = document.querySelector(`[data-square="${square}"]`);
-    if (squareEl) {
+    updatePieceElement(pieceEl, piece);
+    pieceEl.classList.toggle('flipped', flipped);
+
+    if (pieceEl.parentElement !== squareEl) {
       squareEl.appendChild(pieceEl);
     }
   }
@@ -145,21 +216,27 @@ function updatePieceElement(pieceEl, pieceCode) {
 }
 
 function removePieceOn(square) {
-  document.querySelector(`[data-square="${square}"] .piece`)?.remove();
+  const piece = pieceElsBySquare.get(square);
+
+  if (piece) {
+    piece.remove();
+    pieceElsBySquare.delete(square);
+  }
 }
 
 function moveRookForCastle(color, kingside) {
   const rank = color === 'w' ? '1' : '8';
   const rookFrom = `${kingside ? 'h' : 'a'}${rank}`;
   const rookTo = `${kingside ? 'f' : 'd'}${rank}`;
-  const fromEl = document.querySelector(`[data-square="${rookFrom}"]`);
-  const toEl = document.querySelector(`[data-square="${rookTo}"]`);
-  const rook = fromEl?.querySelector('.piece');
+  const toEl = squareEls.get(rookTo);
+  const rook = pieceElsBySquare.get(rookFrom);
 
   if (!rook || !toEl) return;
 
   removePieceOn(rookTo);
   toEl.appendChild(rook);
+  pieceElsBySquare.delete(rookFrom);
+  pieceElsBySquare.set(rookTo, rook);
   rook.style.visibility = '';
 }
 
@@ -174,9 +251,8 @@ export function updateBoardAfterMove(applied) {
 
   const from = applied.from || move.from;
   const to = applied.to || move.to;
-  const fromEl = document.querySelector(`[data-square="${from}"]`);
-  const toEl = document.querySelector(`[data-square="${to}"]`);
-  const piece = fromEl?.querySelector('.piece');
+  const toEl = squareEls.get(to);
+  const piece = pieceElsBySquare.get(from);
 
   if (!piece || !toEl) return false;
 
@@ -192,6 +268,8 @@ export function updateBoardAfterMove(applied) {
 
   updatePieceElement(piece, pieceCode);
   toEl.appendChild(piece);
+  pieceElsBySquare.delete(from);
+  pieceElsBySquare.set(to, piece);
   piece.style.visibility = '';
 
   if (flags.includes('k')) {
@@ -209,10 +287,13 @@ export function updateBoardAfterMove(applied) {
  * @param {boolean} flip - Whether to flip the board
  */
 export function setFlip(flip) {
-  const board = document.getElementById('board');
+  const board = getBoardElement();
   if (!board) return;
 
   setBoardFlipped(flip);
+  pieceElsBySquare.forEach((pieceEl) => {
+    pieceEl.classList.toggle('flipped', flip);
+  });
 
   if (flip) {
     board.style.transform = 'rotate(180deg)';
@@ -227,16 +308,16 @@ export function setFlip(flip) {
  * Clear the current square selection.
  */
 export function clearSelection() {
-  document.querySelectorAll('.square.selected').forEach(sq => {
-    sq.classList.remove('selected');
-  });
+  const selectedSquare = getSelectedSquare();
+  squareEls.get(selectedSquare)?.classList.remove('selected');
   setSelectedSquare(null);
 }
 
 function clearLastMoveHighlights() {
-  document.querySelectorAll('.square').forEach(squareEl => {
-    squareEl.classList.remove(...LAST_MOVE_CLASSES);
+  activeHighlightSquares.forEach((square) => {
+    squareEls.get(square)?.classList.remove(...LAST_MOVE_CLASSES);
   });
+  activeHighlightSquares.clear();
 }
 
 function applyMoveHighlight(role, move) {
@@ -246,11 +327,18 @@ function applyMoveHighlight(role, move) {
   const fromClass = role === 'user' ? 'last-user-move-from' : 'last-opponent-move-from';
   const toClass = role === 'user' ? 'last-user-move-to' : 'last-opponent-move-to';
 
-  const fromEl = document.querySelector(`[data-square="${move.from}"]`);
-  const toEl = document.querySelector(`[data-square="${move.to}"]`);
+  const fromEl = squareEls.get(move.from);
+  const toEl = squareEls.get(move.to);
 
-  fromEl?.classList.add(roleClass, fromClass);
-  toEl?.classList.add(roleClass, toClass);
+  if (fromEl) {
+    fromEl.classList.add(roleClass, fromClass);
+    activeHighlightSquares.add(move.from);
+  }
+
+  if (toEl) {
+    toEl.classList.add(roleClass, toClass);
+    activeHighlightSquares.add(move.to);
+  }
 }
 
 /**
@@ -271,19 +359,29 @@ export function applyLastMoveHighlights() {
  * Briefly show the move Leela wanted before it is auto-played.
  */
 export function showMoveHint(fromSquare, toSquare) {
-  document.querySelectorAll('.square').forEach(squareEl => {
-    squareEl.classList.remove(...MOVE_HINT_CLASSES);
+  activeHintSquares.forEach((square) => {
+    squareEls.get(square)?.classList.remove(...MOVE_HINT_CLASSES);
   });
+  activeHintSquares.clear();
 
-  const fromEl = document.querySelector(`[data-square="${fromSquare}"]`);
-  const toEl = document.querySelector(`[data-square="${toSquare}"]`);
+  const fromEl = squareEls.get(fromSquare);
+  const toEl = squareEls.get(toSquare);
 
-  fromEl?.classList.add('move-hint', 'move-hint-from');
-  toEl?.classList.add('move-hint', 'move-hint-to');
+  if (fromEl) {
+    fromEl.classList.add('move-hint', 'move-hint-from');
+    activeHintSquares.add(fromSquare);
+  }
+
+  if (toEl) {
+    toEl.classList.add('move-hint', 'move-hint-to');
+    activeHintSquares.add(toSquare);
+  }
 
   window.setTimeout(() => {
     fromEl?.classList.remove(...MOVE_HINT_CLASSES);
     toEl?.classList.remove(...MOVE_HINT_CLASSES);
+    activeHintSquares.delete(fromSquare);
+    activeHintSquares.delete(toSquare);
   }, 760);
 }
 
@@ -299,6 +397,7 @@ function getPlayerPieceOnSquare(squareEl) {
 
 function submitSelectedMove(fromSquare, toSquare) {
   if (!fromSquare || !toSquare || fromSquare === toSquare) return false;
+  if (!boardInputEnabled) return false;
 
   clearSelection();
 
@@ -315,7 +414,12 @@ function submitSelectedMove(fromSquare, toSquare) {
  * @param {Event} event - Click event
  */
 function handleSquareClick(event) {
-  const square = event.currentTarget.dataset.square;
+  if (!boardInputEnabled) return;
+
+  const squareEl = getEventSquare(event);
+  if (!squareEl) return;
+
+  const square = squareEl.dataset.square;
   if (
     suppressedClick &&
     Date.now() < suppressedClick.until &&
@@ -340,9 +444,9 @@ function handleSquareClick(event) {
 
   if (selectedSq === null) {
     // No selection - try to select a piece
-    if (getPlayerPieceOnSquare(event.currentTarget)) {
+    if (getPlayerPieceOnSquare(squareEl)) {
       setSelectedSquare(square);
-      event.currentTarget.classList.add('selected');
+      squareEl.classList.add('selected');
       hapticSelect();
     }
   } else {
@@ -358,16 +462,20 @@ function handleSquareClick(event) {
 }
 
 function handlePointerDown(event) {
+  if (!boardInputEnabled) return;
   if (getIsReviewingMoves()) return;
 
+  const squareEl = getEventSquare(event);
+  if (!squareEl) return;
+
   const selectedSq = getSelectedSquare();
-  const piece = getPlayerPieceOnSquare(event.currentTarget);
+  const piece = getPlayerPieceOnSquare(squareEl);
   if (!piece && !selectedSq) return;
 
   event.preventDefault();
 
   pointerStart = {
-    square: event.currentTarget.dataset.square,
+    square: squareEl.dataset.square,
     hadPlayerPiece: Boolean(piece),
     x: event.clientX,
     y: event.clientY,
@@ -376,6 +484,7 @@ function handlePointerDown(event) {
 }
 
 function handlePointerUp(event) {
+  if (!boardInputEnabled) return;
   if (!pointerStart || pointerStart.pointerId !== event.pointerId) return;
 
   const start = pointerStart;
@@ -410,7 +519,7 @@ function handlePointerUp(event) {
   }
 
   if (start.hadPlayerPiece) {
-    const squareEl = document.querySelector(`[data-square="${start.square}"]`);
+    const squareEl = squareEls.get(start.square);
     setSelectedSquare(start.square);
     squareEl?.classList.add('selected');
     hapticSelect();
@@ -418,6 +527,7 @@ function handlePointerUp(event) {
 }
 
 function handlePointerCancel() {
+  if (!boardInputEnabled) return;
   pointerStart = null;
 }
 
@@ -428,9 +538,8 @@ function handlePointerCancel() {
  * @param {function(): void} commitMove - Paint the final board position before removing the ghost
  */
 export function animateMove(fromSquare, toSquare, commitMove = null) {
-  const fromEl = document.querySelector(`[data-square="${fromSquare}"]`);
-  const toEl = document.querySelector(`[data-square="${toSquare}"]`);
-  const piece = fromEl?.querySelector('.piece');
+  const toEl = squareEls.get(toSquare);
+  const piece = pieceElsBySquare.get(fromSquare);
 
   if (!piece || !toEl) return Promise.resolve(false);
 
@@ -438,7 +547,7 @@ export function animateMove(fromSquare, toSquare, commitMove = null) {
   const toRect = toEl.getBoundingClientRect();
   const ghost = document.createElement('div');
   const ghostPiece = document.createElement('div');
-  const existingPiece = toEl.querySelector('.piece');
+  const existingPiece = pieceElsBySquare.get(toSquare);
   const dx = toRect.left + (toRect.width - fromRect.width) / 2 - fromRect.left;
   const dy = toRect.top + (toRect.height - fromRect.height) / 2 - fromRect.top;
 
@@ -485,11 +594,12 @@ export function revertBoard() {
  * Initialize the board element.
  */
 export function initBoard() {
-  const boardEl = document.getElementById('board');
+  const boardEl = getBoardElement();
   if (!boardEl) return;
 
   createBoardHtml();
   updateBoardFromFen(getCurrentFen());
+  setBoardInputEnabled(boardInputEnabled);
 
   // Disconnect existing observer
   const existingObserver = getBoardObserver();
@@ -524,12 +634,24 @@ export function initBoard() {
  * @param {boolean} reviewing - Whether in review mode
  */
 export function setReviewingIndicator(reviewing) {
-  const boardEl = document.getElementById('board');
+  const boardEl = getBoardElement();
   if (!boardEl) return;
+
+  const completionOverlay = document.getElementById('completion-overlay');
 
   if (reviewing) {
     boardEl.classList.add('reviewing-moves');
+    if (completionOverlay?.classList.contains('is-visible')) {
+      completionOverlay.hidden = true;
+      completionOverlay.setAttribute('aria-hidden', 'true');
+      completionOverlay.setAttribute('inert', '');
+    }
   } else {
     boardEl.classList.remove('reviewing-moves');
+    if (completionOverlay?.classList.contains('is-visible')) {
+      completionOverlay.hidden = false;
+      completionOverlay.setAttribute('aria-hidden', 'false');
+      completionOverlay.removeAttribute('inert');
+    }
   }
 }
