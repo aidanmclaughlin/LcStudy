@@ -65,9 +65,6 @@ let pgnMoves = [];
 /** Historical games data */
 let gameHistory = [];
 
-/** Running cumulative accuracy averages for chart */
-let cumulativeAccuracies = [];
-
 /** Current correct move streak */
 let correctStreak = 0;
 
@@ -140,7 +137,6 @@ export function getMoveAccuracies() { return moveAccuracies; }
 export function getMoveCounter() { return moveCounter; }
 export function getPgnMoves() { return pgnMoves; }
 export function getGameHistory() { return gameHistory; }
-export function getCumulativeAccuracies() { return cumulativeAccuracies; }
 export function getCorrectStreak() { return correctStreak; }
 export function getGameDurationMs() {
   if (gameStartedAtMs === null || typeof performance === 'undefined') return null;
@@ -174,7 +170,6 @@ export function setMoveAccuracies(accuracies) { moveAccuracies = accuracies; }
 export function setMoveCounter(counter) { moveCounter = counter; }
 export function setPgnMoves(moves) { pgnMoves = moves; }
 export function setGameHistory(history) { gameHistory = history; }
-export function setCumulativeAccuracies(accuracies) { cumulativeAccuracies = accuracies; }
 export function setCorrectStreak(streak) { correctStreak = streak; }
 export function startGameTimer() {
   gameStartedAtMs = typeof performance !== 'undefined' ? performance.now() : null;

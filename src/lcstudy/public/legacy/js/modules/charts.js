@@ -10,14 +10,13 @@ import {
   getMoveAccuracyChart,
   setMoveAccuracyChart,
   getMoveAccuracies,
-  getCumulativeAccuracies,
   getGameHistory,
   getMoveHistory,
   getCurrentMoveIndex,
   getIsReviewingMoves
 } from './state.js';
 
-let lastAccuracyChartSignature = '';
+let lastHoursChartSignature = '';
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
 const GM_ACCURACY_TARGET = 90;
@@ -25,6 +24,9 @@ const GM_ACCURACY_CEILING = 95;
 const GM_ACCURACY_EXPONENT = 0.5;
 let lastGoalSignature = '';
 let lastGoalProjection = null;
+let cachedHoursHistory = null;
+let cachedHoursHistoryLength = -1;
+let cachedHistoricalHours = { labels: [], values: [] };
 
 /**
  * Initialize both Chart.js charts.
@@ -36,14 +38,14 @@ export function initializeCharts() {
     return;
   }
 
-  initAccuracyChart();
+  initHoursLeftChart();
   initMoveAccuracyChart();
 }
 
 /**
- * Initialize the accuracy/average chart (line chart).
+ * Initialize the projected hours-left chart.
  */
-function initAccuracyChart() {
+function initHoursLeftChart() {
   const ctx = document.getElementById('accuracy-chart')?.getContext('2d');
   if (!ctx) return;
 
@@ -53,29 +55,16 @@ function initAccuracyChart() {
       labels: [],
       datasets: [
         {
-          label: 'Overall Accuracy',
+          label: 'Hours Left',
           data: [],
-          borderColor: '#8b5cf6',
-          backgroundColor: 'rgba(139, 92, 246, 0.08)',
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56, 189, 248, 0.08)',
           borderWidth: 2,
           fill: true,
           tension: 0.35,
+          spanGaps: true,
           pointRadius: 0,
           pointHoverRadius: 5
-        },
-        {
-          label: 'Current Overall',
-          data: [],
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34, 197, 94, 0.15)',
-          borderWidth: 0,
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          pointBackgroundColor: '#22c55e',
-          pointBorderColor: '#15803d',
-          pointBorderWidth: 0,
-          fill: false,
-          tension: 0
         }
       ]
     },
@@ -91,16 +80,7 @@ function initAccuracyChart() {
           ...CHART_TOOLTIP_OPTIONS,
           callbacks: {
             label: function(context) {
-              const datasetIndex = context.datasetIndex;
-              const index = context.dataIndex;
-              const value = `${context.formattedValue}%`;
-
-              if (datasetIndex === 0) {
-                return `Overall: ${value}`;
-              } else if (datasetIndex === 1) {
-                return `Now: ${value}`;
-              }
-              return value;
+              return `${formatHoursValue(context.parsed.y)} left`;
             }
           }
         }
@@ -113,7 +93,7 @@ function initAccuracyChart() {
             ...CHART_SCALE_OPTIONS.ticks,
             maxTicksLimit: 5,
             callback: function(value) {
-              return `${value.toFixed(0)}%`;
+              return formatHoursAxis(value);
             }
           }
         },
@@ -182,107 +162,52 @@ function initMoveAccuracyChart() {
  * Update both charts with current data.
  */
 export function updateCharts() {
-  updateAccuracyChart();
+  updateHoursLeftChart();
   updateMoveAccuracyChart();
 }
 
 /**
- * Update the accuracy chart with cumulative overall averages.
+ * Update the progress chart with projected hours remaining to 90% accuracy.
  */
-function updateAccuracyChart() {
+function updateHoursLeftChart() {
   const chart = getAccuracyChart();
   if (!chart) return;
 
-  const cumulativeAccuracies = getCumulativeAccuracies();
   const moveAccuracies = getMoveAccuracies();
   const gameHistory = getGameHistory();
-  updateAccuracyGoalCount(gameHistory, moveAccuracies);
+  const currentEstimate = calculateCurrentGoalEstimate(gameHistory, moveAccuracies);
+  updateAccuracyGoalCount(gameHistory, currentEstimate);
 
-  const visibleStartIndex = findLowestAccuracyIndex(cumulativeAccuracies);
-  const visibleCumulative = cumulativeAccuracies.slice(visibleStartIndex);
+  const historical = getHistoricalHoursLeft(gameHistory);
   const includeCurrentGame = moveAccuracies.length > 0 && !isCurrentGameAlreadySaved(gameHistory, moveAccuracies);
-  const currentOverallAvg = includeCurrentGame
-    ? calculateCurrentOverallAccuracy(gameHistory, moveAccuracies)
+  const currentHours = includeCurrentGame && currentEstimate.hoursLeftMs !== null
+    ? currentEstimate.hoursLeftMs / 3600000
     : null;
   const nextSignature = [
-    visibleStartIndex,
-    visibleCumulative.length,
-    visibleCumulative.at(-1) ?? '',
-    currentOverallAvg ?? '',
-    gameHistory.length
+    historical.values.length,
+    historical.values.at(-1) ?? '',
+    currentHours ?? '',
+    moveAccuracies.length,
+    gameHistory.length,
   ].join('|');
 
-  if (nextSignature === lastAccuracyChartSignature) return;
-  lastAccuracyChartSignature = nextSignature;
+  if (nextSignature === lastHoursChartSignature) return;
+  lastHoursChartSignature = nextSignature;
 
-  const labels = [];
-  const cumulativeData = [];
-  const currentGameData = [];
-
-  const pointBgColors = [];
-  const pointBdColors = [];
-  const pointRadii = [];
-  const pointHoverRadii = [];
-  const pointBorderWidths = [];
-
-  // Add historical data points
-  for (let i = 0; i < visibleCumulative.length; i++) {
-    labels.push('');
-    cumulativeData.push(visibleCumulative[i]);
-    currentGameData.push(null);
-    pointBgColors.push('#8b5cf6');
-    pointBdColors.push('#8b5cf6');
-    pointRadii.push(0);
-    pointHoverRadii.push(0);
-    pointBorderWidths.push(0);
+  const labels = historical.labels.slice();
+  const hoursData = historical.values.slice();
+  if (currentHours !== null) {
+    labels.push(`Current game (${gameHistory.length + 1})`);
+    hoursData.push(currentHours);
   }
 
-  // Add current game point
-  if (currentOverallAvg !== null) {
-    labels.push('');
-    cumulativeData.push(null);
-    currentGameData.push(currentOverallAvg);
-    pointBgColors.push('#8b5cf6');
-    pointBdColors.push('#8b5cf6');
-    pointRadii.push(0);
-    pointHoverRadii.push(0);
-    pointBorderWidths.push(0);
-  }
-
-  // Update chart data
   chart.data.labels = labels;
-  chart.data.datasets[0].data = cumulativeData;
-  chart.data.datasets[1].data = currentGameData;
-  chart.data.datasets[0].pointBackgroundColor = pointBgColors;
-  chart.data.datasets[0].pointBorderColor = pointBdColors;
-  chart.data.datasets[0].pointRadius = pointRadii;
-  chart.data.datasets[0].pointHoverRadius = pointHoverRadii;
-  chart.data.datasets[0].pointBorderWidth = pointBorderWidths;
-  chart.data.datasets[0].customMinIndex = null;
+  chart.data.datasets[0].data = hoursData;
 
-  // Dynamically adjust Y axis to data range
-  const yVals = [
-    ...visibleCumulative
-  ].filter(v => typeof v === 'number' && !isNaN(v));
-  if (currentOverallAvg !== null) {
-    if (!isNaN(currentOverallAvg)) yVals.push(currentOverallAvg);
-  }
-
-  if (yVals.length > 0) {
-    const minY = Math.min(...yVals);
-    const maxY = Math.max(...yVals);
-    const pad = 4;
-    let axisMin = Math.max(0, minY);
-    let axisMax = Math.min(100, maxY + pad);
-
-    if (axisMax <= axisMin) {
-      axisMin = Math.max(0, axisMin - pad);
-      axisMax = Math.min(100, Math.max(axisMax, axisMin + pad));
-    }
-
-    chart.options.scales.y.min = axisMin;
-    chart.options.scales.y.max = axisMax;
-  }
+  const finiteHours = hoursData.filter((value) => Number.isFinite(value));
+  const maxHours = finiteHours.length > 0 ? Math.max(...finiteHours) : 0;
+  chart.options.scales.y.min = 0;
+  chart.options.scales.y.max = maxHours > 0 ? maxHours * 1.08 : 1;
 
   chart.update('none');
 }
@@ -407,47 +332,6 @@ function calculateWeightedGameAccuracy(gameHistory) {
   return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
 }
 
-function calculateCurrentOverallAccuracy(gameHistory, moveAccuracies) {
-  let totalMoves = 0;
-  let totalAccuracy = 0;
-
-  for (const game of gameHistory) {
-    const moves = Number(game.total_moves || 0);
-    const accuracy = Number(game.average_accuracy || 0);
-    if (!Number.isFinite(moves) || !Number.isFinite(accuracy) || moves <= 0) continue;
-
-    totalMoves += moves;
-    totalAccuracy += accuracy * moves;
-  }
-
-  for (const accuracy of moveAccuracies) {
-    const numeric = Number(accuracy || 0);
-    if (!Number.isFinite(numeric)) continue;
-
-    totalMoves += 1;
-    totalAccuracy += numeric;
-  }
-
-  return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
-}
-
-function findLowestAccuracyIndex(values) {
-  if (!Array.isArray(values) || values.length === 0) return 0;
-
-  let lowestIndex = 0;
-  let lowestValue = Number(values[0]);
-
-  for (let i = 1; i < values.length; i++) {
-    const value = Number(values[i]);
-    if (Number.isFinite(value) && value < lowestValue) {
-      lowestValue = value;
-      lowestIndex = i;
-    }
-  }
-
-  return lowestIndex;
-}
-
 function isCurrentGameAlreadySaved(gameHistory, moveAccuracies) {
   const lastGame = Array.isArray(gameHistory) ? gameHistory.at(-1) : null;
   const history = Array.isArray(lastGame?.accuracy_history) ? lastGame.accuracy_history : null;
@@ -471,22 +355,86 @@ function updateChartCount(id, count, singular) {
   }
 }
 
-function updateAccuracyGoalCount(gameHistory, moveAccuracies) {
+function getHistoricalHoursLeft(gameHistory) {
+  const history = Array.isArray(gameHistory) ? gameHistory : [];
+  if (history === cachedHoursHistory && history.length === cachedHoursHistoryLength) {
+    return cachedHistoricalHours;
+  }
+
+  const accuracies = [];
+  const labels = [];
+  const values = [];
+  let durationCount = 0;
+  let durationTotalMs = 0;
+
+  for (let index = 0; index < history.length; index++) {
+    const game = history[index];
+    const accuracy = Number(game?.average_accuracy);
+    const durationMs = Number(game?.duration_ms);
+
+    if (Number.isFinite(accuracy)) accuracies.push(accuracy);
+    if (Number.isFinite(durationMs) && durationMs > 0) {
+      durationCount += 1;
+      durationTotalMs += durationMs;
+    }
+
+    if (accuracies.length < 10 || durationCount === 0) continue;
+
+    const completedGames = index + 1;
+    const projection = projectAccuracyGoalFromAccuracies(accuracies);
+    const estimate = calculateGoalEstimate(
+      accuracies,
+      completedGames,
+      durationTotalMs / durationCount,
+      projection
+    );
+
+    if (estimate.hoursLeftMs === null) continue;
+    labels.push(`After ${completedGames} games`);
+    values.push(estimate.hoursLeftMs / 3600000);
+  }
+
+  cachedHoursHistory = history;
+  cachedHoursHistoryLength = history.length;
+  cachedHistoricalHours = { labels, values };
+  return cachedHistoricalHours;
+}
+
+function calculateCurrentGoalEstimate(gameHistory, moveAccuracies) {
   const completedGames = Array.isArray(gameHistory) ? gameHistory.length : 0;
   const projectedAccuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
   const projection = projectAccuracyGoal(gameHistory, moveAccuracies);
-  const rollingGoalReached = isRollingAccuracyGoalReached(projectedAccuracies);
-  const minimumFutureGames = minimumFutureGamesForRollingTarget(projectedAccuracies);
+  const averageDurationMs = calculateAverageGameDurationMs(gameHistory);
+
+  return calculateGoalEstimate(projectedAccuracies, completedGames, averageDurationMs, projection);
+}
+
+function calculateGoalEstimate(accuracies, completedGames, averageDurationMs, projection) {
+  const rollingGoalReached = isRollingAccuracyGoalReached(accuracies);
+  const minimumFutureGames = minimumFutureGamesForRollingTarget(accuracies);
   const targetGames = projection
     ? resolveTargetGames(completedGames, projection.targetGame, rollingGoalReached, minimumFutureGames)
     : completedGames;
   const remainingGames = Math.max(0, targetGames - completedGames);
-  const averageDurationMs = calculateAverageGameDurationMs(gameHistory);
-  const hoursLeft = projection && averageDurationMs !== null
+  const hoursLeftMs = projection && averageDurationMs !== null
     ? remainingGames * averageDurationMs
     : null;
-  const next = projection
-    ? `${formatGameCount(completedGames)} played / ${formatHoursLeft(hoursLeft)} left`
+
+  return {
+    projection,
+    completedGames,
+    targetGames,
+    remainingGames,
+    averageDurationMs,
+    hoursLeftMs,
+    minimumFutureGames,
+  };
+}
+
+function updateAccuracyGoalCount(gameHistory, estimate) {
+  const completedGames = Array.isArray(gameHistory) ? gameHistory.length : 0;
+  const next = estimate.projection
+    ? `${formatGameCount(completedGames)} played / ${formatHoursLeft(estimate.hoursLeftMs)} left`
     : `${formatGameCount(completedGames)} played / --h left`;
   let element = chartHeadingCounts['accuracy-chart-count'];
 
@@ -499,8 +447,15 @@ function updateAccuracyGoalCount(gameHistory, moveAccuracies) {
     if (element.textContent !== next) {
       element.textContent = next;
     }
-    element.title = projection
-      ? buildHoursLeftTitle(completedGames, targetGames, remainingGames, averageDurationMs, hoursLeft, minimumFutureGames)
+    element.title = estimate.projection
+      ? buildHoursLeftTitle(
+          completedGames,
+          estimate.targetGames,
+          estimate.remainingGames,
+          estimate.averageDurationMs,
+          estimate.hoursLeftMs,
+          estimate.minimumFutureGames
+        )
       : `Need 10 completed games to estimate the ${GM_ACCURACY_TARGET}% target`;
   }
 }
@@ -547,15 +502,19 @@ function projectAccuracyGoal(gameHistory, moveAccuracies) {
     .join('|');
   if (signature === lastGoalSignature) return lastGoalProjection;
 
+  lastGoalSignature = signature;
+  lastGoalProjection = projectAccuracyGoalFromAccuracies(accuracies);
+
+  return lastGoalProjection;
+}
+
+function projectAccuracyGoalFromAccuracies(accuracies) {
+  if (!Array.isArray(accuracies) || accuracies.length < 10) return null;
+
   const points = buildTenGameBlocks(accuracies);
   const fit = fitBoundedLearningCurve(points);
   const targetGame = solveBoundedTargetGame(fit);
-  lastGoalSignature = signature;
-  lastGoalProjection = Number.isFinite(targetGame)
-    ? { ...fit, targetGame }
-    : null;
-
-  return lastGoalProjection;
+  return Number.isFinite(targetGame) ? { ...fit, targetGame } : null;
 }
 
 function getProjectedGameAccuracies(gameHistory, moveAccuracies) {
@@ -697,15 +656,34 @@ function calculateAverageGameDurationMs(gameHistory) {
 }
 
 function formatHoursLeft(durationMs) {
+  if (durationMs === null || durationMs === undefined) return '--h';
   const numeric = Number(durationMs);
   if (!Number.isFinite(numeric)) return '--h';
 
-  const hours = Math.max(0, numeric / 3600000);
-  if (hours >= 1000) return `${Math.round(hours).toLocaleString()}h`;
-  if (hours >= 10) return `${Math.round(hours)}h`;
-  if (hours >= 1) return `${hours.toFixed(1)}h`;
-  if (hours === 0) return '0h';
-  return `${Math.max(0.1, hours).toFixed(1)}h`;
+  return formatHoursValue(Math.max(0, numeric / 3600000));
+}
+
+function formatHoursValue(hours) {
+  if (hours === null || hours === undefined) return '--h';
+  const numeric = Number(hours);
+  if (!Number.isFinite(numeric)) return '--h';
+
+  const clamped = Math.max(0, numeric);
+  if (clamped >= 1000) return `${Math.round(clamped).toLocaleString()}h`;
+  if (clamped >= 10) return `${Math.round(clamped)}h`;
+  if (clamped >= 1) return `${clamped.toFixed(1)}h`;
+  if (clamped === 0) return '0h';
+  return `${Math.max(0.1, clamped).toFixed(1)}h`;
+}
+
+function formatHoursAxis(hours) {
+  const numeric = Math.max(0, Number(hours) || 0);
+  if (numeric >= 10000) return `${Math.round(numeric / 1000)}kh`;
+  if (numeric >= 1000) return `${(numeric / 1000).toFixed(1)}kh`;
+  if (numeric >= 10) return `${Math.round(numeric)}h`;
+  if (numeric >= 1) return `${numeric.toFixed(1)}h`;
+  if (numeric === 0) return '0h';
+  return `${numeric.toFixed(1)}h`;
 }
 
 function formatGameLength(durationMs) {

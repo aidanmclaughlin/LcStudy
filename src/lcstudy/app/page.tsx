@@ -91,10 +91,10 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Accuracy Chart Panel */}
+            {/* Hours Left Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2>Accuracy Over Time</h2>
+                <h2>Hours Left to 90%</h2>
                 <span
                   id="accuracy-chart-count"
                   className="panel-count"

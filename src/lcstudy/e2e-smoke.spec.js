@@ -28,6 +28,21 @@ function normalizeUci(move) {
   return `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
 }
 
+function buildProgressHistory() {
+  return Array.from({ length: 30 }, (_, index) => {
+    const accuracy = 64 + index * 0.34 + Math.sin(index * 0.8) * 2.2;
+    return {
+      date: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+      average_accuracy: accuracy,
+      total_moves: 20,
+      accuracy_history: Array(20).fill(accuracy),
+      maia_level: 1500,
+      duration_ms: 120000 + index * 1500,
+      result: 'finished',
+    };
+  });
+}
+
 function parseAnalysisComment(comment) {
   if (!comment) return undefined;
 
@@ -192,6 +207,12 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     });
   });
 
+  await page.route('**/api/v1/game-history', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ history: buildProgressHistory() }),
+  }));
+
   const sessionResponsePromise = page.waitForResponse((resp) => (
     resp.url().includes('/api/v1/session/new') && resp.status() === 200
   ));
@@ -199,6 +220,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const sessionData = await (await sessionResponsePromise).json();
   await page.waitForSelector('#board .piece');
   await expect(page.locator('#completion-overlay')).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Hours Left to 90%' })).toBeVisible();
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
   await page.screenshot({ path: 'e2e-screenshots/01-initial-iphone.png', fullPage: true });
 
@@ -281,6 +303,41 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   if (feedbackText.includes('100.0')) {
     throw new Error(`Expected legal wrong move accuracy below 100%, got ${feedbackText}`);
   }
+  const hoursChart = await page.evaluate(async () => {
+    const state = await import('/legacy/js/modules/state.js');
+    const charts = await import('/legacy/js/modules/charts.js');
+    const chart = state.getAccuracyChart();
+    const originalHistory = state.getGameHistory();
+    const originalMoves = state.getMoveAccuracies();
+    const lastFinite = () => chart.data.datasets[0].data.filter(Number.isFinite).at(-1);
+
+    state.setMoveAccuracies([]);
+    charts.updateCharts();
+    const normalHours = lastFinite();
+
+    state.setGameHistory(originalHistory.map((game) => ({
+      ...game,
+      duration_ms: Number(game.duration_ms) * 2,
+    })));
+    charts.updateCharts();
+    const slowerHours = lastFinite();
+
+    state.setGameHistory(originalHistory);
+    state.setMoveAccuracies(originalMoves);
+    charts.updateCharts();
+
+    return {
+      label: chart.data.datasets[0].label,
+      pointCount: chart.data.datasets[0].data.filter(Number.isFinite).length,
+      axisSample: chart.options.scales.y.ticks.callback(1200),
+      normalHours,
+      slowerHours,
+    };
+  });
+  expect(hoursChart.label).toBe('Hours Left');
+  expect(hoursChart.pointCount).toBeGreaterThan(10);
+  expect(hoursChart.axisSample).toBe('1.2kh');
+  expect(hoursChart.slowerHours / hoursChart.normalHours).toBeCloseTo(2, 5);
   console.log(JSON.stringify({
     screenshots: 9,
     haptics: haptics.length,
@@ -290,6 +347,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     gameMetricText,
     feedbackText,
     historyText,
+    hoursChart,
     firstMove: firstMove.uci,
     firstReply: firstReply.uci,
     alternateMove: alternate.uci,

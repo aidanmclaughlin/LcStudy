@@ -9,8 +9,7 @@ import {
   getMoveAccuracies,
   getGameDurationMs,
   getGameHistory,
-  setGameHistory,
-  setCumulativeAccuracies
+  setGameHistory
 } from './state.js';
 import { updateCharts, updateStatistics } from './charts.js';
 
@@ -18,7 +17,7 @@ const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG
 
 /**
  * Fetch game history from the server.
- * Updates gameHistory and cumulative accuracy state.
+ * Updates game history and progress displays.
  */
 export async function loadGameHistory() {
   try {
@@ -31,42 +30,11 @@ export async function loadGameHistory() {
 
     setGameHistory(history);
 
-    // Calculate cumulative averages (weighted by total moves)
-    const averages = calculateCumulativeAccuracies(history);
-    setCumulativeAccuracies(averages);
-
     updateCharts();
     updateStatistics();
   } catch (e) {
     console.warn('Failed to load game history:', e);
   }
-}
-
-/**
- * Calculate cumulative weighted accuracy from game history.
- * @param {Array} history - Array of game history entries
- * @returns {number[]} Array of cumulative accuracies
- */
-function calculateCumulativeAccuracies(history) {
-  const averages = [];
-  let totalMovesSoFar = 0;
-  let totalAccuracySoFar = 0;
-
-  for (const game of history) {
-    const gameMoves = game.total_moves || 0;
-    const gameAccuracy = (game.average_accuracy || 0) * gameMoves;
-
-    totalMovesSoFar += gameMoves;
-    totalAccuracySoFar += gameAccuracy;
-
-    const cumulativeAvg = totalMovesSoFar > 0
-      ? totalAccuracySoFar / totalMovesSoFar
-      : 0;
-
-    averages.push(cumulativeAvg);
-  }
-
-  return averages;
 }
 
 /**
@@ -133,10 +101,6 @@ export async function saveCompletedGame(result) {
     result: result
   });
   setGameHistory(gameHistory);
-
-  // Recalculate cumulative accuracy
-  const averages = calculateCumulativeAccuracies(gameHistory);
-  setCumulativeAccuracies(averages);
 
   updateCharts();
   updateStatistics();
