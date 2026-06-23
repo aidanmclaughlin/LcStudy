@@ -29,7 +29,7 @@ function normalizeUci(move) {
 }
 
 function buildProgressHistory() {
-  return Array.from({ length: 30 }, (_, index) => {
+  return Array.from({ length: 45 }, (_, index) => {
     const accuracy = 64 + index * 0.34 + Math.sin(index * 0.8) * 2.2;
     return {
       date: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
@@ -340,22 +340,49 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     charts.updateCharts();
     const finalHours = chart.data.datasets[0].data.filter(Number.isFinite);
 
+    state.setGameHistory(originalHistory.slice(0, 12));
+    state.setMoveAccuracies([]);
+    charts.updateCharts();
+    const preEstimate = {
+      pointCount: chart.data.datasets[0].data.filter(Number.isFinite).length,
+      countText: document.getElementById('accuracy-chart-count')?.textContent,
+      title: document.getElementById('accuracy-chart-count')?.title,
+      scaleVisible: chart.options.scales.y.display,
+      panelCollapsed: chart.canvas.closest('.panel-chart')?.classList.contains('is-awaiting-estimate'),
+    };
+
+    state.setGameHistory(originalHistory);
+    state.setMoveAccuracies(originalMoves);
+    charts.updateCharts();
+
     return {
       label: chart.data.datasets[0].label,
       pointCount: finalHours.length,
+      scaleType: chart.options.scales.y.type,
       axisSample: chart.options.scales.y.ticks.callback(1200),
       axisMinimum: chart.options.scales.y.min,
       dataMinimum: Math.min(...finalHours),
       normalHours,
       slowerHours,
+      preEstimate,
+      narrowScaleType: charts.chooseHoursScaleType([39, 43]),
+      wideScaleType: charts.chooseHoursScaleType([43, 30000]),
     };
   });
   expect(hoursChart.label).toBe('Hours Left');
   expect(hoursChart.pointCount).toBeGreaterThan(10);
+  expect(hoursChart.scaleType).toBe('linear');
+  expect(hoursChart.narrowScaleType).toBe('linear');
+  expect(hoursChart.wideScaleType).toBe('logarithmic');
   expect(hoursChart.axisSample).toBe('1.2kh');
   expect(hoursChart.axisMinimum).toBeGreaterThan(0);
   expect(hoursChart.axisMinimum).toBeCloseTo(hoursChart.dataMinimum, 8);
   expect(hoursChart.slowerHours / hoursChart.normalHours).toBeCloseTo(2, 5);
+  expect(hoursChart.preEstimate.pointCount).toBe(0);
+  expect(hoursChart.preEstimate.countText).toBe('12 played / 18 to estimate');
+  expect(hoursChart.preEstimate.title).toContain('Need 30 completed games');
+  expect(hoursChart.preEstimate.scaleVisible).toBe(false);
+  expect(hoursChart.preEstimate.panelCollapsed).toBe(true);
   console.log(JSON.stringify({
     screenshots: 9,
     haptics: haptics.length,

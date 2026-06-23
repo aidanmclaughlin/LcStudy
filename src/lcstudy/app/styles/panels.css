@@ -22,6 +22,15 @@
   overflow: hidden;
 }
 
+.panel-chart.is-awaiting-estimate {
+  flex: 0 0 auto;
+  height: auto;
+}
+
+.panel-chart.is-awaiting-estimate .chart-container {
+  display: none;
+}
+
 .panel-section-heading {
   display: flex;
   justify-content: space-between;
