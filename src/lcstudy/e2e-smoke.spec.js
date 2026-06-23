@@ -231,9 +231,26 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.waitForSelector('#board .piece');
   await expect(page.locator('#completion-overlay')).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Hours Left to 90%' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Accuracy Over Games' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Accuracy Over Moves' })).toBeVisible();
+  await expect(page.locator('.panel-chart canvas')).toHaveCount(2);
+  await expect(page.locator('.panel-goal canvas')).toHaveCount(0);
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
   await expect(page.locator('input[switch][data-lcstudy-direct-haptic]')).toHaveCount(64);
   await page.screenshot({ path: 'e2e-screenshots/01-initial-iphone.png', fullPage: true });
+
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 844 });
+  const narrowGoalFits = await page.locator('.panel-goal').evaluate((panel) => {
+    const count = panel.querySelector('#hours-left-count');
+    const originalText = count?.textContent;
+    if (count) count.textContent = '16 played / 1,300h left';
+    const fits = panel.scrollWidth <= panel.clientWidth;
+    if (count) count.textContent = originalText;
+    return fits;
+  });
+  expect(narrowGoalFits).toBe(true);
+  if (originalViewport) await page.setViewportSize(originalViewport);
 
   const firstMove = sessionData.moves[sessionData.ply];
   const firstReply = sessionData.moves[sessionData.ply + 1];
@@ -316,73 +333,62 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   if (feedbackText.includes('100.0')) {
     throw new Error(`Expected legal wrong move accuracy below 100%, got ${feedbackText}`);
   }
-  const hoursChart = await page.evaluate(async () => {
+  const accuracyView = await page.evaluate(async () => {
     const state = await import('/legacy/js/modules/state.js');
     const charts = await import('/legacy/js/modules/charts.js');
     const chart = state.getAccuracyChart();
     const originalHistory = state.getGameHistory();
     const originalMoves = state.getMoveAccuracies();
-    const lastFinite = () => chart.data.datasets[0].data.filter(Number.isFinite).at(-1);
 
     state.setMoveAccuracies([]);
     charts.updateCharts();
-    const normalHours = lastFinite();
+    const normalEstimate = charts.calculateCurrentGoalEstimate(originalHistory, []);
+
+    state.setGameHistory(originalHistory.slice(0, 1));
+    charts.updateCharts();
+    const firstGameEstimate = charts.calculateCurrentGoalEstimate(originalHistory.slice(0, 1), []);
+    const firstGame = {
+      countText: document.getElementById('hours-left-count')?.textContent,
+      title: document.getElementById('hours-left-count')?.title,
+      chartPoints: chart.data.datasets[0].data.filter(Number.isFinite).length,
+      hoursLeftMs: firstGameEstimate.hoursLeftMs,
+    };
 
     state.setGameHistory(originalHistory.map((game) => ({
       ...game,
       duration_ms: Number(game.duration_ms) * 2,
     })));
     charts.updateCharts();
-    const slowerHours = lastFinite();
+    const slowerEstimate = charts.calculateCurrentGoalEstimate(state.getGameHistory(), []);
 
     state.setGameHistory(originalHistory);
     state.setMoveAccuracies(originalMoves);
     charts.updateCharts();
-    const finalHours = chart.data.datasets[0].data.filter(Number.isFinite);
-
-    state.setGameHistory(originalHistory.slice(0, 12));
-    state.setMoveAccuracies([]);
-    charts.updateCharts();
-    const preEstimate = {
-      pointCount: chart.data.datasets[0].data.filter(Number.isFinite).length,
-      countText: document.getElementById('accuracy-chart-count')?.textContent,
-      title: document.getElementById('accuracy-chart-count')?.title,
-      scaleVisible: chart.options.scales.y.display,
-      panelCollapsed: chart.canvas.closest('.panel-chart')?.classList.contains('is-awaiting-estimate'),
-    };
-
-    state.setGameHistory(originalHistory);
-    state.setMoveAccuracies(originalMoves);
-    charts.updateCharts();
+    const finalAccuracy = chart.data.datasets[0].data.filter(Number.isFinite);
 
     return {
       label: chart.data.datasets[0].label,
-      pointCount: finalHours.length,
-      scaleType: chart.options.scales.y.type,
-      axisSample: chart.options.scales.y.ticks.callback(1200),
+      pointCount: finalAccuracy.length,
+      gameCountText: document.getElementById('accuracy-chart-count')?.textContent,
       axisMinimum: chart.options.scales.y.min,
-      dataMinimum: Math.min(...finalHours),
-      normalHours,
-      slowerHours,
-      preEstimate,
-      narrowScaleType: charts.chooseHoursScaleType([39, 43]),
-      wideScaleType: charts.chooseHoursScaleType([43, 30000]),
+      dataMinimum: Math.min(...finalAccuracy),
+      pointRadius: chart.data.datasets[0].pointRadius,
+      normalHours: normalEstimate.hoursLeftMs / 3600000,
+      slowerHours: slowerEstimate.hoursLeftMs / 3600000,
+      firstGame,
     };
   });
-  expect(hoursChart.label).toBe('Hours Left');
-  expect(hoursChart.pointCount).toBeGreaterThan(10);
-  expect(hoursChart.scaleType).toBe('linear');
-  expect(hoursChart.narrowScaleType).toBe('linear');
-  expect(hoursChart.wideScaleType).toBe('logarithmic');
-  expect(hoursChart.axisSample).toBe('1.2kh');
-  expect(hoursChart.axisMinimum).toBeGreaterThan(0);
-  expect(hoursChart.axisMinimum).toBeCloseTo(hoursChart.dataMinimum, 8);
-  expect(hoursChart.slowerHours / hoursChart.normalHours).toBeCloseTo(2, 5);
-  expect(hoursChart.preEstimate.pointCount).toBe(0);
-  expect(hoursChart.preEstimate.countText).toBe('12 played / 18 to estimate');
-  expect(hoursChart.preEstimate.title).toContain('Need 30 completed games');
-  expect(hoursChart.preEstimate.scaleVisible).toBe(false);
-  expect(hoursChart.preEstimate.panelCollapsed).toBe(true);
+  expect(accuracyView.label).toBe('Overall Accuracy');
+  expect(accuracyView.pointCount).toBeGreaterThan(10);
+  expect(accuracyView.gameCountText).toBe('45 games');
+  expect(accuracyView.axisMinimum).toBeGreaterThan(0);
+  expect(accuracyView.axisMinimum).toBeCloseTo(accuracyView.dataMinimum, 8);
+  expect(accuracyView.pointRadius).toBe(0);
+  expect(accuracyView.slowerHours / accuracyView.normalHours).toBeCloseTo(2, 5);
+  expect(accuracyView.firstGame.hoursLeftMs).toBeGreaterThan(0);
+  expect(accuracyView.firstGame.countText).toMatch(/^1 played \/ [\d,.]+h left$/);
+  expect(accuracyView.firstGame.title).toContain('Power-law estimate from 1 game');
+  expect(accuracyView.firstGame.chartPoints).toBe(1);
   console.log(JSON.stringify({
     screenshots: 9,
     haptics: haptics.length,
@@ -393,7 +399,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     gameMetricText,
     feedbackText,
     historyText,
-    hoursChart,
+    accuracyView,
     firstMove: firstMove.uci,
     firstReply: firstReply.uci,
     alternateMove: alternate.uci,

@@ -16,20 +16,19 @@ import {
   getIsReviewingMoves
 } from './state.js';
 
-let lastHoursChartSignature = '';
+let lastAccuracyChartSignature = '';
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
 const GM_ACCURACY_TARGET = 90;
 const GM_ACCURACY_CEILING = 95;
 const GM_ACCURACY_EXPONENT = 0.5;
-const MIN_PROJECTION_GAMES = 30;
-const LOG_HOURS_FLOOR = 1 / 60;
-const LOG_SCALE_MIN_RATIO = 10;
+const PROJECTION_PRIOR_FLOOR = 65;
+const PROJECTION_PRIOR_OFFSET = 750;
+const PROJECTION_FLOOR_SIGMA = 8;
+const PROJECTION_LOG_OFFSET_SIGMA = 1.25;
+const PROJECTION_OBSERVATION_SIGMA = 10;
 let lastGoalSignature = '';
 let lastGoalProjection = null;
-let cachedHoursHistory = null;
-let cachedHoursHistoryLength = -1;
-let cachedHistoricalHours = { labels: [], values: [] };
 
 /**
  * Initialize both Chart.js charts.
@@ -41,14 +40,14 @@ export function initializeCharts() {
     return;
   }
 
-  initHoursLeftChart();
+  initAccuracyChart();
   initMoveAccuracyChart();
 }
 
 /**
- * Initialize the projected hours-left chart.
+ * Initialize the cumulative accuracy chart.
  */
-function initHoursLeftChart() {
+function initAccuracyChart() {
   const ctx = document.getElementById('accuracy-chart')?.getContext('2d');
   if (!ctx) return;
 
@@ -58,14 +57,13 @@ function initHoursLeftChart() {
       labels: [],
       datasets: [
         {
-          label: 'Hours Left',
+          label: 'Overall Accuracy',
           data: [],
-          borderColor: '#38bdf8',
-          backgroundColor: 'rgba(56, 189, 248, 0.08)',
+          borderColor: '#8b5cf6',
+          backgroundColor: 'rgba(139, 92, 246, 0.08)',
           borderWidth: 2,
           fill: true,
           tension: 0.35,
-          spanGaps: true,
           pointRadius: 0,
           pointHoverRadius: 5
         }
@@ -83,8 +81,7 @@ function initHoursLeftChart() {
           ...CHART_TOOLTIP_OPTIONS,
           callbacks: {
             label: function(context) {
-              const rawHours = context.chart.$rawHours?.[context.dataIndex];
-              return `${formatHoursValue(rawHours ?? context.parsed.y)} left`;
+              return `Overall: ${context.formattedValue}%`;
             }
           }
         }
@@ -92,13 +89,12 @@ function initHoursLeftChart() {
       scales: {
         y: {
           ...CHART_SCALE_OPTIONS,
-          type: 'linear',
-          min: LOG_HOURS_FLOOR,
+          min: 0,
           ticks: {
             ...CHART_SCALE_OPTIONS.ticks,
             maxTicksLimit: 5,
             callback: function(value) {
-              return formatHoursAxis(value);
+              return `${value.toFixed(0)}%`;
             }
           }
         },
@@ -167,14 +163,14 @@ function initMoveAccuracyChart() {
  * Update both charts with current data.
  */
 export function updateCharts() {
-  updateHoursLeftChart();
+  updateAccuracyChart();
   updateMoveAccuracyChart();
 }
 
 /**
- * Update the progress chart with projected hours remaining to 90% accuracy.
+ * Update the chart with cumulative weighted accuracy over completed games.
  */
-function updateHoursLeftChart() {
+function updateAccuracyChart() {
   const chart = getAccuracyChart();
   if (!chart) return;
 
@@ -182,65 +178,45 @@ function updateHoursLeftChart() {
   const gameHistory = getGameHistory();
   const currentEstimate = calculateCurrentGoalEstimate(gameHistory, moveAccuracies);
   updateAccuracyGoalCount(gameHistory, currentEstimate);
+  updateChartCount('accuracy-chart-count', gameHistory.length, 'game');
 
-  const historical = getHistoricalHoursLeft(gameHistory);
+  const cumulativeAccuracies = calculateCumulativeAccuracies(gameHistory);
+  const visibleStartIndex = findLowestAccuracyIndex(cumulativeAccuracies);
+  const visibleCumulative = cumulativeAccuracies.slice(visibleStartIndex);
   const includeCurrentGame = moveAccuracies.length > 0 && !isCurrentGameAlreadySaved(gameHistory, moveAccuracies);
-  const currentHours = includeCurrentGame && currentEstimate.hoursLeftMs !== null
-    ? currentEstimate.hoursLeftMs / 3600000
+  const currentOverall = includeCurrentGame
+    ? calculateCurrentOverallAccuracy(gameHistory, moveAccuracies)
     : null;
   const nextSignature = [
-    historical.values.length,
-    historical.values.at(-1) ?? '',
-    currentHours ?? '',
-    moveAccuracies.length,
-    gameHistory.length,
+    visibleStartIndex,
+    visibleCumulative.length,
+    visibleCumulative.at(-1) ?? '',
+    currentOverall ?? '',
+    gameHistory.length
   ].join('|');
 
-  if (nextSignature === lastHoursChartSignature) return;
-  lastHoursChartSignature = nextSignature;
+  if (nextSignature === lastAccuracyChartSignature) return;
+  lastAccuracyChartSignature = nextSignature;
 
-  const labels = historical.labels.slice();
-  const hoursData = historical.values.slice();
-  if (currentHours !== null) {
+  const labels = visibleCumulative.map((_, index) => `Game ${visibleStartIndex + index + 1}`);
+  const values = visibleCumulative.slice();
+  if (currentOverall !== null) {
     labels.push(`Current game (${gameHistory.length + 1})`);
-    hoursData.push(currentHours);
+    values.push(currentOverall);
   }
 
   chart.data.labels = labels;
-  chart.$rawHours = hoursData;
-  chart.data.datasets[0].data = hoursData.map((value) => (
-    Number.isFinite(value) ? Math.max(LOG_HOURS_FLOOR, value) : value
-  ));
+  chart.data.datasets[0].data = values;
 
-  const finiteHours = chart.data.datasets[0].data.filter((value) => Number.isFinite(value));
-  const minHours = finiteHours.length > 0 ? Math.min(...finiteHours) : 0;
-  const maxHours = finiteHours.length > 0 ? Math.max(...finiteHours) : 0;
-  const scaleType = chooseHoursScaleType(finiteHours);
-  chart.canvas.closest('.panel-chart')?.classList.toggle('is-awaiting-estimate', finiteHours.length === 0);
-  chart.options.scales.y.display = finiteHours.length > 0;
-  chart.options.scales.y.type = scaleType;
-  chart.options.scales.y.min = minHours > 0 ? minHours : 0;
-  chart.options.scales.y.max = getHoursScaleMaximum(minHours, maxHours, scaleType);
+  if (values.length > 0) {
+    const minimum = Math.min(...values);
+    const maximum = Math.max(...values);
+    const padding = 4;
+    chart.options.scales.y.min = Math.max(0, minimum);
+    chart.options.scales.y.max = Math.min(100, Math.max(maximum + padding, minimum + padding));
+  }
 
   chart.update('none');
-}
-
-export function chooseHoursScaleType(values) {
-  const finitePositive = Array.isArray(values)
-    ? values.filter((value) => Number.isFinite(value) && value > 0)
-    : [];
-  if (finitePositive.length < 2) return 'linear';
-
-  const minimum = Math.min(...finitePositive);
-  const maximum = Math.max(...finitePositive);
-  return maximum / minimum >= LOG_SCALE_MIN_RATIO ? 'logarithmic' : 'linear';
-}
-
-function getHoursScaleMaximum(minimum, maximum, scaleType) {
-  if (!Number.isFinite(maximum) || maximum <= 0) return 1;
-  if (scaleType === 'logarithmic') return maximum * 1.25;
-  if (maximum > minimum) return maximum + (maximum - minimum) * 0.08;
-  return maximum * 1.08;
 }
 
 /**
@@ -363,6 +339,65 @@ function calculateWeightedGameAccuracy(gameHistory) {
   return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
 }
 
+function calculateCumulativeAccuracies(gameHistory) {
+  const cumulative = [];
+  let totalMoves = 0;
+  let totalAccuracy = 0;
+
+  for (const game of gameHistory) {
+    const moves = Number(game.total_moves || 0);
+    const accuracy = Number(game.average_accuracy || 0);
+    if (!Number.isFinite(moves) || !Number.isFinite(accuracy) || moves <= 0) continue;
+
+    totalMoves += moves;
+    totalAccuracy += accuracy * moves;
+    cumulative.push(totalAccuracy / totalMoves);
+  }
+
+  return cumulative;
+}
+
+function calculateCurrentOverallAccuracy(gameHistory, moveAccuracies) {
+  let totalMoves = 0;
+  let totalAccuracy = 0;
+
+  for (const game of gameHistory) {
+    const moves = Number(game.total_moves || 0);
+    const accuracy = Number(game.average_accuracy || 0);
+    if (!Number.isFinite(moves) || !Number.isFinite(accuracy) || moves <= 0) continue;
+
+    totalMoves += moves;
+    totalAccuracy += accuracy * moves;
+  }
+
+  for (const accuracy of moveAccuracies) {
+    const numeric = Number(accuracy);
+    if (!Number.isFinite(numeric)) continue;
+
+    totalMoves += 1;
+    totalAccuracy += numeric;
+  }
+
+  return totalMoves > 0 ? totalAccuracy / totalMoves : null;
+}
+
+function findLowestAccuracyIndex(values) {
+  if (!Array.isArray(values) || values.length === 0) return 0;
+
+  let lowestIndex = 0;
+  let lowestValue = Infinity;
+
+  for (let index = 0; index < values.length; index++) {
+    const value = Number(values[index]);
+    if (Number.isFinite(value) && value < lowestValue) {
+      lowestValue = value;
+      lowestIndex = index;
+    }
+  }
+
+  return lowestIndex;
+}
+
 function isCurrentGameAlreadySaved(gameHistory, moveAccuracies) {
   const lastGame = Array.isArray(gameHistory) ? gameHistory.at(-1) : null;
   const history = Array.isArray(lastGame?.accuracy_history) ? lastGame.accuracy_history : null;
@@ -386,52 +421,7 @@ function updateChartCount(id, count, singular) {
   }
 }
 
-function getHistoricalHoursLeft(gameHistory) {
-  const history = Array.isArray(gameHistory) ? gameHistory : [];
-  if (history === cachedHoursHistory && history.length === cachedHoursHistoryLength) {
-    return cachedHistoricalHours;
-  }
-
-  const accuracies = [];
-  const labels = [];
-  const values = [];
-  let durationCount = 0;
-  let durationTotalMs = 0;
-
-  for (let index = 0; index < history.length; index++) {
-    const game = history[index];
-    const accuracy = Number(game?.average_accuracy);
-    const durationMs = Number(game?.duration_ms);
-
-    if (Number.isFinite(accuracy)) accuracies.push(accuracy);
-    if (Number.isFinite(durationMs) && durationMs > 0) {
-      durationCount += 1;
-      durationTotalMs += durationMs;
-    }
-
-    if (accuracies.length < MIN_PROJECTION_GAMES || durationCount === 0) continue;
-
-    const completedGames = index + 1;
-    const projection = projectAccuracyGoalFromAccuracies(accuracies);
-    const estimate = calculateGoalEstimate(
-      accuracies,
-      completedGames,
-      durationTotalMs / durationCount,
-      projection
-    );
-
-    if (estimate.hoursLeftMs === null) continue;
-    labels.push(`After ${completedGames} games`);
-    values.push(estimate.hoursLeftMs / 3600000);
-  }
-
-  cachedHoursHistory = history;
-  cachedHoursHistoryLength = history.length;
-  cachedHistoricalHours = { labels, values };
-  return cachedHistoricalHours;
-}
-
-function calculateCurrentGoalEstimate(gameHistory, moveAccuracies) {
+export function calculateCurrentGoalEstimate(gameHistory, moveAccuracies) {
   const completedGames = Array.isArray(gameHistory) ? gameHistory.length : 0;
   const projectedAccuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
   const projection = projectAccuracyGoal(gameHistory, moveAccuracies);
@@ -464,15 +454,14 @@ function calculateGoalEstimate(accuracies, completedGames, averageDurationMs, pr
 
 function updateAccuracyGoalCount(gameHistory, estimate) {
   const completedGames = Array.isArray(gameHistory) ? gameHistory.length : 0;
-  const gamesUntilEstimate = Math.max(0, MIN_PROJECTION_GAMES - completedGames);
   const next = estimate.projection
     ? `${formatGameCount(completedGames)} played / ${formatHoursLeft(estimate.hoursLeftMs)} left`
-    : `${formatGameCount(completedGames)} played / ${formatGameCount(gamesUntilEstimate)} to estimate`;
-  let element = chartHeadingCounts['accuracy-chart-count'];
+    : `${formatGameCount(completedGames)} played / --h left`;
+  let element = chartHeadingCounts['hours-left-count'];
 
   if (!element) {
-    element = document.getElementById('accuracy-chart-count');
-    chartHeadingCounts['accuracy-chart-count'] = element;
+    element = document.getElementById('hours-left-count');
+    chartHeadingCounts['hours-left-count'] = element;
   }
 
   if (element) {
@@ -488,7 +477,7 @@ function updateAccuracyGoalCount(gameHistory, estimate) {
           estimate.hoursLeftMs,
           estimate.minimumFutureGames
         )
-      : `Need ${MIN_PROJECTION_GAMES} completed games to estimate the ${GM_ACCURACY_TARGET}% target`;
+      : `Complete one timed game to estimate hours left to ${GM_ACCURACY_TARGET}%`;
   }
 }
 
@@ -511,6 +500,7 @@ function buildHoursLeftTitle(completedGames, targetGames, remainingGames, averag
   }
 
   const parts = [
+    `Power-law estimate from ${formatGameCount(completedGames)} ${completedGames === 1 ? 'game' : 'games'}`,
     `${formatGameCount(completedGames)} played`,
     `${formatGameCount(targetGames)} target games`,
     `${formatGameCount(remainingGames)} estimated remaining`,
@@ -527,7 +517,7 @@ function buildHoursLeftTitle(completedGames, targetGames, remainingGames, averag
 
 function projectAccuracyGoal(gameHistory, moveAccuracies) {
   const accuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
-  if (accuracies.length < MIN_PROJECTION_GAMES) return null;
+  if (accuracies.length === 0) return null;
 
   const signature = accuracies
     .map((accuracy) => Number(accuracy || 0).toFixed(2))
@@ -541,9 +531,14 @@ function projectAccuracyGoal(gameHistory, moveAccuracies) {
 }
 
 function projectAccuracyGoalFromAccuracies(accuracies) {
-  if (!Array.isArray(accuracies) || accuracies.length < MIN_PROJECTION_GAMES) return null;
+  if (!Array.isArray(accuracies) || accuracies.length === 0) return null;
 
-  const points = buildTenGameBlocks(accuracies);
+  const points = accuracies.map((accuracy, index) => ({
+    x: index + 1,
+    y: Number(accuracy)
+  })).filter((point) => Number.isFinite(point.y));
+  if (points.length === 0) return null;
+
   const fit = fitBoundedLearningCurve(points);
   const targetGame = solveBoundedTargetGame(fit);
   return Number.isFinite(targetGame) ? { ...fit, targetGame } : null;
@@ -556,7 +551,11 @@ function getProjectedGameAccuracies(gameHistory, moveAccuracies) {
         .filter((accuracy) => Number.isFinite(accuracy))
     : [];
 
-  if (Array.isArray(moveAccuracies) && moveAccuracies.length > 0) {
+  if (
+    Array.isArray(moveAccuracies)
+    && moveAccuracies.length > 0
+    && !isCurrentGameAlreadySaved(gameHistory, moveAccuracies)
+  ) {
     const currentGameAccuracy = moveAccuracies.reduce((sum, value) => sum + Number(value || 0), 0) / moveAccuracies.length;
     if (Number.isFinite(currentGameAccuracy)) {
       accuracies.push(currentGameAccuracy);
@@ -572,7 +571,8 @@ function isRollingAccuracyGoalReached(accuracies) {
 }
 
 function minimumFutureGamesForRollingTarget(accuracies) {
-  if (!Array.isArray(accuracies) || accuracies.length < 10) return null;
+  if (!Array.isArray(accuracies) || accuracies.length === 0) return null;
+  if (accuracies.length < 10) return 10 - accuracies.length;
   const lastTen = accuracies.slice(-10);
   if (average(lastTen) >= GM_ACCURACY_TARGET) return 0;
 
@@ -590,54 +590,36 @@ function minimumFutureGamesForRollingTarget(accuracies) {
   return 10;
 }
 
-function buildTenGameBlocks(accuracies) {
-  const points = [];
-
-  for (let start = 0; start + 10 <= accuracies.length; start += 10) {
-    points.push({
-      x: start + 10,
-      y: average(accuracies.slice(start, start + 10))
-    });
-  }
-
-  if (points.at(-1)?.x !== accuracies.length) {
-    points.push({
-      x: accuracies.length,
-      y: average(accuracies.slice(-10))
-    });
-  }
-
-  return points;
-}
-
 function fitBoundedLearningCurve(points) {
   let best = null;
   const decayFactors = new Float64Array(points.length);
+  const observationPrecision = 1 / (PROJECTION_OBSERVATION_SIGMA ** 2);
+  const floorPriorPrecision = 1 / (PROJECTION_FLOOR_SIGMA ** 2);
+  const priorLogOffset = Math.log(PROJECTION_PRIOR_OFFSET);
 
   for (let logOffset = Math.log(20); logOffset <= Math.log(20000); logOffset += 0.025) {
     const offset = Math.exp(logOffset);
-    let floorNumerator = 0;
-    let floorDenominator = 0;
+    let floorNumerator = PROJECTION_PRIOR_FLOOR * floorPriorPrecision;
+    let floorDenominator = floorPriorPrecision;
 
     for (let index = 0; index < points.length; index++) {
       const point = points[index];
       const decay = Math.pow(offset / (point.x + offset), GM_ACCURACY_EXPONENT);
       decayFactors[index] = decay;
-      floorNumerator += decay * (point.y - GM_ACCURACY_CEILING * (1 - decay));
-      floorDenominator += decay * decay;
+      floorNumerator += decay * (point.y - GM_ACCURACY_CEILING * (1 - decay)) * observationPrecision;
+      floorDenominator += decay * decay * observationPrecision;
     }
 
-    const unconstrainedFloor = floorDenominator > 0
-      ? floorNumerator / floorDenominator
-      : 65;
-    const floor = Math.max(55, Math.min(68, unconstrainedFloor));
-    let error = 0;
+    const floor = Math.max(45, Math.min(80, floorNumerator / floorDenominator));
+    // Priors identify the curve early; independent game results steadily outweigh them.
+    let error = ((floor - PROJECTION_PRIOR_FLOOR) / PROJECTION_FLOOR_SIGMA) ** 2
+      + ((logOffset - priorLogOffset) / PROJECTION_LOG_OFFSET_SIGMA) ** 2;
 
     for (let index = 0; index < points.length; index++) {
       const decay = decayFactors[index];
       const prediction = GM_ACCURACY_CEILING * (1 - decay) + floor * decay;
       const residual = points[index].y - prediction;
-      error += residual * residual;
+      error += residual * residual * observationPrecision;
     }
 
     if (!best || error < best.error) {
@@ -645,7 +627,7 @@ function fitBoundedLearningCurve(points) {
     }
   }
 
-  return best || { floor: 65, offset: 750, error: 0 };
+  return best || { floor: PROJECTION_PRIOR_FLOOR, offset: PROJECTION_PRIOR_OFFSET, error: 0 };
 }
 
 function solveBoundedTargetGame(fit) {
@@ -706,16 +688,6 @@ function formatHoursValue(hours) {
   if (clamped >= 1) return `${clamped.toFixed(1)}h`;
   if (clamped === 0) return '0h';
   return `${Math.max(0.1, clamped).toFixed(1)}h`;
-}
-
-function formatHoursAxis(hours) {
-  const numeric = Math.max(0, Number(hours) || 0);
-  if (numeric >= 10000) return `${Math.round(numeric / 1000)}kh`;
-  if (numeric >= 1000) return `${(numeric / 1000).toFixed(1)}kh`;
-  if (numeric >= 10) return `${Math.round(numeric)}h`;
-  if (numeric >= 1) return `${numeric.toFixed(1)}h`;
-  if (numeric === 0) return '0h';
-  return `${numeric.toFixed(1)}h`;
 }
 
 function formatGameLength(durationMs) {

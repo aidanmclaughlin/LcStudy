@@ -22,13 +22,17 @@
   overflow: hidden;
 }
 
-.panel-chart.is-awaiting-estimate {
-  flex: 0 0 auto;
-  height: auto;
+.panel-goal {
+  flex-shrink: 0;
+  padding: 12px 14px;
 }
 
-.panel-chart.is-awaiting-estimate .chart-container {
-  display: none;
+.panel-goal .panel-section-heading {
+  gap: 6px;
+}
+
+.panel-goal .panel-section-heading h2 {
+  min-width: 0;
 }
 
 .panel-section-heading {
@@ -174,6 +178,10 @@
     padding: 16px;
   }
 
+  .panel-goal {
+    padding: 14px 16px;
+  }
+
   .panel-stats {
     width: 100%;
   }
@@ -203,6 +211,14 @@
   .panel-stats {
     gap: 6px;
     padding: 8px;
+  }
+
+  .panel-goal .panel-section-heading h2 {
+    font-size: 0.8rem;
+  }
+
+  .panel-goal .panel-count {
+    font-size: 0.68rem;
   }
 
   .stat-tile {

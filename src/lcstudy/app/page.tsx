@@ -91,17 +91,25 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Hours Left Chart Panel */}
-            <div className="panel panel-chart">
+            {/* Hours Left Summary */}
+            <div className="panel panel-goal">
               <div className="panel-section-heading">
                 <h2>Hours Left to 90%</h2>
                 <span
-                  id="accuracy-chart-count"
+                  id="hours-left-count"
                   className="panel-count"
-                  title="Games played with estimated hours remaining to the 90% rolling average target"
+                  title="Power-law estimate of time remaining to the 90% rolling average target"
                 >
                   0 played / --h left
                 </span>
+              </div>
+            </div>
+
+            {/* Game Accuracy Chart Panel */}
+            <div className="panel panel-chart">
+              <div className="panel-section-heading">
+                <h2>Accuracy Over Games</h2>
+                <span id="accuracy-chart-count" className="panel-count">0 games</span>
               </div>
               <div className="chart-container">
                 <canvas id="accuracy-chart" />
@@ -111,7 +119,7 @@ export default async function HomePage() {
             {/* Move Accuracy Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2>Accuracy per Move</h2>
+                <h2>Accuracy Over Moves</h2>
                 <span id="move-chart-count" className="panel-count">0 moves</span>
               </div>
               <div className="chart-container">
