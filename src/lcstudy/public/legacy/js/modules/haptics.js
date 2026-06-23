@@ -4,6 +4,7 @@
  */
 
 const SWITCH_ID = 'lcstudy-haptic-switch';
+const DIRECT_SWITCH_SELECTOR = 'input[switch][data-lcstudy-direct-haptic]';
 let switchLabel = null;
 let switchInput = null;
 
@@ -14,6 +15,24 @@ function isAppleTouchDevice() {
   const appleMobile = /iPhone|iPad|iPod/i.test(userAgent);
   const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
   return appleMobile || touchMac;
+}
+
+export function createDirectHapticControl() {
+  if (!isAppleTouchDevice() || typeof document === 'undefined') return null;
+
+  // Safari 26.5 only emits switch haptics from direct user interaction.
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.tabIndex = -1;
+  input.setAttribute('switch', '');
+  input.setAttribute('aria-hidden', 'true');
+  input.dataset.lcstudyDirectHaptic = 'true';
+  input.className = 'direct-haptic-switch';
+  return input;
+}
+
+export function isDirectHapticControl(target) {
+  return Boolean(target?.matches?.(DIRECT_SWITCH_SELECTOR));
 }
 
 function ensureSwitchHaptic() {

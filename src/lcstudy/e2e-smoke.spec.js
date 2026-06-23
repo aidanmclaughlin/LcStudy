@@ -118,6 +118,11 @@ async function squareClick(page, square) {
   await page.locator(`[data-square="${square}"]`).click({ timeout: 10000 });
 }
 
+async function squareTap(page, square) {
+  const center = await squareCenter(page, square);
+  await page.touchscreen.tap(center.x, center.y);
+}
+
 async function squareCenter(page, square) {
   const box = await page.locator(`[data-square="${square}"]`).boundingBox({ timeout: 10000 });
   if (!box) throw new Error(`No bounding box for ${square}`);
@@ -201,8 +206,13 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     } catch (_) {}
 
     document.addEventListener('change', (event) => {
-      if (event.target?.matches?.('input[switch][data-lcstudy-haptic-switch]')) {
-        window.__haptics.push({ type: 'ios-switch', at: Date.now() });
+      if (event.target?.matches?.('input[switch]')) {
+        window.__haptics.push({
+          type: event.target.matches('[data-lcstudy-direct-haptic]') ? 'direct-switch' : 'programmatic-switch',
+          trusted: event.isTrusted,
+          square: event.target.closest('[data-square]')?.dataset?.square || null,
+          at: Date.now(),
+        });
       }
     });
   });
@@ -222,6 +232,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await expect(page.locator('#completion-overlay')).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Hours Left to 90%' })).toBeVisible();
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
+  await expect(page.locator('input[switch][data-lcstudy-direct-haptic]')).toHaveCount(64);
   await page.screenshot({ path: 'e2e-screenshots/01-initial-iphone.png', fullPage: true });
 
   const firstMove = sessionData.moves[sessionData.ply];
@@ -252,9 +263,9 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
 
   const [altFrom, altTo] = moveParts(alternate.uci);
   const [secondFrom] = moveParts(secondMove.uci);
-  await squareClick(page, altFrom);
+  await squareTap(page, altFrom);
   await page.waitForTimeout(150);
-  await squareClick(page, altTo);
+  await squareTap(page, altTo);
   await page.waitForTimeout(120);
   expect(await pieceAt(page, secondFrom)).not.toBeNull();
   await page.waitForSelector('.accuracy-burst');
@@ -286,12 +297,14 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.screenshot({ path: 'e2e-screenshots/07-review-button-forward.png', fullPage: true });
 
   const haptics = await page.evaluate(() => window.__haptics || []);
+  const trustedDirectHaptics = haptics.filter((event) => event.type === 'direct-switch' && event.trusted);
   const vibrateCalls = await page.evaluate(() => window.__vibrateCalls || []);
-  if (haptics.length < 8) {
-    throw new Error(`Expected haptics for select/move/success/error, got ${haptics.length}`);
+  if (trustedDirectHaptics.length < 2) {
+    throw new Error(`Expected trusted haptics from direct board touches, got ${JSON.stringify(haptics)}`);
   }
   expect(vibrateCalls).toEqual([]);
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
+  await expect(page.locator('input[switch][data-lcstudy-direct-haptic]')).toHaveCount(64);
   const allTimeMetricText = await page.locator('#all-time-accuracy').textContent();
   const metricText = await page.locator('#avg-accuracy').textContent();
   const gameMetricText = await page.locator('#game-accuracy').textContent();
@@ -346,7 +359,8 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   console.log(JSON.stringify({
     screenshots: 9,
     haptics: haptics.length,
-    hapticBackend: 'ios-switch',
+    trustedDirectHaptics: trustedDirectHaptics.length,
+    hapticBackend: 'direct-ios-switch',
     allTimeMetricText,
     metricText,
     gameMetricText,

@@ -21,7 +21,11 @@ import {
   getMoveHighlightsForIndex
 } from './state.js';
 import { unlockAudio } from './audio.js';
-import { hapticSelect } from './haptics.js';
+import {
+  createDirectHapticControl,
+  hapticSelect,
+  isDirectHapticControl
+} from './haptics.js';
 
 /** Callback for when a move is submitted */
 let onMoveSubmit = null;
@@ -152,6 +156,9 @@ export function createBoardHtml() {
 
       squareEl.className = `square ${isLight ? 'light' : 'dark'}`;
       squareEl.dataset.square = square;
+
+      const directHapticControl = createDirectHapticControl();
+      if (directHapticControl) squareEl.appendChild(directHapticControl);
 
       squareEls.set(square, squareEl);
       boardEl.appendChild(squareEl);
@@ -420,11 +427,13 @@ function handleSquareClick(event) {
   if (!squareEl) return;
 
   const square = squareEl.dataset.square;
+  const directHaptic = isDirectHapticControl(event.target);
   if (
     suppressedClick &&
     Date.now() < suppressedClick.until &&
     suppressedClick.square === square
   ) {
+    if (directHaptic) return;
     event.preventDefault();
     event.stopPropagation();
     return;
@@ -447,7 +456,7 @@ function handleSquareClick(event) {
     if (getPlayerPieceOnSquare(squareEl)) {
       setSelectedSquare(square);
       squareEl.classList.add('selected');
-      hapticSelect();
+      if (!directHaptic) hapticSelect();
     }
   } else {
     // Already have selection
@@ -472,7 +481,7 @@ function handlePointerDown(event) {
   const piece = getPlayerPieceOnSquare(squareEl);
   if (!piece && !selectedSq) return;
 
-  event.preventDefault();
+  if (!isDirectHapticControl(event.target)) event.preventDefault();
 
   pointerStart = {
     square: squareEl.dataset.square,
@@ -495,7 +504,8 @@ function handlePointerUp(event) {
   const targetSquare = target?.closest?.('.square')?.dataset?.square;
   if (!targetSquare) return;
 
-  event.preventDefault();
+  const directHaptic = isDirectHapticControl(event.target);
+  if (!directHaptic) event.preventDefault();
   event.stopPropagation();
   suppressedClick = { square: targetSquare, until: Date.now() + 250 };
 
@@ -503,7 +513,7 @@ function handlePointerUp(event) {
 
   if (dragged) {
     if (start.hadPlayerPiece && targetSquare !== start.square) {
-      hapticSelect();
+      if (!directHaptic) hapticSelect();
       submitSelectedMove(start.square, targetSquare);
     }
     return;
@@ -522,7 +532,7 @@ function handlePointerUp(event) {
     const squareEl = squareEls.get(start.square);
     setSelectedSquare(start.square);
     squareEl?.classList.add('selected');
-    hapticSelect();
+    if (!directHaptic) hapticSelect();
   }
 }
 

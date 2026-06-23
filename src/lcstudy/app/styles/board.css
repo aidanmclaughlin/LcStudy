@@ -52,6 +52,24 @@
   position: relative;
 }
 
+.direct-haptic-switch {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0.001;
+  appearance: auto;
+  -webkit-appearance: auto;
+  cursor: pointer;
+}
+
+#board.is-loading .direct-haptic-switch,
+#board.reviewing-moves .direct-haptic-switch {
+  pointer-events: none;
+}
+
 .square.light {
   background: var(--board-light);
 }
