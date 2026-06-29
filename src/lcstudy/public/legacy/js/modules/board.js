@@ -33,12 +33,15 @@ let pointerStart = null;
 let suppressedClick = null;
 let boardElement = null;
 let boardInputEnabled = false;
+let dragPreview = null;
 
 const boardsWithListeners = new WeakSet();
 const squareEls = new Map();
 const pieceElsBySquare = new Map();
 const activeHighlightSquares = new Set();
 const activeHintSquares = new Set();
+const DRAG_START_THRESHOLD_PX = 5;
+const SYNTHETIC_CLICK_SUPPRESSION_MS = 900;
 
 const LAST_MOVE_CLASSES = [
   'last-user-move',
@@ -75,6 +78,7 @@ export function setBoardInputEnabled(enabled) {
   if (!boardInputEnabled) {
     pointerStart = null;
     suppressedClick = null;
+    clearDragPreview();
     clearSelection();
   }
 }
@@ -98,6 +102,7 @@ function addBoardEventListeners(boardEl) {
 
   boardEl.addEventListener('click', handleSquareClick);
   boardEl.addEventListener('pointerdown', handlePointerDown);
+  boardEl.addEventListener('pointermove', handlePointerMove);
   boardEl.addEventListener('pointerup', handlePointerUp);
   boardEl.addEventListener('pointercancel', handlePointerCancel);
   boardsWithListeners.add(boardEl);
@@ -146,6 +151,7 @@ export function createBoardHtml() {
   pieceElsBySquare.clear();
   activeHighlightSquares.clear();
   activeHintSquares.clear();
+  clearDragPreview();
   addBoardEventListeners(boardEl);
 
   for (let rank = 8; rank >= 1; rank--) {
@@ -416,6 +422,88 @@ function submitSelectedMove(fromSquare, toSquare) {
   return false;
 }
 
+function beginDragPreview(start) {
+  const piece = start.piece;
+  if (!piece || dragPreview) return;
+
+  const rect = piece.getBoundingClientRect();
+  const ghost = document.createElement('div');
+  const ghostPiece = document.createElement('div');
+
+  ghost.className = 'drag-ghost';
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = `${rect.top}px`;
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.transform = 'translate3d(0, 0, 0)';
+
+  ghostPiece.className = 'drag-ghost-piece';
+  ghostPiece.style.backgroundImage = piece.style.backgroundImage;
+  ghost.appendChild(ghostPiece);
+
+  piece.classList.add('is-dragging-source');
+  document.body.appendChild(ghost);
+
+  dragPreview = {
+    element: ghost,
+    sourcePiece: piece,
+    startX: start.x,
+    startY: start.y,
+    nextX: start.x,
+    nextY: start.y,
+    frame: 0
+  };
+}
+
+function moveDragPreview(clientX, clientY) {
+  if (!dragPreview) return;
+
+  dragPreview.nextX = clientX;
+  dragPreview.nextY = clientY;
+
+  if (dragPreview.frame) return;
+
+  dragPreview.frame = window.requestAnimationFrame(() => {
+    if (!dragPreview) return;
+
+    const dx = dragPreview.nextX - dragPreview.startX;
+    const dy = dragPreview.nextY - dragPreview.startY;
+    dragPreview.element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    dragPreview.frame = 0;
+  });
+}
+
+function clearDragPreview() {
+  if (!dragPreview) return;
+
+  if (dragPreview.frame) {
+    window.cancelAnimationFrame(dragPreview.frame);
+  }
+
+  dragPreview.sourcePiece?.classList.remove('is-dragging-source');
+  dragPreview.element.remove();
+  dragPreview = null;
+}
+
+function releasePointerCapture(event) {
+  const boardEl = getBoardElement();
+  if (!boardEl?.hasPointerCapture?.(event.pointerId)) return;
+
+  try { boardEl.releasePointerCapture(event.pointerId); } catch (e) {}
+}
+
+function shouldSuppressClick(square) {
+  if (!suppressedClick) return false;
+
+  if (Date.now() >= suppressedClick.until) {
+    suppressedClick = null;
+    return false;
+  }
+
+  if (suppressedClick.squares?.has?.(square)) return true;
+  return suppressedClick.square === square;
+}
+
 /**
  * Handle click on a square.
  * @param {Event} event - Click event
@@ -428,11 +516,7 @@ function handleSquareClick(event) {
 
   const square = squareEl.dataset.square;
   const directHaptic = isDirectHapticControl(event.target);
-  if (
-    suppressedClick &&
-    Date.now() < suppressedClick.until &&
-    suppressedClick.square === square
-  ) {
+  if (shouldSuppressClick(square)) {
     if (directHaptic) return;
     event.preventDefault();
     event.stopPropagation();
@@ -481,15 +565,35 @@ function handlePointerDown(event) {
   const piece = getPlayerPieceOnSquare(squareEl);
   if (!piece && !selectedSq) return;
 
-  if (!isDirectHapticControl(event.target)) event.preventDefault();
+  const directHaptic = isDirectHapticControl(event.target);
+  if (!directHaptic) {
+    event.preventDefault();
+    try { getBoardElement()?.setPointerCapture?.(event.pointerId); } catch (e) {}
+  }
 
   pointerStart = {
     square: squareEl.dataset.square,
     hadPlayerPiece: Boolean(piece),
+    piece,
+    directHaptic,
     x: event.clientX,
     y: event.clientY,
     pointerId: event.pointerId
   };
+}
+
+function handlePointerMove(event) {
+  if (!boardInputEnabled) return;
+  if (!pointerStart || pointerStart.pointerId !== event.pointerId) return;
+
+  const distance = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+  if (!pointerStart.directHaptic) event.preventDefault();
+
+  if (!dragPreview && pointerStart.hadPlayerPiece && distance >= DRAG_START_THRESHOLD_PX) {
+    beginDragPreview(pointerStart);
+  }
+
+  moveDragPreview(event.clientX, event.clientY);
 }
 
 function handlePointerUp(event) {
@@ -498,16 +602,21 @@ function handlePointerUp(event) {
 
   const start = pointerStart;
   pointerStart = null;
+  releasePointerCapture(event);
 
-  const dragged = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8;
+  const dragged = Math.hypot(event.clientX - start.x, event.clientY - start.y) > DRAG_START_THRESHOLD_PX;
   const target = document.elementFromPoint(event.clientX, event.clientY);
   const targetSquare = target?.closest?.('.square')?.dataset?.square;
+  clearDragPreview();
   if (!targetSquare) return;
 
-  const directHaptic = isDirectHapticControl(event.target);
+  const directHaptic = start.directHaptic || isDirectHapticControl(event.target);
   if (!directHaptic) event.preventDefault();
   event.stopPropagation();
-  suppressedClick = { square: targetSquare, until: Date.now() + 250 };
+  suppressedClick = {
+    squares: new Set([start.square, targetSquare]),
+    until: Date.now() + SYNTHETIC_CLICK_SUPPRESSION_MS
+  };
 
   const selectedSq = getSelectedSquare();
 
@@ -536,9 +645,11 @@ function handlePointerUp(event) {
   }
 }
 
-function handlePointerCancel() {
+function handlePointerCancel(event) {
   if (!boardInputEnabled) return;
+  releasePointerCapture(event);
   pointerStart = null;
+  clearDragPreview();
 }
 
 /**

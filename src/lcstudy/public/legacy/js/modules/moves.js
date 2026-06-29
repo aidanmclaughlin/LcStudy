@@ -228,7 +228,10 @@ async function applyAutoMoveToBoard(moveDef, isUserMove, delayMs = AUTO_PLAY_DEL
   const applied = applyMoveToEngine(moveDef, isUserMove);
   if (!applied) return null;
 
-  await sleep(delayMs);
+  if (delayMs > 0) {
+    await sleep(delayMs);
+  }
+
   const animated = await animateMove(applied.from, applied.to, () => finishMoveOnBoard(applied));
   if (!animated) finishMoveOnBoard(applied);
   return applied.moveResult;
@@ -299,7 +302,7 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   let moveResult = null;
 
   if (isBestMove) {
-    moveResult = applyMoveToBoard(expectedInfo.move, true);
+    moveResult = await applyAutoMoveToBoard(expectedInfo.move, true, 0);
   } else {
     const intensity = inaccuracyIntensity(moveEvaluation.accuracy);
     const shakeDuration = flashBoard('wrong', intensity);

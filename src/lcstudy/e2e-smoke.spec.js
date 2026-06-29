@@ -129,13 +129,24 @@ async function squareCenter(page, square) {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-async function dragMove(page, from, to) {
+async function dragMove(page, from, to, options = {}) {
   const start = await squareCenter(page, from);
   const end = await squareCenter(page, to);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 8 });
+  await page.mouse.move((start.x + end.x) / 2, (start.y + end.y) / 2, { steps: 4 });
+
+  if (options.expectPreview) {
+    await expect(page.locator('.drag-ghost')).toHaveCount(1);
+    await expect(page.locator(`[data-square="${from}"] .piece.is-dragging-source`)).toHaveCount(1);
+  }
+
+  await page.mouse.move(end.x, end.y, { steps: 4 });
   await page.mouse.up();
+
+  if (options.expectPreview) {
+    await expect(page.locator('.drag-ghost')).toHaveCount(0);
+  }
 }
 
 async function requireSquareClass(page, square, className) {
@@ -256,7 +267,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const firstReply = sessionData.moves[sessionData.ply + 1];
   const [firstFrom, firstTo] = moveParts(firstMove.uci);
   const [firstReplyFrom] = moveParts(firstReply.uci);
-  await dragMove(page, firstFrom, firstTo);
+  await dragMove(page, firstFrom, firstTo, { expectPreview: true });
   await page.waitForSelector('.accuracy-burst');
   await page.waitForTimeout(150);
   await page.screenshot({ path: 'e2e-screenshots/02a-accuracy-burst.png', fullPage: true });
