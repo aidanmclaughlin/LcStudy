@@ -16,22 +16,25 @@ import {
   incrementMoveCounter,
   pushPgnMove,
   pushMoveHistory,
-  getMoveCounter,
   setLastMoveHighlight
 } from './state.js';
-import { animateMove, showMoveHint, updateBoardAfterMove } from './board.js';
+import { animateMove, finishActiveAnimations, showMoveHint, updateBoardAfterMove } from './board.js';
 import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, showAccuracyBurst, updateMoveFeedback } from './effects.js';
-import { updateCharts, updateStatistics } from './charts.js';
+import { scheduleChartsUpdate } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
 import { hapticMove, hapticSuccess, hapticError, hapticInaccuracy } from './haptics.js';
+import { promptBegin, promptSubmit, endGameClock } from './timeclock.js';
 
-/** Whether the completed mate has already been saved for the current session */
+/** Whether the completed game has already been saved for the current session */
 let completedMateSaved = false;
 let movePlaybackInProgress = false;
 
-const AUTO_PLAY_DELAY_MS = 320;
-const WRONG_MOVE_REVEAL_DELAY_MS = 180;
+/** Latest move submitted while playback was busy; replayed on release */
+let pendingSubmission = null;
+
+const AUTO_PLAY_DELAY_MS = 120;
+const WRONG_MOVE_REVEAL_DELAY_MS = 140;
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 
 /**
@@ -39,6 +42,17 @@ const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG
  */
 export function clearPendingCompletedGame() {
   completedMateSaved = false;
+  pendingSubmission = null;
+}
+
+/** Whether the current game's result has already been persisted. */
+export function isGameSaved() {
+  return completedMateSaved;
+}
+
+/** Mark the current game as persisted (e.g. after an incomplete-game save). */
+export function markGameSaved() {
+  completedMateSaved = true;
 }
 
 /**
@@ -302,14 +316,16 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   let moveResult = null;
 
   if (isBestMove) {
-    moveResult = await applyAutoMoveToBoard(expectedInfo.move, true, 0);
+    // The user just made this exact move; commit it instantly rather than
+    // replaying an animation of their own input.
+    moveResult = applyMoveToBoard(expectedInfo.move, true);
   } else {
     const intensity = inaccuracyIntensity(moveEvaluation.accuracy);
     const shakeDuration = flashBoard('wrong', intensity);
     hapticInaccuracy(moveEvaluation.accuracy);
     setCorrectStreak(0);
 
-    await sleep(Math.min(380, Math.max(WRONG_MOVE_REVEAL_DELAY_MS, shakeDuration * 0.55)));
+    await sleep(Math.min(240, Math.max(120, shakeDuration * 0.5)));
     showAccuracyBurst(moveEvaluation.accuracy);
     updateMoveFeedback({
       ...moveEvaluation,
@@ -346,8 +362,7 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   pushMoveScore(scoreEvaluation.accuracy);
   incrementMoveCounter();
   updateMoveFeedback(scoreEvaluation);
-  updateCharts();
-  updateStatistics(getMoveCounter());
+  scheduleChartsUpdate();
 
   const sessionCache = getSessionCache();
   updateSessionCache({ currentIndex: expectedInfo.index + 1 });
@@ -377,8 +392,9 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     const completedByMate = Boolean(chessEngine?.isCheckmate?.());
     if (completedByMate && !completedMateSaved) {
       completedMateSaved = true;
+      endGameClock();
       celebrateCheckmate(moveResult.to);
-      await saveCompletedGame('finished');
+      saveCompletedGame('finished');
     }
   }
 
@@ -386,11 +402,27 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
 }
 
 /**
+ * Begin timing the next prompt if the game still has moves to play.
+ */
+function beginNextPromptIfAny() {
+  const sessionCache = getSessionCache();
+  if (sessionCache.moves.length > 0 && sessionCache.currentIndex < sessionCache.moves.length) {
+    promptBegin();
+  }
+}
+
+/**
  * Submit one move for the current prompt.
+ * A move submitted while the previous one is still playing back is queued
+ * (latest wins) and replayed as soon as playback releases, so fast input is
+ * never dropped.
  * @param {string} moveUci - UCI move string (e.g., 'e2e4')
  */
 export async function submitMove(moveUci) {
-  if (movePlaybackInProgress) return;
+  if (movePlaybackInProgress) {
+    pendingSubmission = moveUci;
+    return;
+  }
 
   const sessionId = getSessionId();
   const sessionCache = getSessionCache();
@@ -399,6 +431,9 @@ export async function submitMove(moveUci) {
 
   movePlaybackInProgress = true;
   try {
+    // Never let the visible board lag the engine while accepting new input.
+    finishActiveAnimations();
+
     const expectedInfo = getExpectedPlayerMove();
     if (!expectedInfo) {
       console.warn('No expected move remaining');
@@ -439,15 +474,24 @@ export async function submitMove(moveUci) {
       }
 
       console.warn('Unscored wrong move', normalized);
+      promptSubmit();
       await completeExpectedMove(expectedInfo, buildMissedMoveEvaluation(normalized), false);
       return;
     }
 
     hapticMove();
+    promptSubmit();
     normalized = moveEvaluation.uci.toLowerCase();
     const isBestMove = normalized === expectedUci;
     await completeExpectedMove(expectedInfo, moveEvaluation, isBestMove);
   } finally {
     movePlaybackInProgress = false;
+    beginNextPromptIfAny();
+
+    const queued = pendingSubmission;
+    pendingSubmission = null;
+    if (queued) {
+      Promise.resolve().then(() => submitMove(queued));
+    }
   }
 }

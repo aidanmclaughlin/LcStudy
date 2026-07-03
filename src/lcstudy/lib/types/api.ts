@@ -11,6 +11,8 @@
 export interface SessionCreateRequest {
   maia_level?: number;
   custom_fen?: string | null;
+  /** Game to avoid picking (the client's current in-progress game) */
+  exclude_game_id?: string | null;
 }
 
 /** Response from creating a new game session */
@@ -42,6 +44,9 @@ export interface SessionCompleteRequest {
   accuracy_history?: number[];
   maia_level?: number;
   duration_ms?: number | null;
+  think_time_ms?: number | null;
+  move_times_ms?: number[] | null;
+  suggested_think_ms?: number | null;
   result?: string;
 }
 
@@ -94,7 +99,35 @@ export interface GameHistoryEntry {
   accuracy_history: number[];
   maia_level: number;
   duration_ms: number | null;
+  think_time_ms: number | null;
+  suggested_think_ms: number | null;
   result: "finished" | "incomplete";
+}
+
+// =============================================================================
+// Coach API Types
+// =============================================================================
+
+/** Per-bin posterior summary in the coach response */
+export interface CoachBinSummary {
+  minutes: number;
+  games: number;
+  hours: number;
+  rate_mean: number;
+  rate_sd: number;
+  p_best: number;
+}
+
+/** Response from the think-time coach endpoint */
+export interface CoachResponse {
+  suggested_think_ms: number;
+  per_move_ms: number;
+  status: "exploring" | "learning" | "confident";
+  note: string;
+  n_games: number;
+  beta: number;
+  bins: CoachBinSummary[];
+  skill_series: number[];
 }
 
 /** Response from the game history endpoint */

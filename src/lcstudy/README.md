@@ -35,6 +35,12 @@ The classic LcStudy Leela-vs-Maia trainer now runs on Vercel. The UI, board anim
 - **Sessions**: Active sessions are stored in Postgres (`sessions` table) so serverless invocations can validate moves, handle retries, and track Maia replies exactly like the FastAPI version.
 - **History & stats**: Completed games land in `user_games` with average retries, total moves, and Maia level. The legacy `/api/v1/game-history` and `/api/v1/stats` endpoints read from this table to feed the charts.
 - **Auth**: NextAuth with Google keeps the experience gated per player. Session cookies are forwarded automatically to the legacy fetch calls.
+- **Think-time coach**: The client measures deliberation time per move (`timeclock.js` — clock runs from prompt-ready to submission, pauses while the tab is hidden) and stores `think_time_ms`, `move_times_ms`, and the suggested budget with each game. `GET /api/v1/coach` (`lib/coach.ts`) fits a small Bayesian model on the history — a tempo effect (thinking longer looks better *now*) separated from learning (skill gain per hour of practice, one posterior per think-budget bin: 4/8/15/30 min) — and Thompson-samples the budget shown in the "Think Budget" panel. With few games it deliberately rotates budgets to explore; per-game difficulty offsets come from the Leela policy blobs in the PGNs and are cached in `games.difficulty`. Abandoned games with ≥5 scored moves are saved as `incomplete` on `pagehide` so their practice time still informs the model.
+- **Responsiveness**: The next session is prefetched during play so New Game swaps instantly; move playback commits engine state fast with short animations, and input during playback is queued rather than dropped; Chart.js is vendored locally and loads in the background so it never delays the first move.
+
+### Local testing without Google sign-in
+
+`node scripts/mint-dev-cookie.mjs [email]` inserts a throwaway user and prints a session token; set it as the `next-auth.session-token` cookie on `localhost` to drive the app without OAuth (same technique as the e2e spec).
 
 ## Generating Training Games
 

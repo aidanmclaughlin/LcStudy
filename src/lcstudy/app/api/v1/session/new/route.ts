@@ -25,7 +25,8 @@ export async function POST(request: Request) {
 
   const { session: gameSession, game } = await createSessionForUser({
     userId: session.user.id,
-    maiaLevel
+    maiaLevel,
+    excludeGameId: body.exclude_game_id ?? null
   });
 
   const response: SessionCreateResponse = {

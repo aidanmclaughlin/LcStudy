@@ -652,6 +652,23 @@ function handlePointerCancel(event) {
   clearDragPreview();
 }
 
+/** Ghost flight time; must match the .move-ghost CSS transition duration */
+const MOVE_GHOST_MS = 170;
+
+/** Force-commit callbacks for in-flight move animations */
+const activeMoveAnimations = new Set();
+
+/**
+ * Instantly complete any in-flight move animations, committing their final
+ * board state. Called before processing new input so a fast player never
+ * interacts with a board that lags the engine.
+ */
+export function finishActiveAnimations() {
+  for (const finish of Array.from(activeMoveAnimations)) {
+    finish();
+  }
+}
+
 /**
  * Animate a piece moving between squares.
  * @param {string} fromSquare - Source square
@@ -688,11 +705,15 @@ export function animateMove(fromSquare, toSquare, commitMove = null) {
   document.body.appendChild(ghost);
 
   return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.04)`;
-    });
+    let timer = 0;
+    let finished = false;
 
-    window.setTimeout(() => {
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      activeMoveAnimations.delete(finish);
+      window.clearTimeout(timer);
+
       if (typeof commitMove === 'function') {
         commitMove();
       }
@@ -700,7 +721,15 @@ export function animateMove(fromSquare, toSquare, commitMove = null) {
       piece.style.visibility = '';
       if (existingPiece) existingPiece.style.visibility = '';
       resolve(true);
-    }, 280);
+    };
+
+    activeMoveAnimations.add(finish);
+
+    requestAnimationFrame(() => {
+      ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.04)`;
+    });
+
+    timer = window.setTimeout(finish, MOVE_GHOST_MS);
   });
 }
 

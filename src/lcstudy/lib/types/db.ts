@@ -36,6 +36,9 @@ export interface UserGameRow {
   accuracyHistory: number[];
   maiaLevel: number | null;
   durationMs: number | null;
+  thinkTimeMs: number | null;
+  moveTimesMs: number[];
+  suggestedThinkMs: number | null;
 }
 
 /** Raw game row from database query */
@@ -52,6 +55,9 @@ export interface UserGameDbRow {
   accuracy_history: unknown;
   maia_level: number | null;
   duration_ms: number | null;
+  think_time_ms: number | null;
+  move_times_ms: unknown;
+  suggested_think_ms: number | null;
 }
 
 /** Parameters for recording a game result */
@@ -67,6 +73,9 @@ export interface RecordGameResultParams {
   accuracyHistory: number[];
   maiaLevel: number | null;
   durationMs: number | null;
+  thinkTimeMs?: number | null;
+  moveTimesMs?: number[] | null;
+  suggestedThinkMs?: number | null;
 }
 
 // =============================================================================

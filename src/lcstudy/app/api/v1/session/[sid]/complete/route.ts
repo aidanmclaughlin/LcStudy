@@ -38,6 +38,9 @@ export async function POST(
       accuracyHistory: payload.accuracy_history ?? [],
       maiaLevel: payload.maia_level,
       durationMs: payload.duration_ms ?? null,
+      thinkTimeMs: payload.think_time_ms ?? null,
+      moveTimesMs: payload.move_times_ms ?? null,
+      suggestedThinkMs: payload.suggested_think_ms ?? null,
       result: payload.result ?? "finished"
     });
   } catch (error: unknown) {

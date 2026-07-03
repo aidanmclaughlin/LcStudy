@@ -111,9 +111,11 @@ export function ensureChessJs() {
 }
 
 /**
- * Load all required dependencies.
+ * Load the dependencies the game needs before the first move.
+ * Chart.js is intentionally NOT awaited here — charts initialize in the
+ * background (see main.js) so the chart bundle never delays play.
  * @returns {Promise<void>}
  */
 export async function loadDependencies() {
-  await Promise.all([ensureChartJs(), ensureChessJs()]);
+  await ensureChessJs();
 }

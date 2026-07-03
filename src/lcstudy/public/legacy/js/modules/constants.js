@@ -3,8 +3,8 @@
  * @module constants
  */
 
-/** CDN URL for Chart.js library */
-export const CHART_JS_CDN = 'https://cdn.jsdelivr.net/npm/chart.js';
+/** Chart.js library path (vendored locally; no CDN round-trip) */
+export const CHART_JS_CDN = '/legacy/vendor/chart.umd.js';
 
 /** Local path to chess.js ESM module */
 export const CHESS_JS_PATH = '/legacy/vendor/chess.esm.js';

@@ -266,16 +266,14 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const firstMove = sessionData.moves[sessionData.ply];
   const firstReply = sessionData.moves[sessionData.ply + 1];
   const [firstFrom, firstTo] = moveParts(firstMove.uci);
-  const [firstReplyFrom] = moveParts(firstReply.uci);
+  const [, firstReplyTo] = moveParts(firstReply.uci);
   await dragMove(page, firstFrom, firstTo, { expectPreview: true });
   await page.waitForSelector('.accuracy-burst');
-  await page.waitForTimeout(150);
   await page.screenshot({ path: 'e2e-screenshots/02a-accuracy-burst.png', fullPage: true });
-  await page.waitForTimeout(120);
-  expect(await pieceAt(page, firstReplyFrom)).not.toBeNull();
   await page.waitForFunction((replySan) => (
     (document.querySelector('#move-list')?.textContent || '').includes(replySan)
   ), firstReply.san);
+  expect(await pieceAt(page, firstReplyTo)).not.toBeNull();
   await page.waitForFunction(() => document.querySelector('#move-feedback')?.textContent?.includes('100'));
   await requireMoveHighlight(page, 'user', firstMove);
   await requireMoveHighlight(page, 'opponent', firstReply);
@@ -400,6 +398,8 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   expect(accuracyView.firstGame.countText).toMatch(/^1 played \/ [\d,.]+h left$/);
   expect(accuracyView.firstGame.title).toContain('Power-law estimate from 1 game');
   expect(accuracyView.firstGame.chartPoints).toBe(1);
+  await sql`DELETE FROM users WHERE email = ${email};`;
+
   console.log(JSON.stringify({
     screenshots: 9,
     haptics: haptics.length,
@@ -480,7 +480,8 @@ test.describe('desktop checkmate', () => {
 
     await page.goto('/', { waitUntil: 'networkidle' });
     await page.waitForSelector('#board .piece');
-    expect(sessionNewCalls).toBe(1);
+    // Initial game load plus the background prefetch of the next game.
+    await expect.poll(() => sessionNewCalls).toBe(2);
 
     const expectedMate = fixture.moves[fixture.ply];
     const [expectedFrom, expectedTo] = moveParts(expectedMate.uci);
@@ -528,9 +529,13 @@ test.describe('desktop checkmate', () => {
     await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
     await expect.poll(() => completeCalls).toBe(1);
     await page.waitForTimeout(3200);
-    expect(sessionNewCalls).toBe(1);
+    expect(sessionNewCalls).toBe(2);
     expect(completePayloads[0]?.accuracy_history).toEqual([legalWrong.accuracy]);
     expect(completePayloads[0]?.duration_ms).toBeGreaterThan(0);
+    expect(completePayloads[0]?.think_time_ms).toBeGreaterThan(0);
+    expect(completePayloads[0]?.move_times_ms).toHaveLength(1);
+    const suggested = completePayloads[0]?.suggested_think_ms;
+    expect(suggested === null || (typeof suggested === 'number' && suggested > 0)).toBe(true);
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 
@@ -554,7 +559,8 @@ test.describe('desktop checkmate', () => {
     await expect(page.locator('#completion-overlay')).toBeVisible();
 
     await page.locator('#completion-new').click();
-    await expect.poll(() => sessionNewCalls).toBe(2);
+    // New Game consumes the prefetched session and prefetches another.
+    await expect.poll(() => sessionNewCalls).toBe(3);
     await expect(page.locator('#completion-overlay')).toBeHidden();
     expect(completeCalls).toBe(1);
     await page.waitForFunction((from) => (

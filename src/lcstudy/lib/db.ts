@@ -118,7 +118,7 @@ export async function ensureGameRecord(args: {
  */
 export async function getUserGameHistory(userId: string): Promise<UserGameRow[]> {
   const { rows } = await sql<UserGameDbRow>`
-    SELECT user_id, game_id, attempts, solved, accuracy, played_at, total_moves, average_retries, average_accuracy, accuracy_history, maia_level, duration_ms
+    SELECT user_id, game_id, attempts, solved, accuracy, played_at, total_moves, average_retries, average_accuracy, accuracy_history, maia_level, duration_ms, think_time_ms, move_times_ms, suggested_think_ms
     FROM user_games
     WHERE user_id = ${userId}
     ORDER BY played_at ASC;
@@ -158,12 +158,56 @@ export async function recordGameResult(params: RecordGameResultParams): Promise<
     averageAccuracy,
     accuracyHistory,
     maiaLevel,
-    durationMs
+    durationMs,
+    thinkTimeMs,
+    moveTimesMs,
+    suggestedThinkMs
   } = params;
 
   await sql`
-    INSERT INTO user_games (user_id, game_id, attempts, solved, accuracy, total_moves, average_retries, average_accuracy, accuracy_history, maia_level, duration_ms)
-    VALUES (${userId}, ${gameId}, ${attempts}, ${solved}, ${accuracy}, ${totalMoves}, ${averageRetries}, ${averageAccuracy}, ${JSON.stringify(accuracyHistory)}, ${maiaLevel}, ${durationMs})
+    INSERT INTO user_games (user_id, game_id, attempts, solved, accuracy, total_moves, average_retries, average_accuracy, accuracy_history, maia_level, duration_ms, think_time_ms, move_times_ms, suggested_think_ms)
+    VALUES (${userId}, ${gameId}, ${attempts}, ${solved}, ${accuracy}, ${totalMoves}, ${averageRetries}, ${averageAccuracy}, ${JSON.stringify(accuracyHistory)}, ${maiaLevel}, ${durationMs}, ${thinkTimeMs ?? null}, ${moveTimesMs ? JSON.stringify(moveTimesMs) : null}, ${suggestedThinkMs ?? null})
+  `;
+}
+
+// =============================================================================
+// Game Difficulty Cache
+// =============================================================================
+
+/**
+ * Fetch cached difficulty values for a set of game IDs.
+ * @param gameIds - Game IDs to look up
+ * @returns Map of game ID to difficulty (only entries with a cached value)
+ */
+export async function getGameDifficulties(gameIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (gameIds.length === 0) return result;
+
+  const { rows } = await sql.query<{ id: string; difficulty: string | number | null }>(
+    "SELECT id, difficulty FROM games WHERE id = ANY($1)",
+    [gameIds]
+  );
+
+  for (const row of rows) {
+    const value = row.difficulty === null ? null : Number(row.difficulty);
+    if (value !== null && Number.isFinite(value)) {
+      result.set(row.id, value);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Cache a computed difficulty value for a game.
+ * @param gameId - Game ID
+ * @param difficulty - Expected policy-sampler accuracy (0-100)
+ */
+export async function setGameDifficulty(gameId: string, difficulty: number): Promise<void> {
+  await sql`
+    UPDATE games
+    SET difficulty = ${difficulty}
+    WHERE id = ${gameId};
   `;
 }
 
@@ -180,6 +224,24 @@ export async function deleteSessionsForUser(userId: string): Promise<void> {
   await sql`
     DELETE FROM sessions
     WHERE user_id = ${userId};
+  `;
+}
+
+/**
+ * Delete a user's stale sessions, leaving recent ones alone.
+ * Allows an active game and a prefetched next game to coexist while keeping
+ * the table from accumulating abandoned rows.
+ * @param userId - User's UUID
+ * @param maxAgeHours - Sessions untouched for longer than this are removed
+ */
+export async function deleteStaleSessionsForUser(
+  userId: string,
+  maxAgeHours = 48
+): Promise<void> {
+  await sql`
+    DELETE FROM sessions
+    WHERE user_id = ${userId}
+      AND updated_at < NOW() - make_interval(hours => ${maxAgeHours});
   `;
 }
 
@@ -332,6 +394,11 @@ function mapUserGameRow(row: UserGameDbRow): UserGameRow {
       ? row.accuracy_history.map((value: unknown) => Number(value))
       : [],
     maiaLevel: row.maia_level,
-    durationMs: row.duration_ms
+    durationMs: row.duration_ms,
+    thinkTimeMs: row.think_time_ms,
+    moveTimesMs: Array.isArray(row.move_times_ms)
+      ? row.move_times_ms.map((value: unknown) => Number(value))
+      : [],
+    suggestedThinkMs: row.suggested_think_ms
   };
 }

@@ -91,6 +91,24 @@ export default async function HomePage() {
               </div>
             </div>
 
+            {/* Think-Time Coach */}
+            <div id="coach-panel" className="panel panel-coach" aria-label="Think budget">
+              <div className="panel-section-heading">
+                <h2>Think Budget</h2>
+                <span id="coach-status" className="panel-count">loading</span>
+              </div>
+              <div className="coach-row">
+                <span id="coach-clock" className="coach-clock">0:00</span>
+                <span className="coach-sep">/</span>
+                <span id="coach-budget" className="coach-budget">--:--</span>
+                <span id="coach-pace" className="coach-pace" />
+              </div>
+              <div className="coach-bar" aria-hidden="true">
+                <div id="coach-bar-fill" className="coach-bar-fill" />
+              </div>
+              <div id="coach-note" className="coach-note">Loading coach…</div>
+            </div>
+
             {/* Hours Left Summary */}
             <div className="panel panel-goal">
               <div className="panel-section-heading">

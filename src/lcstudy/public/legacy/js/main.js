@@ -5,7 +5,7 @@
  * @module main
  */
 
-import { MAIA_LEVELS, STARTING_FEN } from './modules/constants.js';
+import { MAIA_LEVELS, STARTING_FEN, PIECE_IMAGES } from './modules/constants.js';
 import {
   setSessionId,
   updateSessionCache,
@@ -16,16 +16,17 @@ import {
   startGameTimer,
   resetMoveHistoryState,
   getSessionCache,
+  getMoveAccuracies,
   setSoundEnabled
 } from './modules/state.js';
-import { loadDependencies } from './modules/loaders.js';
+import { loadDependencies, ensureChartJs } from './modules/loaders.js';
 import { initBoard, setBoardInputEnabled, setFlip, setReviewingIndicator, updateBoardFromFen, setMoveSubmitCallback } from './modules/board.js';
-import { initializeCharts, resetMoveAccuracyChart, updateCharts, updateStatistics } from './modules/charts.js';
+import { initializeCharts, resetMoveAccuracyChart, scheduleChartsUpdate } from './modules/charts.js';
 import { initAudioUnlockListeners, unlockAudio } from './modules/audio.js';
 import { initializeHaptics } from './modules/haptics.js';
 import { hideCompletionOverlay, updateMoveFeedback } from './modules/effects.js';
 import { updatePgnDisplay } from './modules/pgn.js';
-import { loadGameHistory, createSession } from './modules/api.js';
+import { loadGameHistory, createSession, saveCompletedGame } from './modules/api.js';
 import {
   submitMove,
   buildRoundsFromMoves,
@@ -33,12 +34,19 @@ import {
   coerceIndex,
   applyMoveToBoard,
   isPlayerMove,
-  clearPendingCompletedGame
+  clearPendingCompletedGame,
+  isGameSaved,
+  markGameSaved
 } from './modules/moves.js';
 import { initKeyboardNavigation, initMoveReviewButtons, navigateToMove } from './modules/history.js';
+import { startGameClock, endGameClock, promptBegin } from './modules/timeclock.js';
+import { refreshCoach, applyCoachBudget, startCoachTicker } from './modules/coach.js';
 
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 let activeGameLoadId = 0;
+
+/** In-flight request for the next game, started while the current one is played */
+let prefetchedSessionPromise = null;
 
 /**
  * Initialize sound settings.
@@ -51,6 +59,34 @@ function initSoundSettings() {
   } catch (e) {}
 }
 
+function pickMaiaLevel() {
+  return MAIA_LEVELS[Math.floor(Math.random() * MAIA_LEVELS.length)];
+}
+
+/**
+ * Start fetching the next session in the background so "New Game" is instant.
+ * @param {string|null} excludeGameId - The game currently being played
+ */
+function prefetchNextSession(excludeGameId) {
+  prefetchedSessionPromise = createSession(pickMaiaLevel(), excludeGameId)
+    .catch((error) => {
+      if (DEBUG_LOGS) console.debug('Session prefetch failed', error);
+      return null;
+    });
+}
+
+/**
+ * Persist an abandoned game (≥5 scored moves) before its state is reset.
+ */
+function saveAbandonedGameIfNeeded() {
+  if (isGameSaved()) return;
+  if (getMoveAccuracies().length < 5) return;
+
+  markGameSaved();
+  endGameClock();
+  saveCompletedGame('incomplete');
+}
+
 /**
  * Start a new game session.
  */
@@ -61,14 +97,21 @@ async function startNewGame() {
   hideCompletionOverlay();
   setReviewingIndicator(false);
 
-  // Pick random Maia level
-  const maiaLevel = MAIA_LEVELS[Math.floor(Math.random() * MAIA_LEVELS.length)];
+  saveAbandonedGameIfNeeded();
+
+  const maiaLevel = pickMaiaLevel();
   window.currentMaiaLevel = maiaLevel;
 
-  // Create session on server
+  // Use the prefetched session when available; fall back to a live request.
   let data = null;
   try {
-    data = await createSession(maiaLevel);
+    if (prefetchedSessionPromise) {
+      data = await prefetchedSessionPromise;
+      prefetchedSessionPromise = null;
+    }
+    if (!data) {
+      data = await createSession(maiaLevel);
+    }
   } catch (error) {
     if (loadId === activeGameLoadId) {
       updateMoveFeedback({ error: true });
@@ -137,8 +180,7 @@ async function startNewGame() {
   resetGameProgress();
   resetMoveHistoryState();
   resetMoveAccuracyChart();
-  updateCharts();
-  updateStatistics();
+  scheduleChartsUpdate();
   initSoundSettings();
   setCurrentFen(startingFen);
   setLiveFen(startingFen);
@@ -173,8 +215,35 @@ async function startNewGame() {
   startGameTimer();
   setBoardInputEnabled(true);
 
+  // Think-time coach: apply the budget and start the clock on the first prompt
+  applyCoachBudget();
+  startGameClock();
+  promptBegin();
+
+  // Warm the next game while this one is played
+  prefetchNextSession(sessionCache.gameId);
+
   // Set up audio unlock listeners
   initAudioUnlockListeners();
+}
+
+/**
+ * Decode piece SVGs before they are first needed so the first moves never
+ * flash empty squares.
+ */
+function warmPieceImages() {
+  const warm = () => {
+    Object.values(PIECE_IMAGES).forEach((url) => {
+      const img = new Image();
+      img.src = url;
+    });
+  };
+
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(warm, { timeout: 2000 });
+  } else {
+    window.setTimeout(warm, 300);
+  }
 }
 
 /**
@@ -182,19 +251,29 @@ async function startNewGame() {
  */
 async function bootstrap() {
   try {
-    // Load dependencies
+    // Load what the first move needs (chess.js only — charts come later)
     await loadDependencies();
 
     // Initialize UI
     initBoard();
     initializeHaptics();
     setBoardInputEnabled(false);
-    initializeCharts();
+    startCoachTicker();
 
     // Set up move submission callback
     setMoveSubmitCallback(submitMove);
 
-    // Load history and start the first game in parallel.
+    // Charts initialize in the background; gameplay never waits on them.
+    ensureChartJs()
+      .then(() => {
+        initializeCharts();
+        scheduleChartsUpdate();
+      })
+      .catch((err) => console.warn('Charts unavailable', err));
+
+    // Coach suggestion, history, and the first game load in parallel.
+    refreshCoach();
+    warmPieceImages();
     await Promise.all([
       loadGameHistory(),
       startNewGame()
@@ -219,6 +298,11 @@ document.getElementById('completion-new')?.addEventListener('click', async () =>
 
 document.getElementById('completion-review')?.addEventListener('click', () => {
   navigateToMove(-2);
+});
+
+// Persist abandoned games when the tab goes away (keepalive request).
+window.addEventListener('pagehide', () => {
+  saveAbandonedGameIfNeeded();
 });
 
 // =============================================================================

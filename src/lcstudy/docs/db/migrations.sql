@@ -56,3 +56,13 @@ ALTER TABLE user_games ADD COLUMN IF NOT EXISTS maia_level INTEGER DEFAULT 1500;
 ALTER TABLE user_games ADD COLUMN IF NOT EXISTS average_accuracy NUMERIC;
 ALTER TABLE user_games ADD COLUMN IF NOT EXISTS accuracy_history JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE user_games ADD COLUMN IF NOT EXISTS duration_ms INTEGER;
+
+-- Think-time coach: active deliberation time (excludes tab-hidden pauses),
+-- per-move breakdown, and the budget the coach suggested for the game.
+ALTER TABLE user_games ADD COLUMN IF NOT EXISTS think_time_ms INTEGER;
+ALTER TABLE user_games ADD COLUMN IF NOT EXISTS move_times_ms JSONB;
+ALTER TABLE user_games ADD COLUMN IF NOT EXISTS suggested_think_ms INTEGER;
+
+-- Per-game predictability offset (expected accuracy of sampling Leela's own
+-- policy), computed lazily from the PGN analysis blobs and cached here.
+ALTER TABLE games ADD COLUMN IF NOT EXISTS difficulty NUMERIC;

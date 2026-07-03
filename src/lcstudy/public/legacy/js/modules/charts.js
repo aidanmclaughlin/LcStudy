@@ -167,6 +167,30 @@ export function updateCharts() {
   updateMoveAccuracyChart();
 }
 
+let chartsUpdateScheduled = false;
+
+/**
+ * Coalesced, deferred chart + stats refresh.
+ * Keeps Chart.js work off the move-handling hot path: many calls in one
+ * frame collapse into a single update on the next animation frame.
+ */
+export function scheduleChartsUpdate() {
+  if (chartsUpdateScheduled) return;
+  chartsUpdateScheduled = true;
+
+  const run = () => {
+    chartsUpdateScheduled = false;
+    updateCharts();
+    updateStatistics();
+  };
+
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(() => window.setTimeout(run, 0));
+  } else {
+    setTimeout(run, 0);
+  }
+}
+
 /**
  * Update the chart with cumulative weighted accuracy over completed games.
  */

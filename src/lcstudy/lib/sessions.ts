@@ -15,7 +15,7 @@ import { randomUUID } from "crypto";
 import {
   createSessionRecord,
   deleteSessionById,
-  deleteSessionsForUser,
+  deleteStaleSessionsForUser,
   ensureGameRecord,
   getSessionRecord,
   getUserPlayedGameIds,
@@ -35,6 +35,8 @@ import {
 export interface CreateSessionOptions {
   userId: string;
   maiaLevel: number;
+  /** Game the client is currently playing; excluded so a prefetched next game differs */
+  excludeGameId?: string | null;
 }
 
 /** Result of session creation */
@@ -52,6 +54,9 @@ export interface FinalizeSessionInput {
   accuracyHistory: number[];
   maiaLevel?: number | null;
   durationMs?: number | null;
+  thinkTimeMs?: number | null;
+  moveTimesMs?: number[] | null;
+  suggestedThinkMs?: number | null;
   result?: string;
 }
 
@@ -63,7 +68,8 @@ export interface FinalizeSessionInput {
  * Create a new game session for a user.
  *
  * This function:
- * 1. Deletes any existing sessions for the user
+ * 1. Cleans up the user's stale sessions (recent ones survive, so an active
+ *    game and a prefetched next game can coexist)
  * 2. Picks a game the user hasn't played (or random if all played)
  * 3. Creates the session with initial state
  *
@@ -73,12 +79,15 @@ export interface FinalizeSessionInput {
 export async function createSessionForUser(
   options: CreateSessionOptions
 ): Promise<CreateSessionResult> {
-  const { userId, maiaLevel } = options;
+  const { userId, maiaLevel, excludeGameId } = options;
 
   const [, playedGameIds] = await Promise.all([
-    deleteSessionsForUser(userId),
+    deleteStaleSessionsForUser(userId),
     getUserPlayedGameIds(userId)
   ]);
+  if (excludeGameId) {
+    playedGameIds.add(excludeGameId);
+  }
   const game = pickPrecomputedGame(playedGameIds);
   const effectiveMaiaLevel = game.metadata.maiaLevel ?? maiaLevel;
 
@@ -166,7 +175,10 @@ export async function finalizeSession(input: FinalizeSessionInput): Promise<void
     averageAccuracy,
     accuracyHistory,
     maiaLevel: input.maiaLevel ?? session.maiaLevel,
-    durationMs: input.durationMs ?? null
+    durationMs: input.durationMs ?? null,
+    thinkTimeMs: input.thinkTimeMs ?? null,
+    moveTimesMs: input.moveTimesMs ?? null,
+    suggestedThinkMs: input.suggestedThinkMs ?? null
   });
 
   // Clean up the session
