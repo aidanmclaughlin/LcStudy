@@ -19,9 +19,15 @@ import { Chess } from "chess.js";
 export interface MoveEvaluation {
   uci: string;
   san: string;
+  /** Raw network policy prior, percent */
   policy: number;
+  /** Partial credit 0-100. Blob v1: prior ratio; v2: Q-based win% loss curve */
   accuracy: number;
   best: boolean;
+  /** Search visit share, percent (blob v2 only) */
+  visits?: number;
+  /** Search value Q in [-1, 1] from side to move (blob v2 only) */
+  q?: number;
 }
 
 /** A single move in UCI and SAN notation */
@@ -144,11 +150,13 @@ function parseAnalysisComment(comment: string | undefined): MoveEvaluation[] | u
       s: string;
       p: number;
       a: number;
+      n?: number;
+      q?: number;
     }>;
     best?: string;
   };
 
-  if (payload.v !== 1 || !Array.isArray(payload.moves) || !payload.best) {
+  if ((payload.v !== 1 && payload.v !== 2) || !Array.isArray(payload.moves) || !payload.best) {
     throw new Error("Unsupported LC0 analysis comment");
   }
 
@@ -157,7 +165,9 @@ function parseAnalysisComment(comment: string | undefined): MoveEvaluation[] | u
     san: move.s,
     policy: Number(move.p),
     accuracy: Number(move.a),
-    best: move.u.toLowerCase() === payload.best?.toLowerCase()
+    best: move.u.toLowerCase() === payload.best?.toLowerCase(),
+    ...(move.n !== undefined ? { visits: Number(move.n) } : {}),
+    ...(move.q !== undefined ? { q: Number(move.q) } : {})
   }));
 }
 

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import hashlib
 import io
 import json
+import math
 import random
 import re
 import shutil
@@ -48,9 +49,12 @@ APPLE_SILICON_CONFIG = Path(__file__).parent / "lc0-apple-silicon.config"
 MAIA_LEVELS = list(range(1100, 2000, 100)) + [2200]
 
 DEFAULT_LEELA_NET = "BT4-it332"
-DEFAULT_LEELA_MOVETIME_MS = 5_000
+DEFAULT_LEELA_NODES = 200
 DEFAULT_MAIA_NODES = 1
 MAX_PLIES = 300
+
+# Partial-credit decay: win% loss (vs the played move) that costs a factor e.
+GRADING_TAU = 10.0
 
 
 # =============================================================================
@@ -154,10 +158,15 @@ class UciEngine:
         board: chess.Board,
         budget: SearchBudget,
     ) -> tuple[chess.Move, list[dict[str, object]]]:
-        """Get LC0 policy data for every legal move in the position."""
+        """Search the position and collect P/N/Q for every legal move.
+
+        Partial credit `a` is Q-based: the win% loss of each move relative to
+        the search-chosen move, mapped through exp(-loss / GRADING_TAU). The
+        played (search-best) move is pinned at 100.
+        """
         legal_moves = list(board.legal_moves)
         legal_uci = {move.uci() for move in legal_moves}
-        policy_by_move: dict[str, float] = {}
+        stats_by_move: dict[str, dict[str, object]] = {}
         best_move = None
 
         self._send(f"position fen {board.fen()}")
@@ -171,10 +180,18 @@ class UciEngine:
             if line.startswith("info string"):
                 move_match = re.match(r"info string\s+([a-h][1-8][a-h][1-8][qrbn]?)\s+\(", line)
                 policy_match = re.search(r"\(P:\s*([0-9.]+)%\)", line)
+                visits_match = re.search(r"N:\s*(\d+)", line)
+                q_match = re.search(r"\(Q:\s*(-?[0-9.]+)\)", line)
+                v_match = re.search(r"\(V:\s*(-?[0-9.]+)\)", line)
                 if move_match and policy_match:
                     move_uci = normalize_engine_uci(move_match.group(1), legal_uci)
                     if move_uci in legal_uci:
-                        policy_by_move[move_uci] = float(policy_match.group(1))
+                        stats_by_move[move_uci] = {
+                            "p": float(policy_match.group(1)),
+                            "n": int(visits_match.group(1)) if visits_match else 0,
+                            "q": float(q_match.group(1)) if q_match else None,
+                            "v": float(v_match.group(1)) if v_match else None,
+                        }
 
             if line.startswith("bestmove"):
                 match = re.match(r"bestmove\s+(\S+)", line)
@@ -183,26 +200,15 @@ class UciEngine:
                     break
                 raise ValueError(f"Could not parse bestmove: {line}")
 
-        missing = sorted(legal_uci - set(policy_by_move))
+        missing = sorted(legal_uci - set(stats_by_move))
         if missing:
             raise ValueError(
                 f"LC0 analysis missing legal moves for {board.fen()}: {', '.join(missing[:8])}"
             )
 
-        best_policy = max(policy_by_move.values())
-        analysis = []
-        for move in legal_moves:
-            policy = policy_by_move[move.uci()]
-            accuracy = (policy / best_policy) * 100 if best_policy > 0 else 0
-            analysis.append({
-                "u": move.uci(),
-                "s": board.san(move),
-                "p": round(policy, 2),
-                "a": round(accuracy, 2),
-            })
-
-        analysis.sort(key=lambda item: item["a"], reverse=True)
-        return best_move, analysis
+        best_uci = normalize_engine_uci(best_move.uci(), legal_uci)
+        analysis = build_graded_analysis(board, stats_by_move, best_uci)
+        return chess.Move.from_uci(best_uci), analysis
 
     def quit(self):
         try:
@@ -302,10 +308,57 @@ def normalize_engine_uci(raw_uci: str, legal_uci: set[str]) -> str:
     return raw_uci
 
 
+def effective_q(stats: dict[str, object]) -> Optional[float]:
+    """Search Q for visited moves; the net's one-node value V otherwise."""
+    if int(stats["n"]) > 0 and stats["q"] is not None:
+        return float(stats["q"])  # type: ignore[arg-type]
+    return float(stats["v"]) if stats["v"] is not None else None  # type: ignore[arg-type]
+
+
+def win_pct(q: Optional[float], fallback: float) -> float:
+    """Map a value in [-1, 1] to expected score percent."""
+    if q is None:
+        return fallback
+    return 50.0 + 50.0 * max(-1.0, min(1.0, q))
+
+
+def build_graded_analysis(
+    board: chess.Board,
+    stats_by_move: dict[str, dict[str, object]],
+    played_uci: str,
+) -> list[dict[str, object]]:
+    """Build the v2 per-move analysis list with Q-based partial credit."""
+    total_visits = sum(int(s["n"]) for s in stats_by_move.values()) or 1
+
+    qs = [effective_q(s) for s in stats_by_move.values()]
+    worst_wp = min((win_pct(q, 0.0) for q in qs if q is not None), default=0.0)
+    played_wp = win_pct(effective_q(stats_by_move[played_uci]), 50.0)
+
+    analysis = []
+    for move in board.legal_moves:
+        uci = move.uci()
+        stats = stats_by_move[uci]
+        q = effective_q(stats)
+        wp = win_pct(q, worst_wp)  # unevaluated moves grade like the worst known move
+        loss = max(0.0, played_wp - wp)
+        accuracy = 100.0 if uci == played_uci else 100.0 * math.exp(-loss / GRADING_TAU)
+        analysis.append({
+            "u": uci,
+            "s": board.san(move),
+            "p": round(float(stats["p"]), 2),
+            "n": round(100.0 * int(stats["n"]) / total_visits, 2),
+            "q": round(q, 4) if q is not None else None,
+            "a": round(accuracy, 2),
+        })
+
+    analysis.sort(key=lambda item: item["a"], reverse=True)
+    return analysis
+
+
 def encode_analysis(best_move: chess.Move, analysis: list[dict[str, object]]) -> str:
     """Encode LC0 analysis as a compact PGN-safe comment."""
     payload = {
-        "v": 1,
+        "v": 2,
         "best": best_move.uci(),
         "moves": analysis,
     }
@@ -374,6 +427,7 @@ def generate_game(
     game.headers["Result"] = "*"
     game.headers["LcStudyLeelaNet"] = network_name(leela_net)
     game.headers["LcStudyLeelaSearch"] = leela_budget.label()
+    game.headers["LcStudyGrading"] = f"q-wpl-exp{GRADING_TAU:g}"
     game.headers["LcStudyMaiaSearch"] = maia_budget.label()
     game.headers["LcStudyMaiaTemperature"] = f"{maia_temperature:.6g}"
     game.headers["LcStudyMaiaPolicyTemperature"] = str(maia_policy_temp)
@@ -453,8 +507,13 @@ def main():
     parser.add_argument("--max-plies", type=int, default=MAX_PLIES)
     parser.add_argument("--leela-net", default=DEFAULT_LEELA_NET)
     leela_search = parser.add_mutually_exclusive_group()
-    leela_search.add_argument("--leela-movetime-ms", type=int, default=DEFAULT_LEELA_MOVETIME_MS)
-    leela_search.add_argument("--leela-nodes", type=int, default=None)
+    leela_search.add_argument("--leela-movetime-ms", type=int, default=None)
+    leela_search.add_argument(
+        "--leela-nodes",
+        type=int,
+        default=None,
+        help=f"Fixed node budget (default {DEFAULT_LEELA_NODES}; deterministic teacher, unlike movetime)",
+    )
     parser.add_argument("--maia-nodes", type=int, default=DEFAULT_MAIA_NODES)
     parser.add_argument(
         "--maia-levels",
@@ -515,11 +574,12 @@ def main():
     if args.seed is not None:
         random.seed(args.seed)
 
-    leela_budget = (
-        SearchBudget(nodes=args.leela_nodes)
-        if args.leela_nodes is not None
-        else SearchBudget(movetime_ms=args.leela_movetime_ms)
-    )
+    if args.leela_nodes is not None:
+        leela_budget = SearchBudget(nodes=args.leela_nodes)
+    elif args.leela_movetime_ms is not None:
+        leela_budget = SearchBudget(movetime_ms=args.leela_movetime_ms)
+    else:
+        leela_budget = SearchBudget(nodes=DEFAULT_LEELA_NODES)
     leela_config = None if args.no_leela_config else args.leela_config
 
     print("Checking setup...")
