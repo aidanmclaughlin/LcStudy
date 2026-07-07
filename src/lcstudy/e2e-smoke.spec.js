@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { test, devices, expect } = require('@playwright/test');
 const { encode } = require('next-auth/jwt');
 const { Chess } = require('chess.js');
@@ -65,10 +66,19 @@ function parseAnalysisComment(comment) {
 function buildFinalMateSession() {
   const pgnDir = path.join(process.cwd(), 'data/pgn');
 
-  for (const file of fs.readdirSync(pgnDir).filter((name) => name.endsWith('.pgn')).sort()) {
-    const pgn = fs.readFileSync(path.join(pgnDir, file), 'utf8');
+  const pgnFiles = fs.readdirSync(pgnDir)
+    .filter((name) => name.endsWith('.pgn') || name.endsWith('.pgn.gz'))
+    .sort();
+  for (const file of pgnFiles) {
+    let pgn;
     const game = new Chess();
-    game.loadPgn(pgn);
+    try {
+      const raw = fs.readFileSync(path.join(pgnDir, file));
+      pgn = file.endsWith('.gz') ? zlib.gunzipSync(raw).toString('utf8') : raw.toString('utf8');
+      game.loadPgn(pgn);
+    } catch {
+      continue; // skip partially-written or malformed files
+    }
     const headers = game.header();
     const blackPlayer = String(headers.Black || '').toLowerCase();
     const flip = blackPlayer.includes('player') || blackPlayer.includes('leela');

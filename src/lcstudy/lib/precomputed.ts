@@ -9,6 +9,7 @@
 
 import fs from "fs";
 import path from "path";
+import zlib from "zlib";
 import { Chess } from "chess.js";
 
 // =============================================================================
@@ -207,11 +208,14 @@ function loadPrecomputedGameIds(): string[] {
     return cachedGameIds;
   }
 
-  cachedGameIds = fs
-    .readdirSync(getPgnDir())
-    .filter((file) => file.endsWith(".pgn"))
-    .sort()
-    .map((file) => file.replace(/\.pgn$/i, ""));
+  cachedGameIds = Array.from(
+    new Set(
+      fs
+        .readdirSync(getPgnDir())
+        .filter((file) => file.endsWith(".pgn") || file.endsWith(".pgn.gz"))
+        .map((file) => file.replace(/\.pgn(\.gz)?$/i, ""))
+    )
+  ).sort();
 
   return cachedGameIds;
 }
@@ -226,7 +230,19 @@ function getPgnPathForId(id: string): string | null {
     return null;
   }
 
+  const gzPath = path.join(getPgnDir(), `${id}.pgn.gz`);
+  if (fs.existsSync(gzPath)) {
+    return gzPath;
+  }
   return path.join(getPgnDir(), `${id}.pgn`);
+}
+
+/** Read a PGN file, transparently gunzipping .pgn.gz storage. */
+function readPgnFile(filePath: string): string {
+  if (filePath.endsWith(".gz")) {
+    return zlib.gunzipSync(fs.readFileSync(filePath)).toString("utf8");
+  }
+  return fs.readFileSync(filePath, "utf8");
 }
 
 /**
@@ -236,7 +252,7 @@ function getPgnPathForId(id: string): string | null {
  */
 function parsePgnFile(filePath: string): PrecomputedGame | null {
   try {
-    const raw = fs.readFileSync(filePath, "utf8");
+    const raw = readPgnFile(filePath);
     const chess = new Chess();
     chess.loadPgn(raw);
 
@@ -303,7 +319,7 @@ function parsePgnFile(filePath: string): PrecomputedGame | null {
 
     const fileName = path.basename(filePath);
     return {
-      id: fileName.replace(/\.pgn$/i, ""),
+      id: fileName.replace(/\.pgn(\.gz)?$/i, ""),
       moves,
       rounds,
       leelaColor,

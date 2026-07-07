@@ -26,6 +26,7 @@ Usage:
 
 import argparse
 import base64
+import gzip
 import io
 import json
 import math
@@ -218,9 +219,24 @@ def build_v2_analysis(board: chess.Board, stats: dict, played_uci: str, nodes: i
     return {"v": 2, "best": played_uci, "nodes": nodes, "moves": moves}
 
 
+def read_pgn_text(path: Path) -> str:
+    if str(path).endswith(".gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            return fh.read()
+    return path.read_text()
+
+
+def write_pgn_text(path: Path, text: str):
+    if str(path).endswith(".gz"):
+        with gzip.open(path, "wt", encoding="utf-8", compresslevel=9) as fh:
+            fh.write(text)
+    else:
+        path.write_text(text)
+
+
 def reanalyze_file(path: Path, engine: UciEngine, nodes: int) -> tuple[bool, int]:
     """Returns (changed, prompts). Skips files whose blobs are already v2."""
-    text = path.read_text()
+    text = read_pgn_text(path)
     game = chess.pgn.read_game(io.StringIO(text))
     if game is None:
         raise ValueError("unparsable PGN")
@@ -243,7 +259,7 @@ def reanalyze_file(path: Path, engine: UciEngine, nodes: int) -> tuple[bool, int
     if changed:
         game.headers["LcStudyGrading"] = f"q-wpl-exp{TAU:g}@{nodes}n"
         exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=True)
-        path.write_text(game.accept(exporter) + "\n")
+        write_pgn_text(path, game.accept(exporter) + "\n")
 
     return changed, prompts
 
@@ -309,7 +325,7 @@ def main():
         print(f"Error: net {args.leela_net} not found in {NETS_DIR}")
         return 1
 
-    files = sorted(args.dir.glob("*.pgn"))
+    files = sorted(list(args.dir.glob("*.pgn")) + list(args.dir.glob("*.pgn.gz")))
     if args.limit:
         files = files[: args.limit]
 

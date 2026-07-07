@@ -17,6 +17,7 @@ You'll also need:
 import argparse
 import base64
 from dataclasses import dataclass
+import gzip
 import hashlib
 import io
 import json
@@ -157,19 +158,27 @@ class UciEngine:
         self,
         board: chess.Board,
         budget: SearchBudget,
+        move_history: Optional[list[str]] = None,
     ) -> tuple[chess.Move, list[dict[str, object]]]:
         """Search the position and collect P/N/Q for every legal move.
 
         Partial credit `a` is Q-based: the win% loss of each move relative to
         the search-chosen move, mapped through exp(-loss / GRADING_TAU). The
         played (search-best) move is pinned at 100.
+
+        Pass move_history (UCI moves from startpos) to enable lc0 tree reuse
+        between consecutive searches of the same game.
         """
         legal_moves = list(board.legal_moves)
         legal_uci = {move.uci() for move in legal_moves}
         stats_by_move: dict[str, dict[str, object]] = {}
         best_move = None
 
-        self._send(f"position fen {board.fen()}")
+        if move_history is not None:
+            suffix = f" moves {' '.join(move_history)}" if move_history else ""
+            self._send(f"position startpos{suffix}")
+        else:
+            self._send(f"position fen {board.fen()}")
         self._send(budget.command())
 
         while True:
@@ -381,11 +390,24 @@ def move_sequence_key(pgn: str) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def read_pgn_text(path: Path) -> str:
+    """Read a PGN file, transparently gunzipping .pgn.gz storage."""
+    if str(path).endswith(".gz"):
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            return fh.read()
+    return path.read_text()
+
+
+def iter_pgn_paths(directory: Path) -> list[Path]:
+    """All PGN files in a directory, compressed or not, sorted by name."""
+    return sorted(list(directory.glob("*.pgn")) + list(directory.glob("*.pgn.gz")))
+
+
 def load_existing_move_keys(output_dir: Path) -> set[str]:
     keys: set[str] = set()
-    for path in output_dir.glob("*.pgn"):
+    for path in iter_pgn_paths(output_dir):
         try:
-            keys.add(move_sequence_key(path.read_text()))
+            keys.add(move_sequence_key(read_pgn_text(path)))
         except Exception:
             continue
     return keys

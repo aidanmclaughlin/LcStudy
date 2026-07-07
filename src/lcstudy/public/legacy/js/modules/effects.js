@@ -22,9 +22,12 @@ function accuracyTone(accuracy) {
   return { color: '#ef4444', glow: 'rgba(239, 68, 68, 0.62)' };
 }
 
-export function showCompletionOverlay() {
+export function showCompletionOverlay(kicker = 'Checkmate') {
   const overlay = document.getElementById('completion-overlay');
   if (!overlay) return;
+
+  const kickerEl = overlay.querySelector('.completion-kicker');
+  if (kickerEl) kickerEl.textContent = kicker;
 
   overlay.hidden = false;
   overlay.removeAttribute('inert');

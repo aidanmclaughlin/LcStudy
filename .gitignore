@@ -36,3 +36,7 @@ node_modules/
 .lcstudy/
 .vercel
 .env*.local
+
+# Maia-2 local artifacts
+maia2_models/
+.venv-maia2/

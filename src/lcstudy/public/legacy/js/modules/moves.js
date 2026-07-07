@@ -19,7 +19,7 @@ import {
   setLastMoveHighlight
 } from './state.js';
 import { animateMove, finishActiveAnimations, showMoveHint, updateBoardAfterMove } from './board.js';
-import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, showAccuracyBurst, updateMoveFeedback } from './effects.js';
+import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, showAccuracyBurst, showCompletionOverlay, updateMoveFeedback } from './effects.js';
 import { scheduleChartsUpdate } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
@@ -385,17 +385,20 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
 
   updatePgnDisplay();
 
-  // Check if game is complete
+  // Check if game is complete. Every game ends when the recorded moves run
+  // out — checkmate gets the celebration, anything else a plain overlay.
   const updatedCache = getSessionCache();
-  if (updatedCache.currentIndex >= updatedCache.moves.length) {
+  if (updatedCache.currentIndex >= updatedCache.moves.length && !completedMateSaved) {
+    completedMateSaved = true;
+    endGameClock();
+
     const chessEngine = getChessEngine();
-    const completedByMate = Boolean(chessEngine?.isCheckmate?.());
-    if (completedByMate && !completedMateSaved) {
-      completedMateSaved = true;
-      endGameClock();
+    if (chessEngine?.isCheckmate?.()) {
       celebrateCheckmate(moveResult.to);
-      saveCompletedGame('finished');
+    } else {
+      showCompletionOverlay('Game over');
     }
+    saveCompletedGame('finished');
   }
 
   return true;

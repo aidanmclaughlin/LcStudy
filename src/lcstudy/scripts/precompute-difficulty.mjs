@@ -11,6 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import zlib from 'zlib';
 import { fileURLToPath } from 'url';
 import { sql } from '@vercel/postgres';
 
@@ -55,12 +56,15 @@ async function main() {
   loadLocalEnv();
 
   const pgnDir = path.join(__dirname, '..', 'data', 'pgn');
-  const files = fs.readdirSync(pgnDir).filter((f) => f.endsWith('.pgn')).sort();
+  const files = fs.readdirSync(pgnDir)
+    .filter((f) => f.endsWith('.pgn') || f.endsWith('.pgn.gz'))
+    .sort();
 
   const ids = [];
   const eases = [];
   for (const file of files) {
-    const text = fs.readFileSync(path.join(pgnDir, file), 'utf8');
+    const raw = fs.readFileSync(path.join(pgnDir, file));
+    const text = file.endsWith('.gz') ? zlib.gunzipSync(raw).toString('utf8') : raw.toString('utf8');
     const blobs = [...text.matchAll(/\[%lcstudy\s+([A-Za-z0-9_-]+)\]/g)];
     const values = [];
     for (const match of blobs) {
@@ -73,7 +77,7 @@ async function main() {
       }
     }
     if (values.length === 0) continue;
-    ids.push(file.replace(/\.pgn$/i, ''));
+    ids.push(file.replace(/\.pgn(\.gz)?$/i, ''));
     eases.push(values.reduce((a, b) => a + b, 0) / values.length);
   }
 
