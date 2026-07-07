@@ -12,7 +12,6 @@ import {
   setGameHistory
 } from './state.js';
 import { getMoveTimesMs, getThinkTimeMs } from './timeclock.js';
-import { getSuggestedThinkMs, refreshCoach } from './coach.js';
 import { scheduleChartsUpdate } from './charts.js';
 
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
@@ -61,7 +60,6 @@ export function saveCompletedGame(result) {
   const durationMs = getGameDurationMs();
   const thinkTimeMs = getThinkTimeMs();
   const moveTimesMs = getMoveTimesMs();
-  const suggestedThinkMs = getSuggestedThinkMs();
 
   if (DEBUG_LOGS) {
     console.debug('saveCompletedGame payload', {
@@ -81,7 +79,6 @@ export function saveCompletedGame(result) {
     duration_ms: durationMs,
     think_time_ms: thinkTimeMs,
     move_times_ms: moveTimesMs,
-    suggested_think_ms: suggestedThinkMs,
     result: result
   };
 
@@ -96,8 +93,6 @@ export function saveCompletedGame(result) {
     if (!res.ok) {
       console.error('Failed to persist game', res.status);
     }
-    // New data → fresh suggestion for the next game.
-    refreshCoach();
   }).catch((e) => {
     console.warn('Failed to persist game:', e);
   });
@@ -111,7 +106,6 @@ export function saveCompletedGame(result) {
     maia_level: maiaLevel,
     duration_ms: durationMs,
     think_time_ms: thinkTimeMs,
-    suggested_think_ms: suggestedThinkMs,
     result: result
   });
   setGameHistory(gameHistory);

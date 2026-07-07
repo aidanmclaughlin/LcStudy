@@ -534,8 +534,8 @@ test.describe('desktop checkmate', () => {
     expect(completePayloads[0]?.duration_ms).toBeGreaterThan(0);
     expect(completePayloads[0]?.think_time_ms).toBeGreaterThan(0);
     expect(completePayloads[0]?.move_times_ms).toHaveLength(1);
-    const suggested = completePayloads[0]?.suggested_think_ms;
-    expect(suggested === null || (typeof suggested === 'number' && suggested > 0)).toBe(true);
+    // The think-budget coach UI was removed; the client no longer sends a suggestion.
+    expect(completePayloads[0]?.suggested_think_ms).toBeUndefined();
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 

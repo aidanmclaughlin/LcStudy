@@ -7,14 +7,10 @@
  */
 
 import { getAuthSession } from "@/lib/auth";
-import { getUserGameHistory, getGameDifficulties, setGameDifficulty } from "@/lib/db";
-import { getPrecomputedGameById } from "@/lib/precomputed";
-import { fitCoach, gameEase, type CoachGameInput } from "@/lib/coach";
+import { getUserGameHistory, getGameDifficulties } from "@/lib/db";
+import { fitCoach, type CoachGameInput } from "@/lib/coach";
 import { jsonResponse, unauthorizedResponse } from "@/lib/api-utils";
 import type { CoachResponse } from "@/lib/types/api";
-
-/** Cap on PGN parses per request while the difficulty cache backfills */
-const MAX_DIFFICULTY_BACKFILL = 200;
 
 export async function GET() {
   const session = await getAuthSession();
@@ -24,31 +20,11 @@ export async function GET() {
 
   const history = await getUserGameHistory(session.user.id);
 
-  // Resolve per-game ease (predictability) from the cache, computing missing
-  // entries from the PGN analysis blobs and writing them back.
+  // Per-game ease (predictability) comes from the precomputed cache only;
+  // games without a cached value are used unadjusted. The cache is populated
+  // offline (tools/precompute_difficulty.py) — never on the request path.
   const gameIds = Array.from(new Set(history.map((g) => g.gameId)));
   const difficulties = await getGameDifficulties(gameIds);
-
-  let backfilled = 0;
-  const backfillWrites: Promise<void>[] = [];
-  for (const id of gameIds) {
-    if (difficulties.has(id) || backfilled >= MAX_DIFFICULTY_BACKFILL) continue;
-
-    const game = getPrecomputedGameById(id);
-    if (!game) continue;
-
-    const ease = gameEase(game.rounds.map((round) => ({ analysis: round.player.analysis })));
-    if (ease === null) continue;
-
-    difficulties.set(id, ease);
-    backfillWrites.push(
-      setGameDifficulty(id, ease).catch((error) => {
-        console.warn(`Failed to cache difficulty for ${id}`, error);
-      })
-    );
-    backfilled += 1;
-  }
-  await Promise.all(backfillWrites);
 
   const inputs: CoachGameInput[] = history.map((g) => ({
     thinkMs: g.thinkTimeMs ?? g.durationMs ?? 0,

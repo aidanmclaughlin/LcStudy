@@ -40,7 +40,6 @@ import {
 } from './modules/moves.js';
 import { initKeyboardNavigation, initMoveReviewButtons, navigateToMove } from './modules/history.js';
 import { startGameClock, endGameClock, promptBegin } from './modules/timeclock.js';
-import { refreshCoach, applyCoachBudget, startCoachTicker } from './modules/coach.js';
 
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 let activeGameLoadId = 0;
@@ -215,8 +214,7 @@ async function startNewGame() {
   startGameTimer();
   setBoardInputEnabled(true);
 
-  // Think-time coach: apply the budget and start the clock on the first prompt
-  applyCoachBudget();
+  // Start the (invisible) think clock on the first prompt
   startGameClock();
   promptBegin();
 
@@ -258,7 +256,6 @@ async function bootstrap() {
     initBoard();
     initializeHaptics();
     setBoardInputEnabled(false);
-    startCoachTicker();
 
     // Set up move submission callback
     setMoveSubmitCallback(submitMove);
@@ -271,8 +268,6 @@ async function bootstrap() {
       })
       .catch((err) => console.warn('Charts unavailable', err));
 
-    // Coach suggestion, history, and the first game load in parallel.
-    refreshCoach();
     warmPieceImages();
     await Promise.all([
       loadGameHistory(),

@@ -4,7 +4,8 @@
  * Measures deliberation time per prompt: the clock runs from the moment a
  * position is ready for input until the guess is submitted, pauses while the
  * tab is hidden, and excludes move-playback dead time (animations, reveals).
- * The per-move times and their sum are what the coach model consumes.
+ * Recorded silently with each game (think_time_ms / move_times_ms) so pace
+ * can be analyzed offline; no UI depends on it.
  *
  * @module timeclock
  */
