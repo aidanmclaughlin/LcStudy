@@ -123,10 +123,12 @@ def generate_game_maia2(
     game.headers["LcStudyLeelaNet"] = leela_net_name
     game.headers["LcStudyLeelaSearch"] = leela_budget.label()
     game.headers["LcStudyGrading"] = f"q-wpl-exp{GRADING_TAU:g}"
+    # NOTE: chess.js (the app's PGN parser) rejects digits in tag names, so
+    # these must stay digit-free ("Maia2" is not a legal tag fragment there).
     game.headers["LcStudyOpponent"] = f"maia2-{sampler.game_type}"
-    game.headers["LcStudyMaia2EloSelf"] = str(elo_self)
-    game.headers["LcStudyMaia2EloOppo"] = str(LEELA_OPPONENT_ELO)
-    game.headers["LcStudyMaia2TailFloor"] = str(TAIL_FLOOR)
+    game.headers["LcStudyOpponentEloSelf"] = str(elo_self)
+    game.headers["LcStudyOpponentEloOppo"] = str(LEELA_OPPONENT_ELO)
+    game.headers["LcStudyOpponentTailFloor"] = str(TAIL_FLOOR)
 
     node = game
     plies = 0
