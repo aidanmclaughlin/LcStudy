@@ -20,6 +20,7 @@ Usage:
 """
 
 import argparse
+import platform
 import random
 import sys
 import threading
@@ -179,6 +180,9 @@ def main():
     leela_budget = SearchBudget(nodes=args.leela_nodes)
     net_name = network_name(leela_net)
 
+    # The bundled lc0 config selects the Metal backend; only apply it on macOS.
+    lc0_config = APPLE_SILICON_CONFIG if platform.system() == "Darwin" else None
+
     args.output.mkdir(parents=True, exist_ok=True)
     move_keys = load_existing_move_keys(args.output)
     print(f"lc0: {lc0_path}\nnet: {net_name} @ {leela_budget.label()}\n"
@@ -199,7 +203,7 @@ def main():
 
     def worker(worker_index: int):
         engine = UciEngine(
-            lc0_path, leela_net, backend=args.leela_backend, multipv=500, config=APPLE_SILICON_CONFIG
+            lc0_path, leela_net, backend=args.leela_backend, multipv=500, config=lc0_config
         )
         rng = random.Random(seed_base * 1000 + worker_index)
         try:
@@ -221,7 +225,7 @@ def main():
                     engine.quit()
                     engine = UciEngine(
                         lc0_path, leela_net, backend=args.leela_backend, multipv=500,
-                        config=APPLE_SILICON_CONFIG,
+                        config=lc0_config,
                     )
                     continue
 
