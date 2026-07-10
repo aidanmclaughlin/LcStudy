@@ -1,0 +1,10 @@
+.git
+.vercel
+**/.next
+**/node_modules
+**/.env*
+**/.venv*
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+maia2_models
