@@ -2,8 +2,8 @@
 """
 Generate Leela vs Maia-2 training games for LcStudy.
 
-Leela's side is unchanged from generate_games.py: lc0 with a fixed node
-budget, v2 analysis blobs (P/N/Q + Q-based partial credit) on every prompt.
+Leela's side matches generate_games.py: a fresh lc0 process per game, FEN-only
+position feeding, a fixed node budget, and v2 analysis on every prompt.
 
 The opponent is Maia-2 (CSSLab, NeurIPS 2024): one unified human model
 conditioned on both players' ratings, trained on Lichess 2013-2023. Each
@@ -20,12 +20,14 @@ Usage:
 """
 
 import argparse
+import gzip
 import platform
 import random
 import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 try:
     import chess
@@ -122,6 +124,7 @@ def generate_game_maia2(
     game.headers["Result"] = "*"
     game.headers["LcStudyLeelaNet"] = leela_net_name
     game.headers["LcStudyLeelaSearch"] = leela_budget.label()
+    game.headers["LcStudyLeelaLifecycle"] = "fresh-per-game"
     game.headers["LcStudyGrading"] = f"q-wpl-exp{GRADING_TAU:g}"
     # NOTE: chess.js (the app's PGN parser) rejects digits in tag names, so
     # these must stay digit-free ("Maia2" is not a legal tag fragment there).
@@ -132,19 +135,17 @@ def generate_game_maia2(
 
     node = game
     plies = 0
-    history: list[str] = []
 
     while not board.is_game_over() and plies < max_plies:
         is_leela_turn = (board.turn == chess.WHITE) == leela_is_white
 
         if is_leela_turn:
-            move, analysis = leela_engine.get_policy_analysis(board, leela_budget, move_history=history)
+            move, analysis = leela_engine.get_policy_analysis(board, leela_budget)
         else:
             move = sampler.sample_move(board, elo_self, LEELA_OPPONENT_ELO, rng)
             analysis = None
 
         board.push(move)
-        history.append(move.uci())
         node = node.add_variation(move)
         if analysis is not None:
             node.comment = encode_analysis(move, analysis)
@@ -162,6 +163,38 @@ def generate_game_maia2(
 
     exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=True)
     return game.accept(exporter), plies, game.headers["Result"]
+
+
+def generate_game_with_fresh_leela(
+    lc0_path: str,
+    leela_net: Path,
+    leela_backend: Optional[str],
+    leela_config: Optional[Path],
+    sampler: Maia2Sampler,
+    leela_net_name: str,
+    leela_budget: SearchBudget,
+    elo_self: int,
+    rng: random.Random,
+) -> tuple[str, int, str]:
+    """Match the original corpus by isolating Leela state to one game."""
+    engine = UciEngine(
+        lc0_path,
+        leela_net,
+        backend=leela_backend,
+        multipv=500,
+        config=leela_config,
+    )
+    try:
+        return generate_game_maia2(
+            engine,
+            sampler,
+            leela_net_name,
+            leela_budget,
+            elo_self,
+            rng,
+        )
+    finally:
+        engine.quit()
 
 
 def main():
@@ -204,55 +237,53 @@ def main():
     max_attempts = args.count * 4 + 10
 
     def worker(worker_index: int):
-        engine = UciEngine(
-            lc0_path, leela_net, backend=args.leela_backend, multipv=500, config=lc0_config
-        )
         rng = random.Random(seed_base * 1000 + worker_index)
-        try:
-            while True:
-                with lock:
-                    if state["success"] >= args.count or state["attempts"] >= max_attempts:
-                        return
-                    state["attempts"] += 1
+        while True:
+            with lock:
+                if state["success"] >= args.count or state["attempts"] >= max_attempts:
+                    return
+                state["attempts"] += 1
 
-                bucket = rng.choice(ELO_BUCKET_RANGES)
-                elo = rng.randint(bucket[0], bucket[1])
+            bucket = rng.choice(ELO_BUCKET_RANGES)
+            elo = rng.randint(bucket[0], bucket[1])
 
-                try:
-                    pgn, plies, result = generate_game_maia2(
-                        engine, sampler, net_name, leela_budget, elo, rng
-                    )
-                except Exception as e:
-                    print(f"[ERROR] worker {worker_index}: {e}", flush=True)
-                    engine.quit()
-                    engine = UciEngine(
-                        lc0_path, leela_net, backend=args.leela_backend, multipv=500,
-                        config=lc0_config,
-                    )
+            try:
+                pgn, plies, result = generate_game_with_fresh_leela(
+                    lc0_path,
+                    leela_net,
+                    args.leela_backend,
+                    lc0_config,
+                    sampler,
+                    net_name,
+                    leela_budget,
+                    elo,
+                    rng,
+                )
+            except Exception as e:
+                print(f"[ERROR] worker {worker_index}: {e}", flush=True)
+                continue
+
+            key = move_sequence_key(pgn)
+            with lock:
+                if key in move_keys:
+                    print("[SKIP] duplicate line", flush=True)
                     continue
+                if state["success"] >= args.count:
+                    return
+                move_keys.add(key)
+                state["success"] += 1
+                state["plies"] += plies
+                n = state["success"]
+                fname = f"{batch_id}_{n:04d}.pgn.gz"
+                with gzip.open(args.output / fname, "wt", encoding="utf-8") as fh:
+                    fh.write(pgn + "\n")
 
-                key = move_sequence_key(pgn)
-                with lock:
-                    if key in move_keys:
-                        print("[SKIP] duplicate line", flush=True)
-                        continue
-                    if state["success"] >= args.count:
-                        return
-                    move_keys.add(key)
-                    state["success"] += 1
-                    state["plies"] += plies
-                    n = state["success"]
-                    fname = f"{batch_id}_{n:04d}.pgn"
-                    (args.output / fname).write_text(pgn + "\n")
-
-                    if n % 25 == 0 or n == args.count:
-                        elapsed = time.time() - state["start"]
-                        per_game = elapsed / n
-                        eta_h = (args.count - n) * per_game / 3600
-                        print(f"[{n}/{args.count}] elo={elo} {result} {plies}p "
-                              f"({per_game:.0f}s/game, eta={eta_h:.1f}h)", flush=True)
-        finally:
-            engine.quit()
+                if n % 25 == 0 or n == args.count:
+                    elapsed = time.time() - state["start"]
+                    per_game = elapsed / n
+                    eta_h = (args.count - n) * per_game / 3600
+                    print(f"[{n}/{args.count}] elo={elo} {result} {plies}p "
+                          f"({per_game:.0f}s/game, eta={eta_h:.1f}h)", flush=True)
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(args.workers)]
     for t in threads:
