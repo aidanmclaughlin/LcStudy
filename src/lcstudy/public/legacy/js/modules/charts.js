@@ -20,8 +20,8 @@ let lastAccuracyChartSignature = '';
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
 const ACCURACY_ROLLING_WINDOW = 25;
-const GM_ACCURACY_TARGET = 90;
-const GM_ACCURACY_CEILING = 95;
+const ACCURACY_TARGET = 97;
+const ACCURACY_CEILING = 100;
 const GM_ACCURACY_EXPONENT = 0.5;
 const PROJECTION_PRIOR_FLOOR = 65;
 const PROJECTION_PRIOR_OFFSET = 750;
@@ -453,7 +453,7 @@ function updateAccuracyGoalCount(gameHistory, estimate) {
           estimate.hoursLeftMs,
           estimate.minimumFutureGames
         )
-      : `Complete one timed game to estimate hours left to ${GM_ACCURACY_TARGET}%`;
+      : `Complete one timed game to estimate hours left to ${ACCURACY_TARGET}%`;
   }
 }
 
@@ -472,7 +472,7 @@ function resolveTargetGames(completedGames, rawTargetGame, rollingGoalReached, m
 
 function buildHoursLeftTitle(completedGames, targetGames, remainingGames, averageDurationMs, hoursLeft, minimumFutureGames) {
   if (averageDurationMs === null || hoursLeft === null) {
-    return `${formatGameCount(completedGames)} played; play one timed game to estimate hours left to ${GM_ACCURACY_TARGET}%`;
+    return `${formatGameCount(completedGames)} played; play one timed game to estimate hours left to ${ACCURACY_TARGET}%`;
   }
 
   const parts = [
@@ -481,7 +481,7 @@ function buildHoursLeftTitle(completedGames, targetGames, remainingGames, averag
     `${formatGameCount(targetGames)} target games`,
     `${formatGameCount(remainingGames)} estimated remaining`,
     `${formatGameLength(averageDurationMs)} typical game length`,
-    `${formatHoursLeft(hoursLeft)} left to ${GM_ACCURACY_TARGET}%`
+    `${formatHoursLeft(hoursLeft)} left to ${ACCURACY_TARGET}%`
   ];
 
   if (Number.isFinite(minimumFutureGames) && minimumFutureGames > 0) {
@@ -543,14 +543,14 @@ function getProjectedGameAccuracies(gameHistory, moveAccuracies) {
 
 function isRollingAccuracyGoalReached(accuracies) {
   if (!Array.isArray(accuracies) || accuracies.length < 10) return false;
-  return average(accuracies.slice(-10)) >= GM_ACCURACY_TARGET;
+  return average(accuracies.slice(-10)) >= ACCURACY_TARGET;
 }
 
 function minimumFutureGamesForRollingTarget(accuracies) {
   if (!Array.isArray(accuracies) || accuracies.length === 0) return null;
   if (accuracies.length < 10) return 10 - accuracies.length;
   const lastTen = accuracies.slice(-10);
-  if (average(lastTen) >= GM_ACCURACY_TARGET) return 0;
+  if (average(lastTen) >= ACCURACY_TARGET) return 0;
 
   for (let futureGames = 1; futureGames <= 10; futureGames++) {
     const futureWindow = [
@@ -558,7 +558,7 @@ function minimumFutureGamesForRollingTarget(accuracies) {
       ...Array(futureGames).fill(100)
     ];
 
-    if (average(futureWindow) >= GM_ACCURACY_TARGET) {
+    if (average(futureWindow) >= ACCURACY_TARGET) {
       return futureGames;
     }
   }
@@ -582,7 +582,7 @@ function fitBoundedLearningCurve(points) {
       const point = points[index];
       const decay = Math.pow(offset / (point.x + offset), GM_ACCURACY_EXPONENT);
       decayFactors[index] = decay;
-      floorNumerator += decay * (point.y - GM_ACCURACY_CEILING * (1 - decay)) * observationPrecision;
+      floorNumerator += decay * (point.y - ACCURACY_CEILING * (1 - decay)) * observationPrecision;
       floorDenominator += decay * decay * observationPrecision;
     }
 
@@ -593,7 +593,7 @@ function fitBoundedLearningCurve(points) {
 
     for (let index = 0; index < points.length; index++) {
       const decay = decayFactors[index];
-      const prediction = GM_ACCURACY_CEILING * (1 - decay) + floor * decay;
+      const prediction = ACCURACY_CEILING * (1 - decay) + floor * decay;
       const residual = points[index].y - prediction;
       error += residual * residual * observationPrecision;
     }
@@ -607,9 +607,9 @@ function fitBoundedLearningCurve(points) {
 }
 
 function solveBoundedTargetGame(fit) {
-  if (!fit || GM_ACCURACY_CEILING <= GM_ACCURACY_TARGET) return Infinity;
+  if (!fit || ACCURACY_CEILING <= ACCURACY_TARGET) return Infinity;
 
-  const ratio = (GM_ACCURACY_CEILING - GM_ACCURACY_TARGET) / (GM_ACCURACY_CEILING - fit.floor);
+  const ratio = (ACCURACY_CEILING - ACCURACY_TARGET) / (ACCURACY_CEILING - fit.floor);
   if (ratio <= 0 || ratio >= 1) return Infinity;
 
   return fit.offset * (Math.pow(ratio, -1 / GM_ACCURACY_EXPONENT) - 1);

@@ -11,7 +11,6 @@
  */
 
 import Script from "next/script";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getAuthSession } from "@/lib/auth";
@@ -95,11 +94,11 @@ export default async function HomePage() {
             {/* Hours Left Summary */}
             <div className="panel panel-goal">
               <div className="panel-section-heading">
-                <h2>Hours Left to 90%</h2>
+                <h2>Hours Left to 97%</h2>
                 <span
                   id="hours-left-count"
                   className="panel-count"
-                  title="Power-law estimate of time remaining to the 90% rolling average target"
+                  title="Power-law estimate of time remaining to the 97% rolling average target"
                 >
                   0 played / --h left
                 </span>
@@ -112,9 +111,9 @@ export default async function HomePage() {
                 <h2>25-Game Accuracy</h2>
                 <div className="panel-heading-actions">
                   <span id="accuracy-chart-count" className="panel-count">0 games</span>
-                  <Link className="panel-stats-link" href="/stats">
+                  <a className="panel-stats-link" href="/stats">
                     Stats
-                  </Link>
+                  </a>
                 </div>
               </div>
               <div className="chart-container">

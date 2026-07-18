@@ -5,8 +5,8 @@ import type { UserGameStatsRow } from "@/lib/db";
 
 const RECENT_WINDOW = 25;
 const TARGET_WINDOW = 10;
-const TARGET_ACCURACY = 90;
-const FORECAST_CEILING = 95;
+export const TARGET_ACCURACY = 97;
+const FORECAST_CEILING = 100;
 const FORECAST_EXPONENT = 0.5;
 const FORECAST_PRIOR_FLOOR = 65;
 const FORECAST_PRIOR_OFFSET = 750;

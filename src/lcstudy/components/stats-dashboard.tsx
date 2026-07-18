@@ -1,11 +1,10 @@
-import Link from "next/link";
-
 import type {
   GroupStat,
   PaceStat,
   ProgressDashboardStats,
   ProgressSeriesPoint
 } from "@/lib/progress-stats";
+import { TARGET_ACCURACY } from "@/lib/progress-stats";
 
 interface StatsDashboardProps {
   stats: ProgressDashboardStats;
@@ -17,10 +16,10 @@ export function StatsDashboard({ stats }: StatsDashboardProps) {
   return (
     <main className="stats-page">
       <header className="stats-header">
-        <Link className="stats-back" href="/">
+        <a className="stats-back" href="/">
           <span aria-hidden="true">&#8592;</span>
           Game
-        </Link>
+        </a>
         <div className="stats-title-group">
           <span className="stats-brand">LCStudy</span>
           <h1>Progress</h1>
@@ -51,14 +50,14 @@ export function StatsDashboard({ stats }: StatsDashboardProps) {
           <LegendItem className="legend-10" label="10-game" />
           <LegendItem className="legend-25" label="25-game" />
           <LegendItem className="legend-adjusted" label="Difficulty-adjusted" />
-          <LegendItem className="legend-target" label="90% target" />
+          <LegendItem className="legend-target" label={`${TARGET_ACCURACY}% target`} />
         </div>
         <ProgressChart points={progress.series} />
       </section>
 
       <div className="stats-split stats-goal-row">
         <section className="stats-section">
-          <SectionHeading title="90% Forecast" meta="10-game target" />
+          <SectionHeading title={`${TARGET_ACCURACY}% Forecast`} meta="10-game target" />
           {progress.forecast ? (
             <div className="forecast-layout">
               <div>
@@ -241,7 +240,7 @@ function ProgressChart({ points }: { points: ProgressSeriesPoint[] }) {
     point.high80
   ]);
   const minimum = Math.max(0, Math.floor(Math.min(...values) - 2));
-  const maximum = Math.min(100, Math.ceil(Math.max(90, ...values) + 1));
+  const maximum = Math.min(100, Math.ceil(Math.max(TARGET_ACCURACY, ...values) + 1));
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const x = (index: number) => padding.left + (
@@ -290,13 +289,13 @@ function ProgressChart({ points }: { points: ProgressSeriesPoint[] }) {
             </text>
           </g>
         ))}
-        {minimum <= 90 && maximum >= 90 && (
+        {minimum <= TARGET_ACCURACY && maximum >= TARGET_ACCURACY && (
           <line
             className="stats-chart-target"
             x1={padding.left}
             x2={width - padding.right}
-            y1={y(90)}
-            y2={y(90)}
+            y1={y(TARGET_ACCURACY)}
+            y2={y(TARGET_ACCURACY)}
           />
         )}
         <path className="stats-chart-band" d={bandPath} />

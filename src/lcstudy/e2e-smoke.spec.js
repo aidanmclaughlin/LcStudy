@@ -213,6 +213,11 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     { name: '__Secure-next-auth.session-token', value: token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax', secure: true },
   ]);
 
+  // Compile the stats route before exercising document navigation; otherwise
+  // Next dev's first-route Fast Refresh can reload the prior page mid-click.
+  const statsWarmup = await context.request.get('http://localhost:3000/stats');
+  expect(statsWarmup.ok()).toBe(true);
+
   await context.addInitScript(() => {
     window.__haptics = [];
     window.__vibrateCalls = [];
@@ -244,6 +249,12 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     body: JSON.stringify({ history: buildProgressHistory() }),
   }));
 
+  let successfulSessionResponses = 0;
+  page.on('response', (response) => {
+    if (response.url().includes('/api/v1/session/new') && response.status() === 200) {
+      successfulSessionResponses += 1;
+    }
+  });
   const sessionResponsePromise = page.waitForResponse((resp) => (
     resp.url().includes('/api/v1/session/new') && resp.status() === 200
   ));
@@ -251,7 +262,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const sessionData = await (await sessionResponsePromise).json();
   await page.waitForSelector('#board .piece');
   await expect(page.locator('#completion-overlay')).toBeHidden();
-  await expect(page.getByRole('heading', { name: 'Hours Left to 90%' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Hours Left to 97%' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '25-Game Accuracy' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Accuracy Over Moves' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Stats' })).toHaveAttribute('href', '/stats');
@@ -429,6 +440,21 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   expect(accuracyView.firstGame.countText).toMatch(/^1 played \/ [\d,.]+h left$/);
   expect(accuracyView.firstGame.title).toContain('Power-law estimate from 1 game');
   expect(accuracyView.firstGame.chartPoints).toBe(1);
+
+  await Promise.all([
+    page.waitForURL('**/stats'),
+    page.getByRole('link', { name: 'Stats' }).click(),
+  ]);
+  await expect(page.getByRole('heading', { name: 'Progress', level: 1 })).toBeVisible();
+  const sessionResponsesBeforeReturn = successfulSessionResponses;
+  await Promise.all([
+    page.waitForURL('http://localhost:3000/'),
+    page.getByRole('link', { name: 'Game' }).click(),
+  ]);
+  await page.waitForSelector('#board .piece');
+  await expect(page.locator('#board')).toBeVisible();
+  await expect(page.locator('#accuracy-chart')).toBeVisible();
+  await expect.poll(() => successfulSessionResponses).toBeGreaterThanOrEqual(sessionResponsesBeforeReturn + 2);
   await sql`DELETE FROM users WHERE email = ${email};`;
 
   console.log(JSON.stringify({
