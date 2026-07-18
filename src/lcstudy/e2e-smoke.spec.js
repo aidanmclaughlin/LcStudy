@@ -252,8 +252,9 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.waitForSelector('#board .piece');
   await expect(page.locator('#completion-overlay')).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Hours Left to 90%' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Accuracy Over Games' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '25-Game Accuracy' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Accuracy Over Moves' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Stats' })).toHaveAttribute('href', '/stats');
   await expect(page.locator('.panel-chart canvas')).toHaveCount(2);
   await expect(page.locator('.panel-goal canvas')).toHaveCount(0);
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
@@ -380,30 +381,50 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     charts.updateCharts();
     const slowerEstimate = charts.calculateCurrentGoalEstimate(state.getGameHistory(), []);
 
+    state.setGameHistory(originalHistory.map((game, index) => ({
+      ...game,
+      duration_ms: index === 0 ? Number(game.duration_ms) * 1000 : game.duration_ms,
+    })));
+    charts.updateCharts();
+    const outlierEstimate = charts.calculateCurrentGoalEstimate(state.getGameHistory(), []);
+
     state.setGameHistory(originalHistory);
     state.setMoveAccuracies(originalMoves);
     charts.updateCharts();
     const finalAccuracy = chart.data.datasets[0].data.filter(Number.isFinite);
+    const perGame = originalHistory.map((game) => Number(game.average_accuracy));
+    if (originalMoves.length > 0) {
+      perGame.push(originalMoves.reduce((sum, value) => sum + Number(value), 0) / originalMoves.length);
+    }
+    const expectedLast = perGame.slice(-25).reduce((sum, value) => sum + value, 0) / Math.min(25, perGame.length);
 
     return {
       label: chart.data.datasets[0].label,
       pointCount: finalAccuracy.length,
+      firstAccuracy: finalAccuracy[0],
+      expectedFirst: perGame[0],
+      lastAccuracy: finalAccuracy.at(-1),
+      expectedLast,
       gameCountText: document.getElementById('accuracy-chart-count')?.textContent,
       axisMinimum: chart.options.scales.y.min,
       dataMinimum: Math.min(...finalAccuracy),
       pointRadius: chart.data.datasets[0].pointRadius,
       normalHours: normalEstimate.hoursLeftMs / 3600000,
       slowerHours: slowerEstimate.hoursLeftMs / 3600000,
+      outlierHours: outlierEstimate.hoursLeftMs / 3600000,
       firstGame,
     };
   });
-  expect(accuracyView.label).toBe('Overall Accuracy');
-  expect(accuracyView.pointCount).toBeGreaterThan(10);
+  expect(accuracyView.label).toBe('25-Game Accuracy');
+  expect(accuracyView.pointCount).toBe(46);
+  expect(accuracyView.firstAccuracy).toBeCloseTo(accuracyView.expectedFirst, 8);
+  expect(accuracyView.lastAccuracy).toBeCloseTo(accuracyView.expectedLast, 8);
   expect(accuracyView.gameCountText).toBe('45 games');
   expect(accuracyView.axisMinimum).toBeGreaterThan(0);
   expect(accuracyView.axisMinimum).toBeCloseTo(accuracyView.dataMinimum, 8);
   expect(accuracyView.pointRadius).toBe(0);
   expect(accuracyView.slowerHours / accuracyView.normalHours).toBeCloseTo(2, 5);
+  expect(accuracyView.outlierHours / accuracyView.normalHours).toBeLessThan(1.05);
   expect(accuracyView.firstGame.hoursLeftMs).toBeGreaterThan(0);
   expect(accuracyView.firstGame.countText).toMatch(/^1 played \/ [\d,.]+h left$/);
   expect(accuracyView.firstGame.title).toContain('Power-law estimate from 1 game');
@@ -427,6 +448,122 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     secondMove: secondMove.uci,
     secondReply: secondReply.uci,
   }));
+});
+
+test.describe('progress dashboard', () => {
+  const desktopSafari = { ...devices['Desktop Safari'] };
+  delete desktopSafari.defaultBrowserType;
+
+  test.use({
+    ...desktopSafari,
+    baseURL: 'http://localhost:3000',
+  });
+
+  test('renders modeled progress on desktop and mobile', async ({ page, context }) => {
+    test.setTimeout(60000);
+    loadEnv(path.join(process.cwd(), '.env.local'));
+    const { sql } = require('@vercel/postgres');
+    const email = `lcstudy-stats-e2e-${Date.now()}@example.test`;
+    const { rows } = await sql`
+      INSERT INTO users (email, name, image)
+      VALUES (${email}, ${'LcStudy Stats E2E'}, ${null})
+      RETURNING id, email, name, image;
+    `;
+    const user = rows[0];
+    const token = await encode({
+      secret: process.env.NEXTAUTH_SECRET,
+      token: { sub: user.id, userId: user.id, email: user.email, name: user.name },
+    });
+    const fixtureRows = Array.from({ length: 36 }, (_, index) => {
+      const accuracy = 68 + index * 0.42 + Math.sin(index * 0.7) * 2;
+      const totalMoves = 12 + (index % 9);
+      const gameId = `stats-e2e-${Date.now()}-${index}`;
+      return {
+        id: gameId,
+        source: {
+          precomputed: true,
+          leelaColor: index % 2 === 0 ? 'w' : 'b',
+          openingLine: index % 3 === 0 ? ['e4', 'e5'] : index % 3 === 1 ? ['d4', 'd5'] : ['Nf3', 'Nf6'],
+          metadata: { openingSource: 'lichess-rated-rapid-dump' },
+        },
+        difficulty: 70 + Math.sin(index * 0.45) * 8,
+        playedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+        accuracy,
+        totalMoves,
+        accuracyHistory: Array.from({ length: totalMoves }, (_, moveIndex) => (
+          Math.max(0, Math.min(100, accuracy + Math.sin(moveIndex * 0.9) * 8))
+        )),
+        maiaLevel: 1100 + (index % 6) * 200,
+        durationMs: 140000 + index * 1200,
+        thinkTimeMs: 90000 + index * 900,
+        moveTimesMs: Array.from({ length: totalMoves }, () => 5000 + index * 40),
+      };
+    });
+    const gameIds = fixtureRows.map((row) => row.id);
+
+    try {
+      await sql.query(
+        `INSERT INTO games (id, source, difficulty)
+         SELECT id, source, difficulty
+         FROM jsonb_to_recordset($1::jsonb)
+           AS fixture(id text, source jsonb, difficulty numeric)`,
+        [JSON.stringify(fixtureRows)]
+      );
+      await sql.query(
+        `INSERT INTO user_games (
+           user_id, game_id, attempts, solved, accuracy, played_at,
+           total_moves, average_accuracy, accuracy_history, maia_level,
+           duration_ms, think_time_ms, move_times_ms
+         )
+         SELECT $1::uuid, id, total_moves, true, accuracy, played_at,
+                total_moves, accuracy, accuracy_history, maia_level,
+                duration_ms, think_time_ms, move_times_ms
+         FROM jsonb_to_recordset($2::jsonb) AS fixture(
+           id text, played_at timestamptz, accuracy numeric, total_moves integer,
+           accuracy_history jsonb, maia_level integer, duration_ms integer,
+           think_time_ms integer, move_times_ms jsonb
+         )`,
+        [user.id, JSON.stringify(fixtureRows.map((row) => ({
+          id: row.id,
+          played_at: row.playedAt,
+          accuracy: row.accuracy,
+          total_moves: row.totalMoves,
+          accuracy_history: row.accuracyHistory,
+          maia_level: row.maiaLevel,
+          duration_ms: row.durationMs,
+          think_time_ms: row.thinkTimeMs,
+          move_times_ms: row.moveTimesMs,
+        })))]
+      );
+
+      await context.addCookies([
+        { name: 'next-auth.session-token', value: token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' },
+        { name: '__Secure-next-auth.session-token', value: token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax', secure: true },
+      ]);
+
+      await page.goto('/stats', { waitUntil: 'networkidle' });
+      await expect(page.getByRole('heading', { name: 'Progress', level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Accuracy', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Skill Map', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Time', exact: true })).toBeVisible();
+      await expect(page.locator('.stats-progress-chart')).toHaveCount(1);
+      await expect(page.locator('.stats-chart-line')).toHaveCount(3);
+      await expect(page.locator('.stats-breakdown-row')).not.toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight)).toBe(true);
+      await page.screenshot({ path: 'e2e-screenshots/11-stats-desktop.png', fullPage: true });
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      expect(await page.locator('.stats-breakdown-row').evaluateAll((rows) => (
+        rows.every((row) => row.scrollWidth <= row.clientWidth + 1)
+      ))).toBe(true);
+      await page.screenshot({ path: 'e2e-screenshots/12-stats-mobile.png', fullPage: true });
+    } finally {
+      await sql`DELETE FROM users WHERE id = ${user.id};`;
+      await sql.query('DELETE FROM games WHERE id = ANY($1::text[])', [gameIds]);
+    }
+  });
 });
 
 test.describe('desktop checkmate', () => {

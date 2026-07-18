@@ -10,6 +10,8 @@ import type {
   DbUserRow,
   UserGameRow,
   UserGameDbRow,
+  UserGameStatsRow,
+  UserGameStatsDbRow,
   RecordGameResultParams,
   MoveHistoryEntry,
   SessionRecord,
@@ -22,6 +24,7 @@ import type {
 export type {
   DbUser,
   UserGameRow,
+  UserGameStatsRow,
   MoveHistoryEntry,
   SessionRecord,
   RecordGameResultParams,
@@ -107,7 +110,8 @@ export async function ensureGameRecord(args: {
   await sql`
     INSERT INTO games (id, source)
     VALUES (${id}, ${JSON.stringify(source)}::jsonb)
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id)
+    DO UPDATE SET source = games.source || EXCLUDED.source;
   `;
 }
 
@@ -125,6 +129,26 @@ export async function getUserGameHistory(userId: string): Promise<UserGameRow[]>
   `;
 
   return rows.map(mapUserGameRow);
+}
+
+/**
+ * Get history plus cached difficulty and source metadata in one query.
+ * This is kept separate from the gameplay history query so its payload stays lean.
+ */
+export async function getUserGameStatsHistory(userId: string): Promise<UserGameStatsRow[]> {
+  const { rows } = await sql<UserGameStatsDbRow>`
+    SELECT ug.user_id, ug.game_id, ug.attempts, ug.solved, ug.accuracy,
+           ug.played_at, ug.total_moves, ug.average_retries,
+           ug.average_accuracy, ug.accuracy_history, ug.maia_level,
+           ug.duration_ms, ug.think_time_ms, ug.move_times_ms,
+           ug.suggested_think_ms, g.difficulty, g.source AS game_source
+    FROM user_games ug
+    LEFT JOIN games g ON g.id = ug.game_id
+    WHERE ug.user_id = ${userId}
+    ORDER BY ug.played_at ASC;
+  `;
+
+  return rows.map(mapUserGameStatsRow);
 }
 
 /**
@@ -401,4 +425,32 @@ function mapUserGameRow(row: UserGameDbRow): UserGameRow {
       : [],
     suggestedThinkMs: row.suggested_think_ms
   };
+}
+
+function mapUserGameStatsRow(row: UserGameStatsDbRow): UserGameStatsRow {
+  const base = mapUserGameRow(row);
+  const source = isRecord(row.game_source) ? row.game_source : {};
+  const metadata = isRecord(source.metadata) ? source.metadata : {};
+  const openingLine = Array.isArray(source.openingLine)
+    ? source.openingLine.filter((move): move is string => typeof move === "string")
+    : [];
+  const rawColor = source.leelaColor;
+  const difficulty = row.difficulty === null ? null : Number(row.difficulty);
+
+  return {
+    ...base,
+    difficulty: Number.isFinite(difficulty) ? difficulty : null,
+    leelaColor: rawColor === "w" || rawColor === "b" ? rawColor : null,
+    openingLine,
+    openingSource: stringOrNull(metadata.openingSource),
+    openingRatingGroup: stringOrNull(metadata.openingRatingGroup)
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }

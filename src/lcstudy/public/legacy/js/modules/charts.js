@@ -19,6 +19,7 @@ import {
 let lastAccuracyChartSignature = '';
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
+const ACCURACY_ROLLING_WINDOW = 25;
 const GM_ACCURACY_TARGET = 90;
 const GM_ACCURACY_CEILING = 95;
 const GM_ACCURACY_EXPONENT = 0.5;
@@ -45,7 +46,7 @@ export function initializeCharts() {
 }
 
 /**
- * Initialize the cumulative accuracy chart.
+ * Initialize the rolling game-accuracy chart.
  */
 function initAccuracyChart() {
   const ctx = document.getElementById('accuracy-chart')?.getContext('2d');
@@ -57,7 +58,7 @@ function initAccuracyChart() {
       labels: [],
       datasets: [
         {
-          label: 'Overall Accuracy',
+          label: '25-Game Accuracy',
           data: [],
           borderColor: '#8b5cf6',
           backgroundColor: 'rgba(139, 92, 246, 0.08)',
@@ -81,7 +82,7 @@ function initAccuracyChart() {
           ...CHART_TOOLTIP_OPTIONS,
           callbacks: {
             label: function(context) {
-              return `Overall: ${context.formattedValue}%`;
+              return `25-game: ${context.formattedValue}%`;
             }
           }
         }
@@ -192,7 +193,7 @@ export function scheduleChartsUpdate() {
 }
 
 /**
- * Update the chart with cumulative weighted accuracy over completed games.
+ * Update the chart with a trailing 25-game average.
  */
 function updateAccuracyChart() {
   const chart = getAccuracyChart();
@@ -204,30 +205,25 @@ function updateAccuracyChart() {
   updateAccuracyGoalCount(gameHistory, currentEstimate);
   updateChartCount('accuracy-chart-count', gameHistory.length, 'game');
 
-  const cumulativeAccuracies = calculateCumulativeAccuracies(gameHistory);
-  const visibleStartIndex = findLowestAccuracyIndex(cumulativeAccuracies);
-  const visibleCumulative = cumulativeAccuracies.slice(visibleStartIndex);
-  const includeCurrentGame = moveAccuracies.length > 0 && !isCurrentGameAlreadySaved(gameHistory, moveAccuracies);
-  const currentOverall = includeCurrentGame
-    ? calculateCurrentOverallAccuracy(gameHistory, moveAccuracies)
-    : null;
+  const perGameAccuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
+  const rollingAccuracies = calculateRollingAverage(perGameAccuracies, ACCURACY_ROLLING_WINDOW);
   const nextSignature = [
-    visibleStartIndex,
-    visibleCumulative.length,
-    visibleCumulative.at(-1) ?? '',
-    currentOverall ?? '',
+    rollingAccuracies.length,
+    rollingAccuracies[0] ?? '',
+    rollingAccuracies.at(-1) ?? '',
     gameHistory.length
   ].join('|');
 
   if (nextSignature === lastAccuracyChartSignature) return;
   lastAccuracyChartSignature = nextSignature;
 
-  const labels = visibleCumulative.map((_, index) => `Game ${visibleStartIndex + index + 1}`);
-  const values = visibleCumulative.slice();
-  if (currentOverall !== null) {
-    labels.push(`Current game (${gameHistory.length + 1})`);
-    values.push(currentOverall);
-  }
+  const hasCurrentGame = perGameAccuracies.length > gameHistory.length;
+  const labels = rollingAccuracies.map((_, index) => (
+    hasCurrentGame && index === rollingAccuracies.length - 1
+      ? `Current game (${gameHistory.length + 1})`
+      : `Game ${index + 1}`
+  ));
+  const values = rollingAccuracies;
 
   chart.data.labels = labels;
   chart.data.datasets[0].data = values;
@@ -363,63 +359,19 @@ function calculateWeightedGameAccuracy(gameHistory) {
   return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
 }
 
-function calculateCumulativeAccuracies(gameHistory) {
-  const cumulative = [];
-  let totalMoves = 0;
-  let totalAccuracy = 0;
-
-  for (const game of gameHistory) {
-    const moves = Number(game.total_moves || 0);
-    const accuracy = Number(game.average_accuracy || 0);
-    if (!Number.isFinite(moves) || !Number.isFinite(accuracy) || moves <= 0) continue;
-
-    totalMoves += moves;
-    totalAccuracy += accuracy * moves;
-    cumulative.push(totalAccuracy / totalMoves);
-  }
-
-  return cumulative;
-}
-
-function calculateCurrentOverallAccuracy(gameHistory, moveAccuracies) {
-  let totalMoves = 0;
-  let totalAccuracy = 0;
-
-  for (const game of gameHistory) {
-    const moves = Number(game.total_moves || 0);
-    const accuracy = Number(game.average_accuracy || 0);
-    if (!Number.isFinite(moves) || !Number.isFinite(accuracy) || moves <= 0) continue;
-
-    totalMoves += moves;
-    totalAccuracy += accuracy * moves;
-  }
-
-  for (const accuracy of moveAccuracies) {
-    const numeric = Number(accuracy);
-    if (!Number.isFinite(numeric)) continue;
-
-    totalMoves += 1;
-    totalAccuracy += numeric;
-  }
-
-  return totalMoves > 0 ? totalAccuracy / totalMoves : null;
-}
-
-function findLowestAccuracyIndex(values) {
-  if (!Array.isArray(values) || values.length === 0) return 0;
-
-  let lowestIndex = 0;
-  let lowestValue = Infinity;
+function calculateRollingAverage(values, windowSize) {
+  const rolling = [];
+  let sum = 0;
 
   for (let index = 0; index < values.length; index++) {
-    const value = Number(values[index]);
-    if (Number.isFinite(value) && value < lowestValue) {
-      lowestValue = value;
-      lowestIndex = index;
+    sum += Number(values[index]);
+    if (index >= windowSize) {
+      sum -= Number(values[index - windowSize]);
     }
+    rolling.push(sum / Math.min(index + 1, windowSize));
   }
 
-  return lowestIndex;
+  return rolling;
 }
 
 function isCurrentGameAlreadySaved(gameHistory, moveAccuracies) {
@@ -449,7 +401,7 @@ export function calculateCurrentGoalEstimate(gameHistory, moveAccuracies) {
   const completedGames = Array.isArray(gameHistory) ? gameHistory.length : 0;
   const projectedAccuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
   const projection = projectAccuracyGoal(gameHistory, moveAccuracies);
-  const averageDurationMs = calculateAverageGameDurationMs(gameHistory);
+  const averageDurationMs = calculateTypicalGameDurationMs(gameHistory);
 
   return calculateGoalEstimate(projectedAccuracies, completedGames, averageDurationMs, projection);
 }
@@ -528,7 +480,7 @@ function buildHoursLeftTitle(completedGames, targetGames, remainingGames, averag
     `${formatGameCount(completedGames)} played`,
     `${formatGameCount(targetGames)} target games`,
     `${formatGameCount(remainingGames)} estimated remaining`,
-    `${formatGameLength(averageDurationMs)} avg game length`,
+    `${formatGameLength(averageDurationMs)} typical game length`,
     `${formatHoursLeft(hoursLeft)} left to ${GM_ACCURACY_TARGET}%`
   ];
 
@@ -676,21 +628,23 @@ function formatGameCount(count) {
   return Math.round(numeric).toLocaleString();
 }
 
-function calculateAverageGameDurationMs(gameHistory) {
+function calculateTypicalGameDurationMs(gameHistory) {
   if (!Array.isArray(gameHistory)) return null;
 
-  let count = 0;
-  let total = 0;
+  const durations = [];
 
   for (const game of gameHistory) {
     const duration = Number(game.duration_ms);
     if (!Number.isFinite(duration) || duration <= 0) continue;
-
-    count += 1;
-    total += duration;
+    durations.push(duration);
   }
 
-  return count > 0 ? total / count : null;
+  if (durations.length === 0) return null;
+  durations.sort((a, b) => a - b);
+  const middle = Math.floor(durations.length / 2);
+  return durations.length % 2 === 1
+    ? durations[middle]
+    : (durations[middle - 1] + durations[middle]) / 2;
 }
 
 function formatHoursLeft(durationMs) {

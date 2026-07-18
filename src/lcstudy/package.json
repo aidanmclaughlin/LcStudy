@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "db:migrate": "node scripts/db-migrate.mjs",
+    "db:backfill-metadata": "node scripts/backfill-game-metadata.mjs",
     "test:e2e": "playwright test e2e-smoke.spec.js --browser=webkit"
   },
   "dependencies": {

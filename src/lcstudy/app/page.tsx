@@ -11,6 +11,7 @@
  */
 
 import Script from "next/script";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getAuthSession } from "@/lib/auth";
@@ -108,8 +109,13 @@ export default async function HomePage() {
             {/* Game Accuracy Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2>Accuracy Over Games</h2>
-                <span id="accuracy-chart-count" className="panel-count">0 games</span>
+                <h2>25-Game Accuracy</h2>
+                <div className="panel-heading-actions">
+                  <span id="accuracy-chart-count" className="panel-count">0 games</span>
+                  <Link className="panel-stats-link" href="/stats">
+                    Stats
+                  </Link>
+                </div>
               </div>
               <div className="chart-container">
                 <canvas id="accuracy-chart" />

@@ -41,6 +41,15 @@ export interface UserGameRow {
   suggestedThinkMs: number | null;
 }
 
+/** User history enriched with immutable game metadata for progress analysis */
+export interface UserGameStatsRow extends UserGameRow {
+  difficulty: number | null;
+  leelaColor: "w" | "b" | null;
+  openingLine: string[];
+  openingSource: string | null;
+  openingRatingGroup: string | null;
+}
+
 /** Raw game row from database query */
 export interface UserGameDbRow {
   user_id: string;
@@ -58,6 +67,12 @@ export interface UserGameDbRow {
   think_time_ms: number | null;
   move_times_ms: unknown;
   suggested_think_ms: number | null;
+}
+
+/** Raw joined row used by the progress dashboard */
+export interface UserGameStatsDbRow extends UserGameDbRow {
+  difficulty: string | number | null;
+  game_source: unknown;
 }
 
 /** Parameters for recording a game result */

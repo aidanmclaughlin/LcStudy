@@ -134,6 +134,7 @@ function buildGameRecordSource(game: PrecomputedGame) {
     id: game.id,
     precomputed: true,
     leelaColor: game.leelaColor,
+    openingLine: game.openingLine,
     startingFen: game.startingFen,
     metadata: game.metadata,
     totalMoves: game.moves.length,

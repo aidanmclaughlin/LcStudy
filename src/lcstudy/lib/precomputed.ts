@@ -50,6 +50,7 @@ export interface PrecomputedGame {
   moves: PrecomputedMove[];
   rounds: PrecomputedRound[];
   leelaColor: "w" | "b";
+  openingLine: string[];
   metadata: {
     event?: string;
     white?: string;
@@ -57,6 +58,10 @@ export interface PrecomputedGame {
     result?: string;
     maiaLevel?: number;
     maiaSearch?: string;
+    openingSource?: string;
+    openingSpeed?: string;
+    openingRatingGroup?: string;
+    openingPlies?: number;
   };
   startingFen: string;
 }
@@ -323,13 +328,18 @@ function parsePgnFile(filePath: string): PrecomputedGame | null {
       moves,
       rounds,
       leelaColor,
+      openingLine: moves.slice(0, 10).map((move) => move.san),
       metadata: {
         event: normalizeHeader(headers.Event),
         white: normalizeHeader(headers.White),
         black: normalizeHeader(headers.Black),
         result: normalizeHeader(headers.Result),
         maiaLevel: parseMaiaLevel(headers),
-        maiaSearch: normalizeHeader(headers.LcStudyMaiaSearch)
+        maiaSearch: normalizeHeader(headers.LcStudyMaiaSearch),
+        openingSource: normalizeHeader(headers.LcStudyOpeningSource),
+        openingSpeed: normalizeHeader(headers.LcStudyOpeningSpeed),
+        openingRatingGroup: normalizeHeader(headers.LcStudyOpeningRatingGroup),
+        openingPlies: Number(headers.LcStudyOpeningPlies) || undefined
       },
       startingFen: startingChess.fen()
     };

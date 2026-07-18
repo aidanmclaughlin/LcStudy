@@ -58,6 +58,31 @@
   white-space: nowrap;
 }
 
+.panel-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.panel-stats-link {
+  color: #c4b5fd;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  padding: 5px 7px;
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  border-radius: var(--radius-sm);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.panel-stats-link:hover {
+  color: #f5f3ff;
+  border-color: rgba(196, 181, 253, 0.58);
+  background: rgba(139, 92, 246, 0.18);
+}
+
 .panel-history .panel-section-heading h2 {
   font-size: 0.9rem;
 }
