@@ -5,13 +5,18 @@ import type {
   ProgressSeriesPoint
 } from "@/lib/progress-stats";
 import { TARGET_ACCURACY } from "@/lib/progress-stats";
+import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
 
 interface StatsDashboardProps {
   stats: ProgressDashboardStats;
 }
 
 export function StatsDashboard({ stats }: StatsDashboardProps) {
-  const { overview, progress, consistency, timing, skill, coverage } = stats;
+  const { elo, overview, progress, consistency, timing, skill, coverage } = stats;
+  const eloModel = elo.calibration.model === "maia2-rapid"
+    ? "Maia-2 rapid"
+    : elo.calibration.model;
+  const eloTitle = `${eloModel}, ${formatInteger(elo.calibration.sampledGames)} corpus games, ${formatInteger(elo.calibration.sampledPositions)} post-opening positions, latest ${elo.current?.games ?? 0} eligible games`;
 
   return (
     <main className="stats-page">
@@ -28,6 +33,15 @@ export function StatsDashboard({ stats }: StatsDashboardProps) {
       </header>
 
       <section className="stats-metric-grid" aria-label="Progress summary">
+        <Metric
+          label="Maia Elo"
+          value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
+          detail={elo.current
+            ? `${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)} 80% range`
+            : `Moves ${elo.calibration.firstIncludedPrompt}+`}
+          title={eloTitle}
+          tone="rose"
+        />
         <Metric label="10-game" value={formatPercent(overview.recent10)} tone="green" />
         <Metric
           label="25-game"
@@ -39,6 +53,22 @@ export function StatsDashboard({ stats }: StatsDashboardProps) {
         <Metric label="All-time" value={formatPercent(overview.allTimeAccuracy)} />
         <Metric label="Leela matches" value={formatPercent(overview.exactRate)} tone="blue" />
         <Metric label="Active practice" value={formatHours(overview.activeHours)} />
+      </section>
+
+      <section className="stats-band stats-elo-band">
+        <SectionHeading
+          title="Maia Elo"
+          meta={`${elo.current?.games ?? 0}-game / moves ${elo.calibration.firstIncludedPrompt}+`}
+        />
+        <div className="stats-chart-legend" aria-hidden="true">
+          <LegendItem className="legend-elo" label="25-game estimate" />
+          <LegendItem className="legend-elo-range" label="80% range" />
+        </div>
+        <MaiaEloChart
+          points={elo.series}
+          minimum={elo.calibration.minimumElo}
+          maximum={elo.calibration.maximumElo}
+        />
       </section>
 
       <section className="stats-band stats-progress-band">
@@ -192,18 +222,105 @@ function Metric({
   label,
   value,
   detail,
+  title,
   tone = "neutral"
 }: {
   label: string;
   value: string;
   detail?: string;
-  tone?: "neutral" | "green" | "violet" | "amber" | "blue";
+  title?: string;
+  tone?: "neutral" | "green" | "violet" | "amber" | "blue" | "rose";
 }) {
   return (
-    <div className={`stats-metric stats-metric--${tone}`}>
+    <div className={`stats-metric stats-metric--${tone}`} title={title}>
       <span className="stats-metric-label">{label}</span>
       <strong>{value}</strong>
       {detail && <span className="stats-metric-detail">{detail}</span>}
+    </div>
+  );
+}
+
+function MaiaEloChart({
+  points,
+  minimum,
+  maximum
+}: {
+  points: MaiaEloSeriesPoint[];
+  minimum: number;
+  maximum: number;
+}) {
+  if (points.length === 0) return <EmptyState label="No post-opening history yet" />;
+
+  const width = 960;
+  const height = 280;
+  const padding = { top: 18, right: 18, bottom: 34, left: 58 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const x = (index: number) => padding.left + (
+    points.length === 1 ? chartWidth / 2 : index * chartWidth / (points.length - 1)
+  );
+  const y = (value: number) => padding.top
+    + (maximum - value) * chartHeight / (maximum - minimum || 1);
+  const linePath = points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.elo).toFixed(2)}`)
+    .join(" ");
+  const bandPath = [
+    ...points.map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.high80).toFixed(2)}`),
+    ...points.slice().reverse().map((point, reverseIndex) => {
+      const index = points.length - reverseIndex - 1;
+      return `L${x(index).toFixed(2)},${y(point.low80).toFixed(2)}`;
+    }),
+    "Z"
+  ].join(" ");
+  const yTicks = Array.from({ length: 4 }, (_, index) => (
+    minimum + (maximum - minimum) * index / 3
+  ));
+  const xTicks = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
+
+  return (
+    <div className="stats-chart-wrap stats-elo-chart-wrap">
+      <svg
+        className="stats-progress-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-labelledby="elo-chart-title elo-chart-description"
+      >
+        <title id="elo-chart-title">Maia-equivalent Elo over games</title>
+        <desc id="elo-chart-description">
+          Twenty-five-game Maia-2 rapid equivalent rating with an eighty percent uncertainty interval.
+        </desc>
+        {yTicks.map((tick, index) => (
+          <g key={tick}>
+            <line
+              className="stats-chart-gridline"
+              x1={padding.left}
+              x2={width - padding.right}
+              y1={y(tick)}
+              y2={y(tick)}
+            />
+            <text className="stats-chart-label" x={padding.left - 10} y={y(tick) + 4} textAnchor="end">
+              {index === 0
+                ? `<${formatInteger(minimum)}`
+                : index === yTicks.length - 1
+                  ? `${formatInteger(maximum)}+`
+                  : formatInteger(tick)}
+            </text>
+          </g>
+        ))}
+        <path className="stats-elo-chart-band" d={bandPath} />
+        <path className="stats-elo-chart-line" d={linePath} />
+        {xTicks.map((index) => (
+          <text
+            className="stats-chart-label"
+            key={index}
+            x={x(index)}
+            y={height - 9}
+            textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}
+          >
+            Game {points[index].game}
+          </text>
+        ))}
+      </svg>
     </div>
   );
 }
@@ -463,6 +580,31 @@ function EmptyState({ label }: { label: string }) {
 
 function formatPercent(value: number, digits = 1): string {
   return `${Number.isFinite(value) ? value.toFixed(digits) : "0.0"}%`;
+}
+
+function formatElo(
+  estimate: MaiaEloSeriesPoint | null,
+  minimum: number,
+  maximum: number
+): string {
+  if (!estimate) return "--";
+  if (estimate.bound === "low") return `<${formatInteger(minimum)}`;
+  if (estimate.bound === "high") return `${formatInteger(maximum)}+`;
+  return formatInteger(estimate.elo);
+}
+
+function formatEloRange(
+  estimate: MaiaEloSeriesPoint,
+  minimum: number,
+  maximum: number
+): string {
+  const low = estimate.low80 <= minimum
+    ? `<${formatInteger(minimum)}`
+    : formatInteger(estimate.low80);
+  const high = estimate.high80 >= maximum
+    ? `${formatInteger(maximum)}+`
+    : formatInteger(estimate.high80);
+  return `${low} to ${high}`;
 }
 
 function formatInteger(value: number): string {

@@ -66,7 +66,7 @@
 
 .stats-metric-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
   padding: 22px 0 26px;
 }
@@ -89,6 +89,7 @@
 .stats-metric--violet { border-top-color: #a78bfa; }
 .stats-metric--amber { border-top-color: #f59e0b; }
 .stats-metric--blue { border-top-color: #38bdf8; }
+.stats-metric--rose { border-top-color: #fb7185; }
 
 .stats-metric-label,
 .stats-feature-label {
@@ -173,6 +174,11 @@
 .legend-10 { background: #22c55e; }
 .legend-25 { background: #a78bfa; }
 .legend-adjusted { background: #f59e0b; }
+.legend-elo { background: #fb7185; }
+.legend-elo-range {
+  height: 6px;
+  background: rgba(251, 113, 133, 0.24);
+}
 .legend-target {
   height: 1px;
   background: #f87171;
@@ -236,6 +242,20 @@
   stroke: #f87171;
   stroke-width: 1;
   stroke-dasharray: 4 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-elo-chart-band {
+  fill: rgba(251, 113, 133, 0.12);
+  stroke: none;
+}
+
+.stats-elo-chart-line {
+  fill: none;
+  stroke: #fb7185;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
@@ -523,7 +543,7 @@
 
 @media (max-width: 980px) {
   .stats-metric-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .stats-chart-wrap {

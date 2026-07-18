@@ -130,6 +130,23 @@ legal continuation after exhausting the human backoff hierarchy and never
 substitutes another opening policy. Generation requires the frozen public dump
 so runs are reproducible and independent of account access.
 
+## calibrate_maia_elo.py
+
+Regenerate the Maia-equivalent Elo curve after changing the corpus, Leela net,
+search budget, grading function, or Maia model:
+
+```bash
+.venv-maia2/bin/python tools/calibrate_maia_elo.py
+```
+
+The script samples 600 corpus games deterministically, evaluates up to six
+post-opening player prompts per game with every Maia-2 rapid rating bucket, and
+scores Maia's complete move distribution with the stored LCStudy analysis. It
+uses equal game weights, game-clustered 80% intervals, and isotonic regression,
+then writes the audited model data to
+`src/lcstudy/data/maia-elo-calibration.json`. Prompts begin at the sixth player
+move because Maia-2's training support starts at ply 11.
+
 ### Maia-2 production workflow
 
 1. Build the tree from the complete latest monthly rated-standard dump.

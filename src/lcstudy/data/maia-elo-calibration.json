@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-18",
+  "model": "maia2-rapid",
+  "oracle": {
+    "network": "BT4-it332",
+    "search": "200 nodes",
+    "grading": "q-wpl-exp10"
+  },
+  "scope": {
+    "corpusGames": 4500,
+    "sampledGames": 600,
+    "sampledPositions": 3567,
+    "positionsPerGame": 6,
+    "firstIncludedPrompt": 6,
+    "seed": 20260718,
+    "confidence": 0.8,
+    "ratingRange": [
+      1050,
+      2100
+    ],
+    "weighting": "equal-games"
+  },
+  "points": [
+    {
+      "elo": 1050,
+      "bucket": "1000-1099",
+      "rawAccuracy": 81.4646,
+      "low80": 80.8765,
+      "high80": 82.0526,
+      "exactRate": 46.2195,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 81.4646
+    },
+    {
+      "elo": 1150,
+      "bucket": "1100-1199",
+      "rawAccuracy": 82.5305,
+      "low80": 81.9595,
+      "high80": 83.1014,
+      "exactRate": 47.9943,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 82.5305
+    },
+    {
+      "elo": 1250,
+      "bucket": "1200-1299",
+      "rawAccuracy": 83.1769,
+      "low80": 82.6177,
+      "high80": 83.7361,
+      "exactRate": 49.0013,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 83.1769
+    },
+    {
+      "elo": 1350,
+      "bucket": "1300-1399",
+      "rawAccuracy": 83.7107,
+      "low80": 83.1616,
+      "high80": 84.2599,
+      "exactRate": 49.8522,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 83.7107
+    },
+    {
+      "elo": 1450,
+      "bucket": "1400-1499",
+      "rawAccuracy": 84.2631,
+      "low80": 83.7235,
+      "high80": 84.8027,
+      "exactRate": 50.7185,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 84.2631
+    },
+    {
+      "elo": 1550,
+      "bucket": "1500-1599",
+      "rawAccuracy": 84.6289,
+      "low80": 84.0974,
+      "high80": 85.1603,
+      "exactRate": 51.2303,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 84.6289
+    },
+    {
+      "elo": 1650,
+      "bucket": "1600-1699",
+      "rawAccuracy": 85.2704,
+      "low80": 84.7489,
+      "high80": 85.7918,
+      "exactRate": 52.2399,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 85.2704
+    },
+    {
+      "elo": 1750,
+      "bucket": "1700-1799",
+      "rawAccuracy": 85.7258,
+      "low80": 85.2128,
+      "high80": 86.2387,
+      "exactRate": 52.9396,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 85.7258
+    },
+    {
+      "elo": 1850,
+      "bucket": "1800-1899",
+      "rawAccuracy": 86.1879,
+      "low80": 85.6825,
+      "high80": 86.6933,
+      "exactRate": 53.7003,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 86.1879
+    },
+    {
+      "elo": 1950,
+      "bucket": "1900-1999",
+      "rawAccuracy": 86.5861,
+      "low80": 86.0881,
+      "high80": 87.0842,
+      "exactRate": 54.3381,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 86.5861
+    },
+    {
+      "elo": 2100,
+      "bucket": "2000-2199",
+      "rawAccuracy": 87.0742,
+      "low80": 86.5865,
+      "high80": 87.5619,
+      "exactRate": 55.1502,
+      "games": 600,
+      "positions": 3567,
+      "accuracy": 87.0742
+    }
+  ]
+}

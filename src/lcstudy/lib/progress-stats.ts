@@ -2,6 +2,7 @@
 
 import { fitCoach } from "@/lib/coach";
 import type { UserGameStatsRow } from "@/lib/db";
+import { computeMaiaElo, type MaiaEloStats } from "@/lib/maia-elo";
 
 const RECENT_WINDOW = 25;
 const TARGET_WINDOW = 10;
@@ -62,6 +63,7 @@ export interface AccuracyForecast {
 }
 
 export interface ProgressDashboardStats {
+  elo: MaiaEloStats;
   overview: {
     totalGames: number;
     totalMoves: number;
@@ -145,6 +147,7 @@ interface ForecastCandidate {
 export function computeProgressDashboard(
   history: UserGameStatsRow[]
 ): ProgressDashboardStats {
+  const elo = computeMaiaElo(history);
   const validRows = history
     .map((row, historyIndex) => ({
       row,
@@ -240,6 +243,7 @@ export function computeProgressDashboard(
   const lichessGames = validGames.filter((game) => isLichessGame(game.row)).length;
 
   return {
+    elo,
     overview: {
       totalGames: history.length,
       totalMoves,

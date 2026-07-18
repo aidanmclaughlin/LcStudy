@@ -501,7 +501,7 @@ test.describe('progress dashboard', () => {
       token: { sub: user.id, userId: user.id, email: user.email, name: user.name },
     });
     const fixtureRows = Array.from({ length: 36 }, (_, index) => {
-      const accuracy = 68 + index * 0.42 + Math.sin(index * 0.7) * 2;
+      const accuracy = 81 + index * 0.13 + Math.sin(index * 0.7) * 0.6;
       const totalMoves = 12 + (index % 9);
       const gameId = `stats-e2e-${Date.now()}-${index}`;
       return {
@@ -569,10 +569,17 @@ test.describe('progress dashboard', () => {
 
       await page.goto('/stats', { waitUntil: 'networkidle' });
       await expect(page.getByRole('heading', { name: 'Progress', level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Maia Elo', exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Accuracy', exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Skill Map', exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Time', exact: true })).toBeVisible();
-      await expect(page.locator('.stats-progress-chart')).toHaveCount(1);
+      const eloMetric = page.locator('.stats-metric').filter({ hasText: 'Maia Elo' });
+      await expect(eloMetric.locator('strong')).toHaveText('1,300');
+      await expect(eloMetric.locator('.stats-metric-detail')).toHaveText('1,190 to 1,410 80% range');
+      await expect(page.locator('.stats-progress-chart')).toHaveCount(2);
+      await expect(page.locator('.stats-elo-chart-line')).toHaveCount(1);
+      await expect(page.locator('.stats-elo-band .stats-chart-label').filter({ hasText: '<1,050' })).toHaveCount(1);
+      await expect(page.locator('.stats-elo-band .stats-chart-label').filter({ hasText: '2,100+' })).toHaveCount(1);
       await expect(page.locator('.stats-chart-line')).toHaveCount(3);
       await expect(page.locator('.stats-breakdown-row')).not.toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
