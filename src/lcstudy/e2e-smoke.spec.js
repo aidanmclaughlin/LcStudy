@@ -584,6 +584,41 @@ test.describe('progress dashboard', () => {
       await expect(page.locator('.stats-breakdown-row')).not.toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight)).toBe(true);
+      const interactionStyles = await page.evaluate(() => {
+        const pageStyle = getComputedStyle(document.querySelector('.stats-page'));
+        const textStyle = getComputedStyle(document.querySelector('.stats-metric-label'));
+        const linkStyle = getComputedStyle(document.querySelector('.stats-back'));
+        return {
+          caretColor: pageStyle.caretColor,
+          cursor: textStyle.cursor,
+          linkCursor: linkStyle.cursor,
+          userSelect: pageStyle.userSelect || pageStyle.webkitUserSelect,
+        };
+      });
+      expect(interactionStyles.cursor).toBe('default');
+      expect(interactionStyles.linkCursor).toBe('pointer');
+      expect(interactionStyles.userSelect).toBe('none');
+      expect(['transparent', 'rgba(0, 0, 0, 0)']).toContain(interactionStyles.caretColor);
+      const desktopChartGeometry = await page.locator('.stats-chart-frame').evaluateAll((frames) => (
+        frames.map((frame) => {
+          const wrapper = frame.parentElement.getBoundingClientRect();
+          const frameBox = frame.getBoundingClientRect();
+          const plot = frame.querySelector('.stats-chart-plot').getBoundingClientRect();
+          const svg = frame.querySelector('svg').getBoundingClientRect();
+          return {
+            frameHeight: frameBox.height,
+            plotHeight: plot.height,
+            svgHeight: svg.height,
+            wrapperHeight: wrapper.height,
+          };
+        })
+      ));
+      expect(desktopChartGeometry).toHaveLength(2);
+      for (const chart of desktopChartGeometry) {
+        expect(chart.plotHeight).toBeGreaterThanOrEqual(250);
+        expect(Math.abs(chart.svgHeight - chart.plotHeight)).toBeLessThan(1);
+        expect(Math.abs(chart.wrapperHeight - chart.frameHeight)).toBeLessThan(1);
+      }
       await page.screenshot({ path: 'e2e-screenshots/11-stats-desktop.png', fullPage: true });
 
       await page.setViewportSize({ width: 390, height: 844 });
@@ -591,7 +626,62 @@ test.describe('progress dashboard', () => {
       expect(await page.locator('.stats-breakdown-row').evaluateAll((rows) => (
         rows.every((row) => row.scrollWidth <= row.clientWidth + 1)
       ))).toBe(true);
+      const mobileLayout = await page.evaluate(() => {
+        const charts = [...document.querySelectorAll('.stats-chart-wrap')].map((wrapper) => {
+          const wrapperBox = wrapper.getBoundingClientRect();
+          const plotBox = wrapper.querySelector('.stats-chart-plot').getBoundingClientRect();
+          const svgBox = wrapper.querySelector('svg').getBoundingClientRect();
+          return {
+            plotHeight: plotBox.height,
+            svgHeight: svgBox.height,
+            wrapperWidth: wrapperBox.width,
+            wrapperX: wrapperBox.x,
+          };
+        });
+        const firstMetric = document.querySelector('.stats-metric').getBoundingClientRect();
+        const pageBox = document.querySelector('.stats-page').getBoundingClientRect();
+        const backBox = document.querySelector('.stats-back').getBoundingClientRect();
+        return {
+          backHeight: backBox.height,
+          charts,
+          firstMetricWidth: firstMetric.width,
+          pageWidth: pageBox.width,
+          viewportWidth: innerWidth,
+        };
+      });
+      expect(mobileLayout.charts).toHaveLength(2);
+      expect(mobileLayout.backHeight).toBeGreaterThanOrEqual(38);
+      expect(Math.abs(mobileLayout.firstMetricWidth - mobileLayout.pageWidth)).toBeLessThan(1);
+      for (const chart of mobileLayout.charts) {
+        expect(chart.wrapperX).toBeCloseTo(0, 0);
+        expect(chart.wrapperWidth).toBeCloseTo(mobileLayout.viewportWidth, 0);
+        expect(chart.plotHeight).toBeGreaterThanOrEqual(220);
+        expect(Math.abs(chart.svgHeight - chart.plotHeight)).toBeLessThan(1);
+      }
       await page.screenshot({ path: 'e2e-screenshots/12-stats-mobile.png', fullPage: true });
+
+      await page.setViewportSize({ width: 320, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      expect(await page.locator('.stats-chart-wrap').evaluateAll((charts) => (
+        charts.every((chart) => {
+          const box = chart.getBoundingClientRect();
+          const plot = chart.querySelector('.stats-chart-plot').getBoundingClientRect();
+          const svg = chart.querySelector('svg').getBoundingClientRect();
+          return Math.abs(box.x) < 1
+            && Math.abs(box.width - innerWidth) < 1
+            && plot.height >= 220
+            && Math.abs(svg.height - plot.height) < 1;
+        })
+      ))).toBe(true);
+
+      await page.setViewportSize({ width: 721, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      expect(await page.locator('.forecast-layout').evaluate((layout) => (
+        layout.scrollWidth <= layout.clientWidth + 1
+      ))).toBe(true);
+      expect(await page.locator('.stats-breakdown-row').evaluateAll((rows) => (
+        rows.every((row) => row.scrollWidth <= row.clientWidth + 1)
+      ))).toBe(true);
     } finally {
       await sql`DELETE FROM users WHERE id = ${user.id};`;
       await sql.query('DELETE FROM games WHERE id = ANY($1::text[])', [gameIds]);

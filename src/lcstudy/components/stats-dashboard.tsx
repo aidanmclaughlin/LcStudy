@@ -6,6 +6,16 @@ import type {
 } from "@/lib/progress-stats";
 import { TARGET_ACCURACY } from "@/lib/progress-stats";
 import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
+import type { ReactNode } from "react";
+
+const CHART_WIDTH = 1000;
+const CHART_HEIGHT = 100;
+
+interface ChartTick {
+  key: string;
+  label: string;
+  position: number;
+}
 
 interface StatsDashboardProps {
   stats: ProgressDashboardStats;
@@ -251,16 +261,12 @@ function MaiaEloChart({
 }) {
   if (points.length === 0) return <EmptyState label="No post-opening history yet" />;
 
-  const width = 960;
-  const height = 280;
-  const padding = { top: 18, right: 18, bottom: 34, left: 58 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-  const x = (index: number) => padding.left + (
-    points.length === 1 ? chartWidth / 2 : index * chartWidth / (points.length - 1)
+  const x = (index: number) => (
+    points.length === 1 ? CHART_WIDTH / 2 : index * CHART_WIDTH / (points.length - 1)
   );
-  const y = (value: number) => padding.top
-    + (maximum - value) * chartHeight / (maximum - minimum || 1);
+  const y = (value: number) => (
+    (maximum - value) * CHART_HEIGHT / (maximum - minimum || 1)
+  );
   const linePath = points
     .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.elo).toFixed(2)}`)
     .join(" ");
@@ -276,52 +282,34 @@ function MaiaEloChart({
     minimum + (maximum - minimum) * index / 3
   ));
   const xTicks = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
+  const yAxisTicks = yTicks.map((tick, index) => ({
+    key: String(tick),
+    label: index === 0
+      ? `<${formatInteger(minimum)}`
+      : index === yTicks.length - 1
+        ? `${formatInteger(maximum)}+`
+        : formatInteger(tick),
+    position: y(tick)
+  }));
+  const xAxisTicks = xTicks.map((index) => ({
+    key: String(index),
+    label: `Game ${points[index].game}`,
+    position: x(index)
+  }));
 
   return (
-    <div className="stats-chart-wrap stats-elo-chart-wrap">
-      <svg
-        className="stats-progress-chart"
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-labelledby="elo-chart-title elo-chart-description"
-      >
-        <title id="elo-chart-title">Maia-equivalent Elo over games</title>
-        <desc id="elo-chart-description">
-          Twenty-five-game Maia-2 rapid equivalent rating with an eighty percent uncertainty interval.
-        </desc>
-        {yTicks.map((tick, index) => (
-          <g key={tick}>
-            <line
-              className="stats-chart-gridline"
-              x1={padding.left}
-              x2={width - padding.right}
-              y1={y(tick)}
-              y2={y(tick)}
-            />
-            <text className="stats-chart-label" x={padding.left - 10} y={y(tick) + 4} textAnchor="end">
-              {index === 0
-                ? `<${formatInteger(minimum)}`
-                : index === yTicks.length - 1
-                  ? `${formatInteger(maximum)}+`
-                  : formatInteger(tick)}
-            </text>
-          </g>
-        ))}
+    <ChartFrame
+      className="stats-elo-chart-wrap"
+      titleId="elo-chart-title"
+      descriptionId="elo-chart-description"
+      title="Maia-equivalent Elo over games"
+      description="Twenty-five-game Maia-2 rapid equivalent rating with an eighty percent uncertainty interval."
+      yTicks={yAxisTicks}
+      xTicks={xAxisTicks}
+    >
         <path className="stats-elo-chart-band" d={bandPath} />
         <path className="stats-elo-chart-line" d={linePath} />
-        {xTicks.map((index) => (
-          <text
-            className="stats-chart-label"
-            key={index}
-            x={x(index)}
-            y={height - 9}
-            textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}
-          >
-            Game {points[index].game}
-          </text>
-        ))}
-      </svg>
-    </div>
+    </ChartFrame>
   );
 }
 
@@ -346,9 +334,6 @@ function LegendItem({ className, label }: { className: string; label: string }) 
 function ProgressChart({ points }: { points: ProgressSeriesPoint[] }) {
   if (points.length === 0) return <EmptyState label="No game history yet" />;
 
-  const width = 960;
-  const height = 300;
-  const padding = { top: 18, right: 18, bottom: 34, left: 54 };
   const values = points.flatMap((point) => [
     point.rolling10,
     point.rolling25,
@@ -358,12 +343,12 @@ function ProgressChart({ points }: { points: ProgressSeriesPoint[] }) {
   ]);
   const minimum = Math.max(0, Math.floor(Math.min(...values) - 2));
   const maximum = Math.min(100, Math.ceil(Math.max(TARGET_ACCURACY, ...values) + 1));
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-  const x = (index: number) => padding.left + (
-    points.length === 1 ? chartWidth / 2 : index * chartWidth / (points.length - 1)
+  const x = (index: number) => (
+    points.length === 1 ? CHART_WIDTH / 2 : index * CHART_WIDTH / (points.length - 1)
   );
-  const y = (value: number) => padding.top + (maximum - value) * chartHeight / (maximum - minimum || 1);
+  const y = (value: number) => (
+    (maximum - value) * CHART_HEIGHT / (maximum - minimum || 1)
+  );
   const pathFor = (valueFor: (point: ProgressSeriesPoint) => number) => points
     .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(valueFor(point)).toFixed(2)}`)
     .join(" ");
@@ -379,38 +364,31 @@ function ProgressChart({ points }: { points: ProgressSeriesPoint[] }) {
     minimum + (maximum - minimum) * index / 3
   ));
   const xTicks = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
+  const yAxisTicks = yTicks.map((tick) => ({
+    key: String(tick),
+    label: `${tick.toFixed(0)}%`,
+    position: y(tick)
+  }));
+  const xAxisTicks = xTicks.map((index) => ({
+    key: String(index),
+    label: `Game ${points[index].game}`,
+    position: x(index)
+  }));
 
   return (
-    <div className="stats-chart-wrap">
-      <svg
-        className="stats-progress-chart"
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-labelledby="progress-chart-title progress-chart-description"
-      >
-        <title id="progress-chart-title">Rolling accuracy over games</title>
-        <desc id="progress-chart-description">
-          Ten-game, twenty-five-game, and difficulty-adjusted accuracy with an eighty percent interval.
-        </desc>
-        {yTicks.map((tick) => (
-          <g key={tick}>
-            <line
-              className="stats-chart-gridline"
-              x1={padding.left}
-              x2={width - padding.right}
-              y1={y(tick)}
-              y2={y(tick)}
-            />
-            <text className="stats-chart-label" x={padding.left - 10} y={y(tick) + 4} textAnchor="end">
-              {tick.toFixed(0)}%
-            </text>
-          </g>
-        ))}
+    <ChartFrame
+      titleId="progress-chart-title"
+      descriptionId="progress-chart-description"
+      title="Rolling accuracy over games"
+      description="Ten-game, twenty-five-game, and difficulty-adjusted accuracy with an eighty percent interval."
+      yTicks={yAxisTicks}
+      xTicks={xAxisTicks}
+    >
         {minimum <= TARGET_ACCURACY && maximum >= TARGET_ACCURACY && (
           <line
             className="stats-chart-target"
-            x1={padding.left}
-            x2={width - padding.right}
+            x1={0}
+            x2={CHART_WIDTH}
             y1={y(TARGET_ACCURACY)}
             y2={y(TARGET_ACCURACY)}
           />
@@ -419,18 +397,81 @@ function ProgressChart({ points }: { points: ProgressSeriesPoint[] }) {
         <path className="stats-chart-line stats-chart-line--adjusted" d={pathFor((point) => point.adjusted25)} />
         <path className="stats-chart-line stats-chart-line--25" d={pathFor((point) => point.rolling25)} />
         <path className="stats-chart-line stats-chart-line--10" d={pathFor((point) => point.rolling10)} />
-        {xTicks.map((index) => (
-          <text
-            className="stats-chart-label"
-            key={index}
-            x={x(index)}
-            y={height - 9}
-            textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}
+    </ChartFrame>
+  );
+}
+
+function ChartFrame({
+  className = "",
+  titleId,
+  descriptionId,
+  title,
+  description,
+  yTicks,
+  xTicks,
+  children
+}: {
+  className?: string;
+  titleId: string;
+  descriptionId: string;
+  title: string;
+  description: string;
+  yTicks: ChartTick[];
+  xTicks: ChartTick[];
+  children: ReactNode;
+}) {
+  return (
+    <div className={`stats-chart-wrap${className ? ` ${className}` : ""}`}>
+      <div className="stats-chart-frame">
+        <div className="stats-chart-y-axis" aria-hidden="true">
+          {yTicks.map((tick) => (
+            <span
+              className="stats-chart-label"
+              key={tick.key}
+              style={{ top: `${tick.position}%` }}
+            >
+              {tick.label}
+            </span>
+          ))}
+        </div>
+        <div className="stats-chart-plot">
+          <svg
+            className="stats-progress-chart"
+            viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+            preserveAspectRatio="none"
+            role="img"
+            aria-labelledby={`${titleId} ${descriptionId}`}
+            focusable="false"
           >
-            Game {points[index].game}
-          </text>
-        ))}
-      </svg>
+            <title id={titleId}>{title}</title>
+            <desc id={descriptionId}>{description}</desc>
+            {yTicks.map((tick) => (
+              <line
+                className="stats-chart-gridline"
+                key={tick.key}
+                x1={0}
+                x2={CHART_WIDTH}
+                y1={tick.position}
+                y2={tick.position}
+              />
+            ))}
+            {children}
+          </svg>
+        </div>
+        <div className="stats-chart-x-axis" aria-hidden="true">
+          {xTicks.map((tick, index) => (
+            <span
+              className={`stats-chart-label stats-chart-x-label stats-chart-x-label--${
+                xTicks.length === 1 ? "center" : index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "center"
+              }`}
+              key={tick.key}
+              style={{ left: `${tick.position / CHART_WIDTH * 100}%` }}
+            >
+              {tick.label}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
