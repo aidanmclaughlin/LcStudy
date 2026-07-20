@@ -9,6 +9,8 @@
 
 import { signIn } from "next-auth/react";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 export default function SignInPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-10 text-slate-100">
@@ -24,6 +26,17 @@ export default function SignInPage() {
         >
           Continue with Google
         </button>
+        {isDev && (
+          <button
+            type="button"
+            onClick={() =>
+              signIn("dev-credentials", { email: "dev@localhost", callbackUrl: "/" })
+            }
+            className="mt-3 w-full rounded-full border border-amber-400/60 bg-amber-500/10 py-3 text-base font-semibold text-amber-200 transition hover:bg-amber-500/20"
+          >
+            Dev sign-in (localhost only)
+          </button>
+        )}
       </div>
     </main>
   );

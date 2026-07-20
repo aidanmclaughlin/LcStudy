@@ -13,10 +13,14 @@
 
 import NextAuth from "next-auth";
 import { getServerSession } from "next-auth";
-import type { NextAuthOptions } from "next-auth";
+import type { NextAuthOptions, Provider } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import CredentialsProvider from "next-auth/providers/credentials";
 
 import { ensureUser } from "@/lib/db";
+
+const isDev = process.env.NODE_ENV !== "production";
+const hasGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
 // =============================================================================
 // Configuration
@@ -39,13 +43,45 @@ function requiredEnv(name: string): string {
  * NextAuth configuration options.
  * Uses Google OAuth with JWT-based sessions.
  */
-export const authOptions = {
-  providers: [
+const providers: Provider[] = [];
+
+if (hasGoogle) {
+  providers.push(
     GoogleProvider({
       clientId: requiredEnv("GOOGLE_CLIENT_ID"),
       clientSecret: requiredEnv("GOOGLE_CLIENT_SECRET")
     })
-  ],
+  );
+}
+
+if (isDev) {
+  providers.push(
+    CredentialsProvider({
+      id: "dev-credentials",
+      name: "Dev login",
+      credentials: {
+        email: { label: "Email", type: "email", placeholder: "dev@localhost" }
+      },
+      async authorize(credentials) {
+        const email = credentials?.email?.trim() || "dev@localhost";
+        const dbUser = await ensureUser({
+          email,
+          name: email.split("@")[0],
+          image: null
+        });
+        return {
+          id: dbUser.id,
+          email: dbUser.email,
+          name: dbUser.name ?? email.split("@")[0],
+          image: dbUser.image ?? null
+        };
+      }
+    })
+  );
+}
+
+export const authOptions = {
+  providers,
   pages: {
     signIn: "/signin"
   },
