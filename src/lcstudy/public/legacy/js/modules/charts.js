@@ -20,6 +20,7 @@ let lastAccuracyChartSignature = '';
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
 const ACCURACY_ROLLING_WINDOW = 25;
+const ACCURACY_CHART_MAX_GAMES = 100;
 const ACCURACY_TARGET = 97;
 const ACCURACY_CEILING = 100;
 const GM_ACCURACY_EXPONENT = 0.5;
@@ -207,10 +208,13 @@ function updateAccuracyChart() {
 
   const perGameAccuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
   const rollingAccuracies = calculateRollingAverage(perGameAccuracies, ACCURACY_ROLLING_WINDOW);
+  const visibleStartIndex = Math.max(0, rollingAccuracies.length - ACCURACY_CHART_MAX_GAMES);
+  const visibleAccuracies = rollingAccuracies.slice(visibleStartIndex);
   const nextSignature = [
-    rollingAccuracies.length,
-    rollingAccuracies[0] ?? '',
-    rollingAccuracies.at(-1) ?? '',
+    visibleStartIndex,
+    visibleAccuracies.length,
+    visibleAccuracies[0] ?? '',
+    visibleAccuracies.at(-1) ?? '',
     gameHistory.length
   ].join('|');
 
@@ -218,12 +222,13 @@ function updateAccuracyChart() {
   lastAccuracyChartSignature = nextSignature;
 
   const hasCurrentGame = perGameAccuracies.length > gameHistory.length;
-  const labels = rollingAccuracies.map((_, index) => (
-    hasCurrentGame && index === rollingAccuracies.length - 1
-      ? `Current game (${gameHistory.length + 1})`
-      : `Game ${index + 1}`
-  ));
-  const values = rollingAccuracies;
+  const labels = visibleAccuracies.map((_, visibleIndex) => {
+    const historyIndex = visibleStartIndex + visibleIndex;
+    return hasCurrentGame && historyIndex === rollingAccuracies.length - 1
+      ? `Current game (${historyIndex + 1})`
+      : `Game ${historyIndex + 1}`;
+  });
+  const values = visibleAccuracies;
 
   chart.data.labels = labels;
   chart.data.datasets[0].data = values;

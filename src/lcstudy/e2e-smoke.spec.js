@@ -30,8 +30,8 @@ function normalizeUci(move) {
 }
 
 function buildProgressHistory() {
-  return Array.from({ length: 45 }, (_, index) => {
-    const accuracy = 64 + index * 0.34 + Math.sin(index * 0.8) * 2.2;
+  return Array.from({ length: 125 }, (_, index) => {
+    const accuracy = 64 + index * 0.12 + Math.sin(index * 0.8) * 2.2;
     return {
       date: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
       average_accuracy: accuracy,
@@ -408,14 +408,23 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
       perGame.push(originalMoves.reduce((sum, value) => sum + Number(value), 0) / originalMoves.length);
     }
     const expectedLast = perGame.slice(-25).reduce((sum, value) => sum + value, 0) / Math.min(25, perGame.length);
+    const displayedStart = Math.max(0, perGame.length - 100);
+    const firstWindow = perGame.slice(Math.max(0, displayedStart - 24), displayedStart + 1);
+    const expectedFirst = firstWindow.reduce((sum, value) => sum + value, 0) / firstWindow.length;
 
     return {
       label: chart.data.datasets[0].label,
       pointCount: finalAccuracy.length,
       firstAccuracy: finalAccuracy[0],
-      expectedFirst: perGame[0],
+      expectedFirst,
+      firstLabel: chart.data.labels[0],
+      expectedFirstLabel: `Game ${displayedStart + 1}`,
       lastAccuracy: finalAccuracy.at(-1),
       expectedLast,
+      lastLabel: chart.data.labels.at(-1),
+      expectedLastLabel: originalMoves.length > 0
+        ? `Current game (${perGame.length})`
+        : `Game ${perGame.length}`,
       gameCountText: document.getElementById('accuracy-chart-count')?.textContent,
       axisMinimum: chart.options.scales.y.min,
       dataMinimum: Math.min(...finalAccuracy),
@@ -427,10 +436,12 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     };
   });
   expect(accuracyView.label).toBe('25-Game Accuracy');
-  expect(accuracyView.pointCount).toBe(46);
+  expect(accuracyView.pointCount).toBe(100);
   expect(accuracyView.firstAccuracy).toBeCloseTo(accuracyView.expectedFirst, 8);
+  expect(accuracyView.firstLabel).toBe(accuracyView.expectedFirstLabel);
   expect(accuracyView.lastAccuracy).toBeCloseTo(accuracyView.expectedLast, 8);
-  expect(accuracyView.gameCountText).toBe('45 games');
+  expect(accuracyView.lastLabel).toBe(accuracyView.expectedLastLabel);
+  expect(accuracyView.gameCountText).toBe('125 games');
   expect(accuracyView.axisMinimum).toBeGreaterThan(0);
   expect(accuracyView.axisMinimum).toBeCloseTo(accuracyView.dataMinimum, 8);
   expect(accuracyView.pointRadius).toBe(0);
