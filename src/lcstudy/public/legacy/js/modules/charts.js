@@ -3,7 +3,8 @@
  * @module charts
  */
 
-import { buildAccuracyJourney, createJourneyChartConfig } from './journey.mjs';
+import { buildAccuracyJourney, buildCurrentGamePoint, createJourneyChartConfig } from './journey.mjs';
+import { getMoveTimesMs } from './timeclock.js';
 import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS } from './constants.js';
 import {
   getAccuracyChart,
@@ -18,6 +19,8 @@ import {
 } from './state.js';
 
 let lastAccuracyChartSignature = '';
+let lastJourneySignature = '';
+let cachedJourney = buildAccuracyJourney([]);
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
 const ACCURACY_TARGET = 97;
@@ -30,6 +33,16 @@ const PROJECTION_LOG_OFFSET_SIGMA = 1.25;
 const PROJECTION_OBSERVATION_SIGMA = 10;
 let lastGoalSignature = '';
 let lastGoalProjection = null;
+
+function publishCurrentGame() {
+  const point = buildCurrentGamePoint(getMoveAccuracies(), getMoveTimesMs());
+  window.dispatchEvent(new CustomEvent('lcstudy:current-game', { detail: point }));
+  return point;
+}
+
+window.addEventListener('lcstudy:stats-visibility', event => {
+  if (event.detail?.open) publishCurrentGame();
+});
 
 /**
  * Initialize both Chart.js charts.
@@ -140,7 +153,7 @@ export function scheduleChartsUpdate() {
 }
 
 /**
- * Update the journey from recorded games; live partial games are not comparable windows.
+ * Keep the recorded-window frontier separate from the live game's marker.
  */
 function updateAccuracyChart() {
   const chart = getAccuracyChart();
@@ -148,21 +161,28 @@ function updateAccuracyChart() {
   const gameHistory = getGameHistory();
   updateAccuracyGoalCount(gameHistory, calculateCurrentGoalEstimate(gameHistory, getMoveAccuracies()));
   updateChartCount('accuracy-chart-count', gameHistory.length, 'game');
-  const signature = JSON.stringify(gameHistory.map(game => [game.average_accuracy, game.total_moves, game.think_time_ms]));
+  const currentGame = buildCurrentGamePoint(getMoveAccuracies(), getMoveTimesMs());
+  const historySignature = JSON.stringify(gameHistory.map(game => [game.average_accuracy, game.total_moves, game.think_time_ms]));
+  const signature = `${historySignature}|${JSON.stringify(currentGame)}`;
   if (signature === lastAccuracyChartSignature) return;
   lastAccuracyChartSignature = signature;
-  const journey = buildAccuracyJourney(gameHistory.map(game => ({
-    accuracy: game.average_accuracy,
-    totalMoves: game.total_moves,
-    thinkTimeMs: game.think_time_ms
-  })));
-  const config = createJourneyChartConfig(journey, true);
+  if (historySignature !== lastJourneySignature) {
+    lastJourneySignature = historySignature;
+    cachedJourney = buildAccuracyJourney(gameHistory.map(game => ({
+      accuracy: game.average_accuracy,
+      totalMoves: game.total_moves,
+      thinkTimeMs: game.think_time_ms
+    })));
+  }
+  const config = createJourneyChartConfig(cachedJourney, true, currentGame);
   chart.data = config.data;
   chart.options.scales = config.options.scales;
   const empty = document.getElementById('journey-empty');
-  if (empty) empty.hidden = journey.points.length > 0;
-  chart.canvas.style.visibility = journey.points.length ? 'visible' : 'hidden';
+  const hasPoints = cachedJourney.points.length > 0 || currentGame !== null;
+  if (empty) empty.hidden = hasPoints;
+  chart.canvas.style.visibility = hasPoints ? 'visible' : 'hidden';
   chart.update('none');
+  window.dispatchEvent(new CustomEvent('lcstudy:current-game', { detail: currentGame }));
 }
 
 /**

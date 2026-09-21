@@ -62,19 +62,22 @@
 .stats-section-heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 20px; }
 .stats-section-heading h2 { margin: 0; color: #e9eef0; font-size: 16px; font-weight: 650; }
 .stats-section-heading > span { color: #98a6ad; font-size: 11px; }
+.journey-figure { width: 100%; max-width: 720px; margin-inline: auto; }
 .journey-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
 .stats-chart-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: #b4c0c6; }
 .stats-chart-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .stats-chart-legend i { display: inline-block; width: 16px; height: 2px; background: #7da5cf; }
 .stats-chart-legend .frontier-key { background: #60cdb1; height: 3px; }
 .stats-chart-legend .latest-key { background: #f4be65; width: 7px; height: 7px; border-radius: 50%; }
+.stats-chart-legend .current-game-key { width: 9px; height: 9px; background: #eba5ac; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
 .stats-segment { display: inline-flex; border: 1px solid #3a444a; border-radius: 6px; overflow: hidden; }
 .stats-segment button { min-height: 32px; padding: 6px 12px; font-size: 11px; color: #a7b4ba; background: transparent; border: 0; cursor: pointer; }
 .stats-segment button[aria-pressed="true"] { background: #303a40; color: #f0f3f5; }
-.journey-canvas { position: relative; height: 340px; width: 100%; min-width: 0; }
+.journey-canvas { position: relative; aspect-ratio: 1; width: 100%; min-width: 0; }
 .journey-canvas > canvas { width: 100% !important; height: 100% !important; }
 .journey-caption { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 10px; font-size: 11px; color: #98a6ad; font-variant-numeric: tabular-nums; }
 .journey-caption span:last-child { color: #f4be65; }
+.journey-current span:last-child { color: #eba5ac; }
 .journey-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-muted); font-size: 12px; }
 .journey-empty[hidden] { display: none; }
 .panel-stats-link { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; min-height: 28px; }
@@ -156,7 +159,6 @@
   .stats-section-heading { margin-bottom: 18px; }
   .stats-section-heading h2 { font-size: 15px; }
   .journey-canvas, .stats-chart-wrap { width: calc(100% + 24px); margin-left: -12px; }
-  .journey-canvas { height: 300px; }
   .journey-toolbar { align-items: flex-start; gap: 12px; }
   .stats-chart-legend { gap: 12px; font-size: 10px; }
   .stats-chart-frame { grid-template-columns: 42px minmax(0, 1fr); grid-template-rows: 230px 28px; padding-right: 4px; }

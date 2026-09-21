@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ChartNoAxesCombined, RefreshCw } from "lucide-react";
 import type { ProgressDashboardStats } from "@/lib/progress-stats";
+import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
 
 const Dashboard = dynamic(() => import("./stats-dashboard").then(module => module.StatsDashboard), {
   ssr: false,
@@ -18,6 +19,13 @@ export function StatsView() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [currentGame, setCurrentGame] = useState<CurrentGamePoint | null>(null);
+
+  useEffect(() => {
+    const update = (event: Event) => setCurrentGame((event as CustomEvent<CurrentGamePoint | null>).detail);
+    window.addEventListener("lcstudy:current-game", update);
+    return () => window.removeEventListener("lcstudy:current-game", update);
+  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -83,7 +91,7 @@ export function StatsView() {
           {loading && <span className="stats-refreshing" role="status">Updating...</span>}
         </div>
         {error ? <div className="stats-load-state" role="alert"><p>{error}</p><button type="button" className="stats-back" onClick={() => setRevision(value => value + 1)}><RefreshCw size={16} aria-hidden="true" />Retry</button></div>
-          : stats ? <Dashboard stats={stats} embedded /> : <div className="stats-load-state" role="status">Loading progress...</div>}
+          : stats ? <Dashboard stats={stats} embedded currentGame={currentGame} /> : <div className="stats-load-state" role="status">Loading progress...</div>}
       </>}
     </dialog>
   </>;

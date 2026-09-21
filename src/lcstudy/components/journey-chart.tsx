@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useMemo, useState } from "react";
 import type { Chart } from "chart.js";
-import { createJourneyChartConfig, paretoFrontier, type AccuracyJourney } from "../public/legacy/js/modules/journey.mjs";
+import { createJourneyChartConfig, paretoFrontier, type AccuracyJourney, type CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
 
-export function JourneyChart({ journey }: { journey: AccuracyJourney }) {
+export function JourneyChart({ journey, currentGame = null }: { journey: AccuracyJourney; currentGame?: CurrentGamePoint | null }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [range, setRange] = useState<"recent" | "all">("recent");
   const [error, setError] = useState(false);
@@ -17,17 +17,19 @@ export function JourneyChart({ journey }: { journey: AccuracyJourney }) {
     let cancelled = false;
     setError(false);
     import("chart.js/auto").then(({ default: ChartJS }) => {
-      if (!cancelled && canvas.current) chart = new ChartJS(canvas.current, createJourneyChartConfig(visible));
+      if (!cancelled && canvas.current) chart = new ChartJS(canvas.current, createJourneyChartConfig(visible, false, currentGame));
     }).catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; chart?.destroy(); };
-  }, [visible]);
+  }, [visible, currentGame]);
   const latest = visible.points.at(-1);
+  const hasPoints = Boolean(latest || currentGame);
   return <div className="journey-figure">
     <div className="journey-toolbar">
       <div className="stats-chart-legend">
         <span><i className="journey-key" />Journey</span>
         <span><i className="frontier-key" />Observed frontier</span>
         <span><i className="latest-key" />Latest</span>
+        {currentGame && <span><i className="current-game-key" />Current game</span>}
       </div>
       <div className="stats-segment" aria-label="Journey history">
         <button type="button" aria-pressed={range === "recent"} onClick={() => setRange("recent")}>Recent 100</button>
@@ -35,12 +37,16 @@ export function JourneyChart({ journey }: { journey: AccuracyJourney }) {
       </div>
     </div>
     <div className="journey-canvas">
-      <canvas ref={canvas} role="img" aria-label="Accuracy versus thinking seconds per move, with chronological journey and observed Pareto frontier" hidden={!latest || error} />
-      {(!latest || error) && <div className="stats-empty" role="status">{error ? "Chart unavailable" : "No timed game history yet"}</div>}
+      <canvas ref={canvas} role="img" aria-label="Accuracy versus thinking seconds per move, with chronological journey, observed Pareto frontier, and current game" hidden={!hasPoints || error} />
+      {(!hasPoints || error) && <div className="stats-empty" role="status">{error ? "Chart unavailable" : "No timed game history yet"}</div>}
     </div>
     <div className="journey-caption">
       <span>{latest ? `Games ${latest.startGame}-${latest.game}${latest.provisional ? ` / ${latest.games} of 25 / provisional` : " / 25-game windows"}` : "25-game windows"}</span>
       <span>{latest ? `${latest.y.toFixed(1)}% / ${latest.x.toFixed(2)}s per move` : "--"}</span>
     </div>
+    {currentGame && <div className="journey-caption journey-current">
+      <span>Current game / {currentGame.moves} {currentGame.moves === 1 ? "move" : "moves"}</span>
+      <span>{currentGame.y.toFixed(1)}% / {currentGame.x.toFixed(2)}s per move</span>
+    </div>}
   </div>;
 }

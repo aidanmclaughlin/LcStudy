@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildAccuracyJourney, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
+import { buildAccuracyJourney, buildCurrentGamePoint, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
 
 const game = (accuracy = 80, seconds = 3, totalMoves = 20) => ({ accuracy, totalMoves, thinkTimeMs: seconds * totalMoves * 1000 });
 
@@ -50,6 +50,33 @@ test('constant and extreme accuracy values still have usable axes', () => {
     assert.ok(config.options.scales.y.min >= 0);
     assert.ok(config.options.scales.y.max <= 100);
   }
+});
+
+test('current game pairs submitted accuracy with submitted thinking time', () => {
+  assert.deepEqual(buildCurrentGamePoint([100, 0, 80], [1000, 2000, 6000]), {
+    x: 3, y: 60, moves: 3, currentGame: true
+  });
+  assert.equal(buildCurrentGamePoint([], []), null);
+  assert.equal(buildCurrentGamePoint([80], []), null);
+  assert.equal(buildCurrentGamePoint([80], [0]), null);
+  assert.equal(buildCurrentGamePoint([NaN], [1000]), null);
+  assert.equal(buildCurrentGamePoint([80], [-1]), null);
+  assert.equal(buildCurrentGamePoint([101], [1000]), null);
+});
+
+test('live marker expands axes without changing the recorded frontier', () => {
+  const journey = buildAccuracyJourney(Array(25).fill(game(80, 3)));
+  const current = buildCurrentGamePoint([100], [1000]);
+  const config = createJourneyChartConfig(journey, false, current);
+  assert.deepEqual(config.data.datasets.find(dataset => dataset.label === 'Current game').data, [current]);
+  assert.deepEqual(config.data.datasets.find(dataset => dataset.label === 'Observed frontier').data, journey.frontier);
+  assert.equal(journey.frontier[0].y, 80);
+  assert.ok(config.options.scales.x.min < current.x);
+  assert.equal(config.options.scales.y.max, 100);
+  assert.equal(config.options.plugins.tooltip.callbacks.title([{ raw: current }]), 'Current game / 1 move');
+  const emptyHistory = createJourneyChartConfig(buildAccuracyJourney([]), true, current);
+  assert.equal(emptyHistory.data.datasets.find(dataset => dataset.label === 'Current game').data.length, 1);
+  assert.deepEqual(emptyHistory.data.datasets.find(dataset => dataset.label === 'Observed frontier').data, []);
 });
 
 test('Stats, hidden tabs, and review pause clocks without losing the live prompt', async () => {

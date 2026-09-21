@@ -56,8 +56,14 @@ async function snapshot(page) {
   });
 }
 
-test('Stats preserves a played game and excludes time spent away', async ({ page, context }) => {
+async function currentGamePoint(page) {
+  return page.evaluate(() => window.Chart.getChart('accuracy-chart').data.datasets.find(dataset => dataset.label === 'Current game').data[0] || null);
+}
+
+test('Stats preserves a played game and excludes time spent away', async ({ page, context }, testInfo) => {
   const { calls, moves } = await setup(page, context);
+  await expect.poll(() => page.evaluate(() => Boolean(window.Chart?.getChart('accuracy-chart')))).toBe(true);
+  expect(await currentGamePoint(page)).toBeNull();
   for (let i = 0; i < 10; i += 2) {
     await page.locator(`[data-square="${moves[i].uci.slice(0, 2)}"]`).click();
     await page.locator(`[data-square="${moves[i].uci.slice(2, 4)}"]`).click();
@@ -65,15 +71,41 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   }
   const before = await snapshot(page);
   expect(before.scores).toHaveLength(5);
+  await expect.poll(async () => (await currentGamePoint(page))?.moves).toBe(5);
+  const livePoint = await currentGamePoint(page);
+  const expectedPoint = await page.evaluate(async () => {
+    const { buildCurrentGamePoint } = await import('/legacy/js/modules/journey.mjs');
+    const { getMoveAccuracies } = await import('/legacy/js/modules/state.js');
+    const { getMoveTimesMs } = await import('/legacy/js/modules/timeclock.js');
+    return buildCurrentGamePoint(getMoveAccuracies(), getMoveTimesMs());
+  });
+  expect(livePoint).toEqual(expectedPoint);
   const sessionCount = calls.sessions;
   await page.evaluate(() => { window.originalBoard = document.getElementById('board'); });
   await page.getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Progress', exact: true })).toBeVisible();
+  await expect(page.locator('.journey-current')).toContainText('Current game / 5 moves');
+  await expect(page.locator('.journey-current')).toContainText(`${livePoint.y.toFixed(1)}% / ${livePoint.x.toFixed(2)}s per move`);
+  await expect.poll(() => page.locator('.journey-canvas canvas').evaluate(canvas => {
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let top = Infinity, bottom = -Infinity;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] === 235 && pixels[i + 1] === 165 && pixels[i + 2] === 172 && pixels[i + 3] === 255) {
+        const y = Math.floor(i / 4 / canvas.width);
+        top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+    }
+    return (bottom - top + 1) / (canvas.width / canvas.clientWidth);
+  })).toBeGreaterThan(6);
+  await page.locator('.journey-figure').screenshot({ path: testInfo.outputPath('current-game-journey.png') });
+  await page.getByRole('button', { name: 'All games', exact: true }).click();
+  await expect(page.locator('.journey-current')).toContainText('Current game / 5 moves');
   const elapsed = await page.evaluate(async () => (await import('/legacy/js/modules/timeclock.js')).getGameDurationMs());
   await page.waitForTimeout(700);
   const after = await page.evaluate(async () => (await import('/legacy/js/modules/timeclock.js')).getGameDurationMs());
   expect(after).toBe(elapsed);
+  expect(await currentGamePoint(page)).toEqual(livePoint);
   await page.getByRole('tab', { name: 'Overview' }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Breakdowns' })).toHaveAttribute('aria-selected', 'true');
@@ -98,6 +130,10 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await page.locator('[data-square=b1]').click();
   await page.locator('[data-square=c3]').click();
   await expect.poll(async () => (await snapshot(page)).scores.length).toBe(6);
+  await expect.poll(async () => (await currentGamePoint(page))?.moves).toBe(6);
+  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await expect(page.locator('.journey-current')).toContainText('Current game / 6 moves');
+  await page.getByRole('button', { name: 'Resume game' }).click();
 });
 
 test('responsive charts, tabs, and failed loading preserve the board', async ({ page, context }, testInfo) => {
@@ -116,6 +152,8 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
     const chart = await page.locator('.journey-canvas').boundingBox();
     expect(chart.width).toBeGreaterThan(width <= 600 ? width - 36 : 600);
     expect(chart.height).toBeGreaterThanOrEqual(300);
+    expect(Math.abs(chart.width - chart.height)).toBeLessThan(2);
+    expect(chart.width).toBeLessThanOrEqual(720);
     await page.getByRole('button', { name: 'All games', exact: true }).click();
     await page.getByRole('button', { name: 'Recent 100', exact: true }).click();
     for (const tab of ['Overview', 'Breakdowns', 'Timing']) {

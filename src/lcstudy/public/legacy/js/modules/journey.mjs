@@ -39,11 +39,26 @@ export function paretoFrontier(points) {
   });
 }
 
-export function createJourneyChartConfig(journey, compact = false) {
+/** Live coordinates use the same submitted moves for accuracy and thinking time. */
+export function buildCurrentGamePoint(accuracies, moveTimesMs) {
+  if (!accuracies.length || accuracies.length !== moveTimesMs.length ||
+      accuracies.some(value => !Number.isFinite(value) || value < 0 || value > 100) ||
+      moveTimesMs.some(value => !Number.isFinite(value) || value < 0)) return null;
+  const thinkTimeMs = moveTimesMs.reduce((sum, value) => sum + value, 0);
+  if (thinkTimeMs <= 0) return null;
+  return {
+    x: thinkTimeMs / accuracies.length / 1000,
+    y: accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length,
+    moves: accuracies.length, currentGame: true
+  };
+}
+
+export function createJourneyChartConfig(journey, compact = false, currentGame = null) {
   const { points, frontier } = journey;
   const latest = points.at(-1);
-  const xs = points.map(point => point.x);
-  const ys = points.map(point => point.y);
+  const plotted = currentGame ? [...points, currentGame] : points;
+  const xs = plotted.map(point => point.x);
+  const ys = plotted.map(point => point.y);
   const minX = xs.length ? Math.min(...xs) : 0;
   const maxX = xs.length ? Math.max(...xs) : 1;
   const minY = ys.length ? Math.min(...ys) : 0;
@@ -53,6 +68,9 @@ export function createJourneyChartConfig(journey, compact = false) {
   return {
     type: 'scatter',
     data: { datasets: [
+      { label: 'Current game', data: currentGame ? [currentGame] : [], pointStyle: 'triangle',
+        pointRadius: compact ? 6 : 8, pointHoverRadius: 10,
+        backgroundColor: '#eba5ac', borderColor: '#171b1e', borderWidth: 2 },
       { label: 'Latest', data: latest ? [latest] : [], pointRadius: compact ? 4 : 6,
         pointHoverRadius: 8, backgroundColor: '#f4be65', borderColor: '#171b1e', borderWidth: 2 },
       { label: 'Observed frontier', data: frontier, showLine: true, stepped: 'after',
@@ -67,6 +85,7 @@ export function createJourneyChartConfig(journey, compact = false) {
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
+      datasets: { scatter: { clip: 10 } },
       interaction: { mode: 'nearest', intersect: false },
       layout: { padding: { top: 8, right: 12, bottom: 0, left: 0 } },
       plugins: {
@@ -76,6 +95,7 @@ export function createJourneyChartConfig(journey, compact = false) {
           callbacks: {
             title: items => {
               const point = items[0]?.raw;
+              if (point?.currentGame) return `Current game / ${point.moves} ${point.moves === 1 ? 'move' : 'moves'}`;
               return point ? `Games ${point.startGame}-${point.game}${point.provisional ? ' (provisional)' : ''}` : '';
             },
             label: context => `${context.raw.y.toFixed(1)}% accuracy / ${context.raw.x.toFixed(2)}s per move`

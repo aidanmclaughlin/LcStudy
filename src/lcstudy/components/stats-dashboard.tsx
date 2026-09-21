@@ -10,6 +10,7 @@ import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
 import { useState, type ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { JourneyChart } from "./journey-chart";
+import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
 
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 100;
@@ -23,9 +24,10 @@ interface ChartTick {
 interface StatsDashboardProps {
   stats: ProgressDashboardStats;
   embedded?: boolean;
+  currentGame?: CurrentGamePoint | null;
 }
 
-export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps) {
+export function StatsDashboard({ stats, embedded = false, currentGame = null }: StatsDashboardProps) {
   const { elo, overview, progress, consistency, timing, skill, coverage, journey } = stats;
   const [tab, setTab] = useState("overview");
   const latest = journey.points.at(-1);
@@ -67,7 +69,7 @@ export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps)
         {tab === "overview" && <>
           <section className="stats-band stats-journey-band">
             <SectionHeading title="Accuracy & pace" meta="25-game windows" />
-            <JourneyChart journey={journey} />
+            <JourneyChart journey={journey} currentGame={currentGame} />
           </section>
           <div className="stats-split">
             <section className="stats-section">
