@@ -64,6 +64,14 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   const { calls, moves } = await setup(page, context);
   await expect.poll(() => page.evaluate(() => Boolean(window.Chart?.getChart('accuracy-chart')))).toBe(true);
   expect(await currentGamePoint(page)).toBeNull();
+  await expect(page.locator('.journey-time-key')).toContainText('Older');
+  await expect.poll(() => page.evaluate(() => {
+    const chart = window.Chart.getChart('accuracy-chart');
+    const dataset = chart.data.datasets.find(item => item.label === 'Journey');
+    if (dataset.data.length < 2) return false;
+    const color = index => dataset.segment.borderColor({ p0: { raw: dataset.data[index] }, p1: { raw: dataset.data[index + 1] } });
+    return color(0) !== color(dataset.data.length - 2) && chart.config.plugins.some(plugin => plugin.id === 'journey-direction');
+  })).toBe(true);
   for (let i = 0; i < 10; i += 2) {
     await page.locator(`[data-square="${moves[i].uci.slice(0, 2)}"]`).click();
     await page.locator(`[data-square="${moves[i].uci.slice(2, 4)}"]`).click();
@@ -85,6 +93,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await page.getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Progress', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').locator('.journey-time-key')).toContainText('Newer');
   await expect(page.locator('.journey-current')).toContainText('Current game / 5 moves');
   await expect(page.locator('.journey-current')).toContainText(`${livePoint.y.toFixed(1)}% / ${livePoint.x.toFixed(2)}s per move`);
   await expect.poll(() => page.locator('.journey-canvas canvas').evaluate(canvas => {

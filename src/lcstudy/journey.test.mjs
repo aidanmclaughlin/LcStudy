@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildAccuracyJourney, buildCurrentGamePoint, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
+import { buildAccuracyJourney, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
 
 const game = (accuracy = 80, seconds = 3, totalMoves = 20) => ({ accuracy, totalMoves, thinkTimeMs: seconds * totalMoves * 1000 });
 
@@ -77,6 +77,48 @@ test('live marker expands axes without changing the recorded frontier', () => {
   const emptyHistory = createJourneyChartConfig(buildAccuracyJourney([]), true, current);
   assert.equal(emptyHistory.data.datasets.find(dataset => dataset.label === 'Current game').data.length, 1);
   assert.deepEqual(emptyHistory.data.datasets.find(dataset => dataset.label === 'Observed frontier').data, []);
+});
+
+test('journey colors follow time even when accuracy and pace reverse', () => {
+  assert.equal(journeyColor(-1), 'rgb(101, 127, 153)');
+  assert.equal(journeyColor(2), 'rgb(244, 190, 101)');
+  const points = [{ x: 1, y: 90, game: 25 }, { x: 3, y: 80, game: 26 }, { x: 2, y: 95, game: 27 }];
+  const config = createJourneyChartConfig({ points, frontier: [] });
+  const { borderColor } = config.data.datasets.find(dataset => dataset.label === 'Journey').segment;
+  assert.equal(borderColor({ p0: { raw: points[0] }, p1: { raw: points[1] } }), journeyColor(0.25));
+  assert.equal(borderColor({ p0: { raw: points[1] }, p1: { raw: points[2] } }), journeyColor(0.75));
+});
+
+test('direction arrows follow screen-space chronology and avoid gaps or overlapping cues', () => {
+  const points = Array.from({ length: 10 }, (_, game) => ({ game }));
+  const pixels = points.map((_, index) => ({ x: 500 - index * 40, y: 500 - index * 40 }));
+  const arrows = journeyArrows(points, pixels);
+  assert.equal(arrows.length, 5);
+  assert.equal(journeyArrows(points, pixels, true).length, 3);
+  assert.ok(arrows.every(arrow => arrow.dx < 0 && arrow.dy < 0));
+  for (let i = 0; i < arrows.length; i++) {
+    assert.ok(arrows.slice(i + 1).every(other => Math.hypot(arrows[i].x - other.x, arrows[i].y - other.y) >= 28));
+  }
+  const gapPoints = [1, 2, 5, 6].map(game => ({ game }));
+  const gapPixels = [0, 40, 80, 120].map(x => ({ x, y: 0 }));
+  assert.deepEqual(journeyArrows(gapPoints, gapPixels).map(arrow => arrow.x), [20, 100]);
+  assert.deepEqual(journeyArrows(points, points.map(() => ({ x: 0, y: 0 }))), []);
+  const smoothPoints = Array.from({ length: 100 }, (_, game) => ({ game }));
+  assert.equal(journeyArrows(smoothPoints, smoothPoints.map(({ game }) => ({ x: game * 2, y: 0 }))).length, 5);
+  assert.deepEqual(journeyArrows([], []), []);
+});
+
+test('direction plugin reads updated chart data instead of its initial empty history', () => {
+  const plugin = createJourneyChartConfig(buildAccuracyJourney([])).plugins[0];
+  const strokes = [];
+  const ctx = { save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() { strokes.push(this.strokeStyle); } };
+  const data = [{ game: 1 }, { game: 2 }];
+  const chart = { ctx, data: { datasets: [{ label: 'Journey', data }] } };
+  plugin.afterDatasetDraw(chart, { index: 0, meta: { data: [{ x: 100, y: 100 }, { x: 50, y: 50 }] } });
+  assert.deepEqual(strokes, [journeyColor(0.5)]);
+  chart.data.datasets[0].label = 'Current game';
+  plugin.afterDatasetDraw(chart, { index: 0, meta: { data: [] } });
+  assert.equal(strokes.length, 1);
 });
 
 test('Stats, hidden tabs, and review pause clocks without losing the live prompt', async () => {

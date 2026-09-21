@@ -67,6 +67,8 @@
 .stats-chart-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: #b4c0c6; }
 .stats-chart-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .stats-chart-legend i { display: inline-block; width: 16px; height: 2px; background: #7da5cf; }
+.journey-time-key { display: inline-flex; align-items: center; gap: 6px; color: #b4c0c6; font-size: 10px; flex-shrink: 0; }
+.journey-time-key i, .stats-chart-legend .journey-time-key i { display: inline-block; width: 56px; height: 3px; background: linear-gradient(90deg, #657f99, #f4be65); }
 .stats-chart-legend .frontier-key { background: #60cdb1; height: 3px; }
 .stats-chart-legend .latest-key { background: #f4be65; width: 7px; height: 7px; border-radius: 50%; }
 .stats-chart-legend .current-game-key { width: 9px; height: 9px; background: #eba5ac; clip-path: polygon(50% 0, 100% 100%, 0 100%); }

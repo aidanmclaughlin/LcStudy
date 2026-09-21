@@ -53,6 +53,44 @@ export function buildCurrentGamePoint(accuracies, moveTimesMs) {
   };
 }
 
+export function journeyColor(progress) {
+  const t = Math.max(0, Math.min(1, progress));
+  const older = [101, 127, 153], newer = [244, 190, 101];
+  return `rgb(${older.map((channel, index) => Math.round(channel + (newer[index] - channel) * t)).join(', ')})`;
+}
+
+/** Space direction cues through time, excluding gaps and overlapping screen positions. */
+export function journeyArrows(points, pixels, compact = false) {
+  if (points.length < 2) return [];
+  const span = points.at(-1).game - points[0].game;
+  if (span <= 0) return [];
+  const candidates = [];
+  for (let index = 1; index < points.length; index++) {
+    const from = pixels[index - 1], to = pixels[index];
+    if (!from || !to || points[index].game - points[index - 1].game !== 1) continue;
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    if (!Number.isFinite(length) || length < 1) continue;
+    candidates.push({
+      x: (from.x + to.x) / 2, y: (from.y + to.y) / 2,
+      dx: dx / length, dy: dy / length,
+      progress: ((points[index - 1].game + points[index].game) / 2 - points[0].game) / span
+    });
+  }
+  const arrows = [];
+  const count = Math.min(compact ? 3 : 5, candidates.length);
+  for (let index = 0; index < count; index++) {
+    const target = (index + 0.5) / count;
+    let closest = null;
+    for (const candidate of candidates) {
+      if (arrows.some(arrow => Math.hypot(arrow.x - candidate.x, arrow.y - candidate.y) < 28)) continue;
+      if (!closest || Math.abs(candidate.progress - target) < Math.abs(closest.progress - target)) closest = candidate;
+    }
+    if (closest) arrows.push(closest);
+  }
+  return arrows;
+}
+
 export function createJourneyChartConfig(journey, compact = false, currentGame = null) {
   const { points, frontier } = journey;
   const latest = points.at(-1);
@@ -65,8 +103,33 @@ export function createJourneyChartConfig(journey, compact = false, currentGame =
   const maxY = ys.length ? Math.max(...ys) : 100;
   const padX = Math.max((maxX - minX) * 0.08, 0.2);
   const padY = Math.max((maxY - minY) * 0.08, 0.5);
+  const progressAt = game => points.length > 1 ? (game - points[0].game) / (latest.game - points[0].game) : 1;
   return {
     type: 'scatter',
+    plugins: [{
+      id: 'journey-direction',
+      afterDatasetDraw(chart, { index, meta }) {
+        const dataset = chart.data.datasets[index];
+        if (dataset.label !== 'Journey') return;
+        const arrows = journeyArrows(dataset.data, meta.data, compact);
+        const { ctx } = chart;
+        const size = compact ? 4 : 6;
+        ctx.save();
+        ctx.lineWidth = compact ? 1.5 : 2;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        for (const arrow of arrows) {
+          const tipX = arrow.x + arrow.dx * size / 2, tipY = arrow.y + arrow.dy * size / 2;
+          const backX = tipX - arrow.dx * size, backY = tipY - arrow.dy * size;
+          ctx.strokeStyle = journeyColor(arrow.progress);
+          ctx.beginPath();
+          ctx.moveTo(backX - arrow.dy * size * 0.65, backY + arrow.dx * size * 0.65);
+          ctx.lineTo(tipX, tipY);
+          ctx.lineTo(backX + arrow.dy * size * 0.65, backY - arrow.dx * size * 0.65);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }],
     data: { datasets: [
       { label: 'Current game', data: currentGame ? [currentGame] : [], pointStyle: 'triangle',
         pointRadius: compact ? 6 : 8, pointHoverRadius: 10,
@@ -76,12 +139,16 @@ export function createJourneyChartConfig(journey, compact = false, currentGame =
       { label: 'Observed frontier', data: frontier, showLine: true, stepped: 'after',
         borderColor: '#60cdb1', backgroundColor: '#60cdb1', borderWidth: 1.5,
         borderDash: [4, 4], pointStyle: 'rectRot', pointRadius: compact ? 2 : 3, pointHoverRadius: 6 },
-      { label: 'Journey', data: points, showLine: true, borderColor: '#7da5cf',
-        backgroundColor: '#7da5cf', borderWidth: compact ? 1.5 : 2, tension: 0,
+      { label: 'Journey', data: points, showLine: true, borderColor: journeyColor(0),
+        backgroundColor: journeyColor(0), borderWidth: compact ? 1.5 : 2, tension: 0,
+        borderCapStyle: 'round', borderJoinStyle: 'round',
         pointRadius: points.length === 1 ? 3 : 0, pointHoverRadius: 5,
-        segment: { borderDash: context => context.p1.raw.game - context.p0.raw.game > 1 ? [2, 5] : undefined } },
+        segment: {
+          borderColor: context => journeyColor(progressAt((context.p0.raw.game + context.p1.raw.game) / 2)),
+          borderDash: context => context.p1.raw.game - context.p0.raw.game > 1 ? [2, 5] : undefined
+        } },
       { label: 'Start', data: points.length > 1 ? [points[0]] : [], pointRadius: 3,
-        backgroundColor: '#171b1e', borderColor: '#7da5cf', borderWidth: 2 }
+        backgroundColor: '#171b1e', borderColor: journeyColor(0), borderWidth: 2 }
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,

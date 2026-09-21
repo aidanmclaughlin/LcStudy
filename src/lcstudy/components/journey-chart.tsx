@@ -26,7 +26,7 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
   return <div className="journey-figure">
     <div className="journey-toolbar">
       <div className="stats-chart-legend">
-        <span><i className="journey-key" />Journey</span>
+        <span className="journey-time-key" aria-label="Journey chronology: older blue to newer gold"><span>Older</span><i aria-hidden="true" /><span>Newer</span></span>
         <span><i className="frontier-key" />Observed frontier</span>
         <span><i className="latest-key" />Latest</span>
         {currentGame && <span><i className="current-game-key" />Current game</span>}
@@ -37,7 +37,7 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
       </div>
     </div>
     <div className="journey-canvas">
-      <canvas ref={canvas} role="img" aria-label="Accuracy versus thinking seconds per move, with chronological journey, observed Pareto frontier, and current game" hidden={!hasPoints || error} />
+      <canvas ref={canvas} role="img" aria-label="Accuracy versus thinking seconds per move; journey runs from older blue to newer gold, with direction arrows, observed Pareto frontier, and current game" hidden={!hasPoints || error} />
       {(!hasPoints || error) && <div className="stats-empty" role="status">{error ? "Chart unavailable" : "No timed game history yet"}</div>}
     </div>
     <div className="journey-caption">

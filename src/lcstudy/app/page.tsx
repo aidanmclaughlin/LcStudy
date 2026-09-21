@@ -115,8 +115,9 @@ export default async function HomePage() {
                   <StatsView />
                 </div>
               </div>
+              <div className="journey-time-key" aria-label="Journey chronology: older blue to newer gold"><span>Older</span><i aria-hidden="true" /><span>Newer</span></div>
               <div className="chart-container">
-                <canvas id="accuracy-chart" role="img" aria-label="25-game accuracy versus thinking seconds per move" />
+                <canvas id="accuracy-chart" role="img" aria-label="25-game accuracy versus thinking seconds per move, from older blue to newer gold with direction arrows" />
                 <span id="journey-empty" className="journey-empty" role="status">No timed game history yet</span>
               </div>
             </div>
