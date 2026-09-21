@@ -15,6 +15,7 @@ import { redirect } from "next/navigation";
 
 import { getAuthSession } from "@/lib/auth";
 import { CompletionSignOutButton } from "@/components/auth-controls";
+import { StatsView } from "@/components/stats-view";
 
 export default async function HomePage() {
   const session = await getAuthSession();
@@ -108,16 +109,15 @@ export default async function HomePage() {
             {/* Game Accuracy Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading">
-                <h2>25-Game Accuracy</h2>
+                <h2>Accuracy &amp; Pace</h2>
                 <div className="panel-heading-actions">
                   <span id="accuracy-chart-count" className="panel-count">0 games</span>
-                  <a className="panel-stats-link" href="/stats">
-                    Stats
-                  </a>
+                  <StatsView />
                 </div>
               </div>
               <div className="chart-container">
-                <canvas id="accuracy-chart" />
+                <canvas id="accuracy-chart" role="img" aria-label="25-game accuracy versus thinking seconds per move" />
+                <span id="journey-empty" className="journey-empty" role="status">No timed game history yet</span>
               </div>
             </div>
 

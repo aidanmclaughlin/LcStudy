@@ -16,13 +16,16 @@ import {
 import { updateBoardFromFen, clearSelection, setReviewingIndicator } from './board.js';
 import { updateCharts } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
+import { setClockPaused, isStatsOpen } from './timeclock.js';
 
 /**
  * Navigate to a specific position in move history.
  * @param {number} targetIndex - Target index (-1 = live position)
  */
 export function navigateToMove(targetIndex) {
+  if (isStatsOpen()) return;
   const moveHistory = getMoveHistory();
+  if (moveHistory.length === 0) return;
   const maxIndex = moveHistory.length - 1;
   const currentIndex = getCurrentMoveIndex();
 
@@ -51,6 +54,7 @@ export function navigateToMove(targetIndex) {
 
   setCurrentMoveIndex(targetIndex);
   setIsReviewingMoves(targetIndex !== -1);
+  setClockPaused('review', targetIndex !== -1);
 
   if (targetIndex !== -1) {
     // Show historical position
@@ -80,6 +84,7 @@ function updateNavigationUI() {
  * @param {KeyboardEvent} event - Keyboard event
  */
 export function handleKeyPress(event) {
+  if (isStatsOpen() || event.defaultPrevented || event.target?.closest?.('input, textarea, select, [role="tablist"]')) return;
   if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) {
     return;
   }

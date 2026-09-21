@@ -4,6 +4,7 @@
  */
 
 import { STARTING_FEN } from './constants.js';
+export { getGameDurationMs } from './timeclock.js';
 
 // =============================================================================
 // Session State
@@ -67,9 +68,6 @@ let gameHistory = [];
 
 /** Current correct move streak */
 let correctStreak = 0;
-
-/** High-resolution start timestamp for the current game */
-let gameStartedAtMs = null;
 
 // =============================================================================
 // Move Navigation State
@@ -138,10 +136,6 @@ export function getMoveCounter() { return moveCounter; }
 export function getPgnMoves() { return pgnMoves; }
 export function getGameHistory() { return gameHistory; }
 export function getCorrectStreak() { return correctStreak; }
-export function getGameDurationMs() {
-  if (gameStartedAtMs === null || typeof performance === 'undefined') return null;
-  return Math.max(0, Math.round(performance.now() - gameStartedAtMs));
-}
 export function getMoveHistory() { return moveHistory; }
 export function getCurrentMoveIndex() { return currentMoveIndex; }
 export function getIsReviewingMoves() { return isReviewingMoves; }
@@ -171,9 +165,6 @@ export function setMoveCounter(counter) { moveCounter = counter; }
 export function setPgnMoves(moves) { pgnMoves = moves; }
 export function setGameHistory(history) { gameHistory = history; }
 export function setCorrectStreak(streak) { correctStreak = streak; }
-export function startGameTimer() {
-  gameStartedAtMs = typeof performance !== 'undefined' ? performance.now() : null;
-}
 export function setMoveHistory(history) { moveHistory = history; }
 export function setCurrentMoveIndex(index) { currentMoveIndex = index; }
 export function setIsReviewingMoves(reviewing) { isReviewingMoves = reviewing; }
@@ -217,7 +208,6 @@ export function resetGameProgress() {
   moveCounter = 1;
   pgnMoves = [];
   correctStreak = 0;
-  gameStartedAtMs = null;
 }
 
 /**

@@ -3,6 +3,7 @@
  * @module charts
  */
 
+import { buildAccuracyJourney, createJourneyChartConfig } from './journey.mjs';
 import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS } from './constants.js';
 import {
   getAccuracyChart,
@@ -19,8 +20,6 @@ import {
 let lastAccuracyChartSignature = '';
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
-const ACCURACY_ROLLING_WINDOW = 25;
-const ACCURACY_CHART_MAX_GAMES = 100;
 const ACCURACY_TARGET = 97;
 const ACCURACY_CEILING = 100;
 const GM_ACCURACY_EXPONENT = 0.5;
@@ -47,65 +46,12 @@ export function initializeCharts() {
 }
 
 /**
- * Initialize the rolling game-accuracy chart.
+ * Initialize the matched speed-accuracy journey.
  */
 function initAccuracyChart() {
   const ctx = document.getElementById('accuracy-chart')?.getContext('2d');
   if (!ctx) return;
-
-  const chart = new window.Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: '25-Game Accuracy',
-          data: [],
-          borderColor: '#8b5cf6',
-          backgroundColor: 'rgba(139, 92, 246, 0.08)',
-          borderWidth: 2,
-          fill: true,
-          tension: 0.35,
-          pointRadius: 0,
-          pointHoverRadius: 5
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: {
-        padding: { left: 2, right: 10, top: 10, bottom: 2 }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          ...CHART_TOOLTIP_OPTIONS,
-          callbacks: {
-            label: function(context) {
-              return `25-game: ${context.formattedValue}%`;
-            }
-          }
-        }
-      },
-      scales: {
-        y: {
-          ...CHART_SCALE_OPTIONS,
-          min: 0,
-          ticks: {
-            ...CHART_SCALE_OPTIONS.ticks,
-            maxTicksLimit: 5,
-            callback: function(value) {
-              return `${value.toFixed(0)}%`;
-            }
-          }
-        },
-        x: { display: false }
-      }
-    }
-  });
-
-  setAccuracyChart(chart);
+  setAccuracyChart(new window.Chart(ctx, createJourneyChartConfig(buildAccuracyJourney([]), true)));
 }
 
 /**
@@ -194,53 +140,28 @@ export function scheduleChartsUpdate() {
 }
 
 /**
- * Update the chart with a trailing 25-game average.
+ * Update the journey from recorded games; live partial games are not comparable windows.
  */
 function updateAccuracyChart() {
   const chart = getAccuracyChart();
   if (!chart) return;
-
-  const moveAccuracies = getMoveAccuracies();
   const gameHistory = getGameHistory();
-  const currentEstimate = calculateCurrentGoalEstimate(gameHistory, moveAccuracies);
-  updateAccuracyGoalCount(gameHistory, currentEstimate);
+  updateAccuracyGoalCount(gameHistory, calculateCurrentGoalEstimate(gameHistory, getMoveAccuracies()));
   updateChartCount('accuracy-chart-count', gameHistory.length, 'game');
-
-  const perGameAccuracies = getProjectedGameAccuracies(gameHistory, moveAccuracies);
-  const rollingAccuracies = calculateRollingAverage(perGameAccuracies, ACCURACY_ROLLING_WINDOW);
-  const visibleStartIndex = Math.max(0, rollingAccuracies.length - ACCURACY_CHART_MAX_GAMES);
-  const visibleAccuracies = rollingAccuracies.slice(visibleStartIndex);
-  const nextSignature = [
-    visibleStartIndex,
-    visibleAccuracies.length,
-    visibleAccuracies[0] ?? '',
-    visibleAccuracies.at(-1) ?? '',
-    gameHistory.length
-  ].join('|');
-
-  if (nextSignature === lastAccuracyChartSignature) return;
-  lastAccuracyChartSignature = nextSignature;
-
-  const hasCurrentGame = perGameAccuracies.length > gameHistory.length;
-  const labels = visibleAccuracies.map((_, visibleIndex) => {
-    const historyIndex = visibleStartIndex + visibleIndex;
-    return hasCurrentGame && historyIndex === rollingAccuracies.length - 1
-      ? `Current game (${historyIndex + 1})`
-      : `Game ${historyIndex + 1}`;
-  });
-  const values = visibleAccuracies;
-
-  chart.data.labels = labels;
-  chart.data.datasets[0].data = values;
-
-  if (values.length > 0) {
-    const minimum = Math.min(...values);
-    const maximum = Math.max(...values);
-    const padding = 4;
-    chart.options.scales.y.min = Math.max(0, minimum);
-    chart.options.scales.y.max = Math.min(100, Math.max(maximum + padding, minimum + padding));
-  }
-
+  const signature = JSON.stringify(gameHistory.map(game => [game.average_accuracy, game.total_moves, game.think_time_ms]));
+  if (signature === lastAccuracyChartSignature) return;
+  lastAccuracyChartSignature = signature;
+  const journey = buildAccuracyJourney(gameHistory.map(game => ({
+    accuracy: game.average_accuracy,
+    totalMoves: game.total_moves,
+    thinkTimeMs: game.think_time_ms
+  })));
+  const config = createJourneyChartConfig(journey, true);
+  chart.data = config.data;
+  chart.options.scales = config.options.scales;
+  const empty = document.getElementById('journey-empty');
+  if (empty) empty.hidden = journey.points.length > 0;
+  chart.canvas.style.visibility = journey.points.length ? 'visible' : 'hidden';
   chart.update('none');
 }
 
@@ -362,21 +283,6 @@ function calculateWeightedGameAccuracy(gameHistory) {
   }
 
   return totalMoves > 0 ? totalAccuracy / totalMoves : 0;
-}
-
-function calculateRollingAverage(values, windowSize) {
-  const rolling = [];
-  let sum = 0;
-
-  for (let index = 0; index < values.length; index++) {
-    sum += Number(values[index]);
-    if (index >= windowSize) {
-      sum -= Number(values[index - windowSize]);
-    }
-    rolling.push(sum / Math.min(index + 1, windowSize));
-  }
-
-  return rolling;
 }
 
 function isCurrentGameAlreadySaved(gameHistory, moveAccuracies) {

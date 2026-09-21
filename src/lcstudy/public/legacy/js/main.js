@@ -13,7 +13,6 @@ import {
   setCurrentFen,
   setLiveFen,
   resetGameProgress,
-  startGameTimer,
   resetMoveHistoryState,
   getSessionCache,
   getMoveAccuracies,
@@ -211,7 +210,6 @@ async function startNewGame() {
   updateBoardFromFen(currentFen);
   updatePgnDisplay();
   updateMoveFeedback();
-  startGameTimer();
   setBoardInputEnabled(true);
 
   // Start the (invisible) think clock on the first prompt

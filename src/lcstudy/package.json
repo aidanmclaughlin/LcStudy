@@ -10,7 +10,8 @@
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:backfill-metadata": "node scripts/backfill-game-metadata.mjs",
     "test:e2e": "playwright test e2e-smoke.spec.js --browser=webkit",
-    "test:board": "playwright test --config=board.playwright.config.js"
+    "test:board": "playwright test --config=board.playwright.config.js",
+    "test:progress": "node --test journey.test.mjs && playwright test --config=progress.playwright.config.js"
   },
   "dependencies": {
     "@vercel/postgres": "^0.10.0",
@@ -18,6 +19,7 @@
     "chess.js": "^1.0.0",
     "clsx": "^2.1.1",
     "ios-haptics": "^0.1.4",
+    "lucide-react": "^1.47.0",
     "next": "^14.1.0",
     "next-auth": "^4.24.7",
     "react": "^18.2.0",

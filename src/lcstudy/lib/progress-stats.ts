@@ -3,6 +3,7 @@
 import { fitCoach } from "@/lib/coach";
 import type { UserGameStatsRow } from "@/lib/db";
 import { computeMaiaElo, type MaiaEloStats } from "@/lib/maia-elo";
+import { buildAccuracyJourney, type AccuracyJourney } from "../public/legacy/js/modules/journey.mjs";
 
 const RECENT_WINDOW = 25;
 const TARGET_WINDOW = 10;
@@ -63,6 +64,7 @@ export interface AccuracyForecast {
 }
 
 export interface ProgressDashboardStats {
+  journey: AccuracyJourney;
   elo: MaiaEloStats;
   overview: {
     totalGames: number;
@@ -244,6 +246,11 @@ export function computeProgressDashboard(
 
   return {
     elo,
+    journey: buildAccuracyJourney(history.map(game => ({
+      accuracy: game.averageAccuracy,
+      totalMoves: game.totalMoves,
+      thinkTimeMs: game.thinkTimeMs
+    })), RECENT_WINDOW, Infinity),
     overview: {
       totalGames: history.length,
       totalMoves,

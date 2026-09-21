@@ -1,12 +1,15 @@
+"use client";
+
 import type {
   GroupStat,
   PaceStat,
-  ProgressDashboardStats,
-  ProgressSeriesPoint
+  ProgressDashboardStats
 } from "@/lib/progress-stats";
 import { TARGET_ACCURACY } from "@/lib/progress-stats";
 import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ArrowLeft } from "lucide-react";
+import { JourneyChart } from "./journey-chart";
 
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 100;
@@ -19,211 +22,116 @@ interface ChartTick {
 
 interface StatsDashboardProps {
   stats: ProgressDashboardStats;
+  embedded?: boolean;
 }
 
-export function StatsDashboard({ stats }: StatsDashboardProps) {
-  const { elo, overview, progress, consistency, timing, skill, coverage } = stats;
-  const eloModel = elo.calibration.model === "maia2-rapid"
-    ? "Maia-2 rapid"
-    : elo.calibration.model;
-  const eloTitle = `${eloModel}, ${formatInteger(elo.calibration.sampledGames)} corpus games, ${formatInteger(elo.calibration.sampledPositions)} post-opening positions, latest ${elo.current?.games ?? 0} eligible games`;
+export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps) {
+  const { elo, overview, progress, consistency, timing, skill, coverage, journey } = stats;
+  const [tab, setTab] = useState("overview");
+  const latest = journey.points.at(-1);
+  const tabs = [["overview", "Overview"], ["breakdowns", "Breakdowns"], ["timing", "Timing"]];
 
   return (
     <main className="stats-page">
       <header className="stats-header">
-        <a className="stats-back" href="/">
-          <span aria-hidden="true">&#8592;</span>
-          Game
-        </a>
         <div className="stats-title-group">
-          <span className="stats-brand">LCStudy</span>
-          <h1>Progress</h1>
+          <span className="stats-brand">LCStudy</span><h1>Progress</h1>
         </div>
-        <span className="stats-header-count">{formatInteger(overview.totalGames)} games</span>
+        <span className="stats-header-count">{formatInteger(overview.totalGames)} games / {formatInteger(overview.totalMoves)} moves</span>
+        {!embedded && <a className="stats-back" href="/"><ArrowLeft size={18} aria-hidden="true" />Game</a>}
       </header>
 
       <section className="stats-metric-grid" aria-label="Progress summary">
-        <Metric
-          label="Maia Elo"
-          value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
-          detail={elo.current
-            ? `${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)} 80% range`
-            : `Moves ${elo.calibration.firstIncludedPrompt}+`}
-          title={eloTitle}
-          tone="rose"
-        />
-        <Metric label="10-game" value={formatPercent(overview.recent10)} tone="green" />
-        <Metric
-          label="25-game"
-          value={formatPercent(overview.recent25)}
-          detail={`${formatPercent(overview.recent25Low, 0)}-${formatPercent(overview.recent25High, 0)} 80% range`}
-          tone="violet"
-        />
-        <Metric label="Best 25" value={formatPercent(overview.best25)} tone="amber" />
-        <Metric label="All-time" value={formatPercent(overview.allTimeAccuracy)} />
-        <Metric label="Leela matches" value={formatPercent(overview.exactRate)} tone="blue" />
-        <Metric label="Active practice" value={formatHours(overview.activeHours)} />
+        <Metric label="25-game accuracy" value={overview.totalGames ? formatPercent(overview.recent25) : "--"} detail={`Best ${formatPercent(overview.best25)}`} tone="green" />
+        <Metric label="Thinking / move" value={latest ? `${latest.x.toFixed(2)}s` : "--"} detail={latest ? `${latest.games}-game window` : "No timed games"} tone="blue" />
+        <Metric label="Maia Elo" value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
+          detail={elo.current ? `${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)} / 80% range` : "No eligible positions"}
+          title="Maia-2 rapid equivalent estimate, not an official rating" tone="rose" />
+        <Metric label="Active practice" value={formatHours(overview.activeHours)} detail={`${formatInteger(timing.timedGames)} timed games`} tone="amber" />
       </section>
 
-      <section className="stats-band stats-elo-band">
-        <SectionHeading
-          title="Maia Elo"
-          meta={`${elo.current?.games ?? 0}-game / moves ${elo.calibration.firstIncludedPrompt}+`}
-        />
-        <div className="stats-chart-legend" aria-hidden="true">
-          <LegendItem className="legend-elo" label="25-game estimate" />
-          <LegendItem className="legend-elo-range" label="80% range" />
-        </div>
-        <MaiaEloChart
-          points={elo.series}
-          minimum={elo.calibration.minimumElo}
-          maximum={elo.calibration.maximumElo}
-        />
-      </section>
+      <nav className="stats-tabs" role="tablist" aria-label="Statistics sections">
+        {tabs.map(([id, label], index) => <button key={id} type="button" role="tab" id={`stats-tab-${id}`}
+          aria-selected={tab === id} aria-controls={`stats-panel-${id}`} tabIndex={tab === id ? 0 : -1}
+          onClick={() => setTab(id)} onKeyDown={event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
+              : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+            setTab(tabs[next][0]);
+            document.getElementById(`stats-tab-${tabs[next][0]}`)?.focus();
+          }}>{label}</button>)}
+      </nav>
 
-      <section className="stats-band stats-progress-band">
-        <SectionHeading
-          title="Accuracy"
-          meta={`${formatInteger(overview.totalGames)} games`}
-        />
-        <div className="stats-chart-legend" aria-hidden="true">
-          <LegendItem className="legend-10" label="10-game" />
-          <LegendItem className="legend-25" label="25-game" />
-          <LegendItem className="legend-adjusted" label="Difficulty-adjusted" />
-          <LegendItem className="legend-target" label={`${TARGET_ACCURACY}% target`} />
-        </div>
-        <ProgressChart points={progress.series} />
-      </section>
-
-      <div className="stats-split stats-goal-row">
-        <section className="stats-section">
-          <SectionHeading title={`${TARGET_ACCURACY}% Forecast`} meta="10-game target" />
-          {progress.forecast ? (
-            <div className="forecast-layout">
-              <div>
-                <span className="stats-feature-value">
-                  {formatNullableHours(progress.forecast.remainingHours)}
-                </span>
-                <span className="stats-feature-label">remaining</span>
-              </div>
+      <div role="tabpanel" id={`stats-panel-${tab}`} aria-labelledby={`stats-tab-${tab}`}>
+        {tab === "overview" && <>
+          <section className="stats-band stats-journey-band">
+            <SectionHeading title="Accuracy & pace" meta="25-game windows" />
+            <JourneyChart journey={journey} />
+          </section>
+          <div className="stats-split">
+            <section className="stats-section">
+              <SectionHeading title="Current form" meta="recent games" />
               <dl className="stats-definition-list">
-                <Definition
-                  label="Games left"
-                  value={formatInteger(progress.forecast.remainingGames)}
-                />
-                <Definition
-                  label="80% range"
-                  value={`${formatInteger(progress.forecast.remainingGamesLow)}-${formatInteger(progress.forecast.remainingGamesHigh)}`}
-                />
-                <Definition
-                  label="Target game"
-                  value={`#${formatInteger(progress.forecast.targetGame)}`}
-                />
-                <Definition
-                  label="Typical game"
-                  value={formatDuration(progress.forecast.typicalGameMs)}
-                />
+                <Definition label="10-game accuracy" value={formatPercent(overview.recent10)} />
+                <Definition label="Difficulty-adjusted / 25" value={formatPercent(progress.adjustedRecent25)} />
+                <Definition label="Trend / 100 games" value={formatSignedPoints(progress.trendPer100)} />
+                <Definition label="Game-to-game spread" value={`${consistency.recentDeviation.toFixed(1)} pts`} />
               </dl>
+            </section>
+            <section className="stats-section">
+              <SectionHeading title={`Road to ${TARGET_ACCURACY}%`} meta="10-game target / estimate" />
+              {progress.forecast ? <div className="forecast-layout">
+                <div><strong className="stats-feature-value">{formatNullableHours(progress.forecast.remainingHours)}</strong><span className="stats-feature-label">estimated remaining</span></div>
+                <dl className="stats-definition-list">
+                  <Definition label="Games left" value={formatInteger(progress.forecast.remainingGames)} />
+                  <Definition label="80% range / games" value={`${formatInteger(progress.forecast.remainingGamesLow)}-${formatInteger(progress.forecast.remainingGamesHigh)}`} />
+                </dl>
+              </div> : <EmptyState label="No scored games yet" />}
+            </section>
+          </div>
+          <section className="stats-band stats-elo-band">
+            <SectionHeading title="Maia-equivalent Elo" meta="25-game estimate / 80% range" />
+            <MaiaEloChart points={elo.series} minimum={elo.calibration.minimumElo} maximum={elo.calibration.maximumElo} />
+          </section>
+        </>}
+
+        {tab === "breakdowns" && <>
+          <section className="stats-band">
+            <SectionHeading title="Performance by position" meta="sample-adjusted averages" />
+            <div className="stats-breakdown-grid">
+              <Breakdown title="Game phase" rows={skill.phases} />
+              <Breakdown title="Color" rows={skill.colors} />
+              <Breakdown title="Opponent" rows={skill.opponents} suffix=" Elo" />
+              <Breakdown title="Position difficulty" rows={skill.difficulties} />
             </div>
-          ) : (
-            <EmptyState label="Play one scored game" />
-          )}
-        </section>
+            <Breakdown title="Opening lines" rows={skill.openings} wide />
+          </section>
+          <section className="stats-band">
+            <SectionHeading title="Data coverage" meta={`${formatInteger(overview.totalGames)} games`} />
+            <div className="coverage-grid">
+              <CoverageMetric label="Lichess openings" value={`${formatInteger(coverage.lichessGames)} games`} percent={coverage.lichessShare} />
+              <CoverageMetric label="Color" value={`${coverage.whiteGames} W / ${coverage.blackGames} B`} percent={coverage.colorCoverage} />
+              <CoverageMetric label="Difficulty" value={`${coverage.difficultyGames} games`} percent={progress.difficultyCoverage} />
+              <CoverageMetric label="Openings" value={`${coverage.openingLines} lines`} percent={coverage.openingCoverage} />
+            </div>
+          </section>
+        </>}
 
-        <section className="stats-section">
-          <SectionHeading title="Signal" meta="recent form" />
-          <dl className="stats-definition-list stats-definition-list--wide">
-            <Definition
-              label="Adjusted 25-game"
-              value={formatPercent(progress.adjustedRecent25)}
-            />
-            <Definition
-              label="Trend / 100 games"
-              value={formatSignedPoints(progress.trendPer100)}
-              detail={`${formatSignedPoints(progress.trendLow)} to ${formatSignedPoints(progress.trendHigh)}`}
-            />
-            <Definition
-              label="10th percentile"
-              value={formatPercent(consistency.recentFloor)}
-            />
-            <Definition
-              label="Game-to-game spread"
-              value={`${consistency.recentDeviation.toFixed(1)} pts`}
-            />
-            <Definition
-              label="Next-move recovery"
-              value={formatPercent(consistency.recoveryRate * 100, 0)}
-              detail={`${formatInteger(consistency.recoverySamples)} chances`}
-            />
-            <Definition
-              label="Difficulty coverage"
-              value={formatPercent(progress.difficultyCoverage * 100, 0)}
-            />
-          </dl>
-        </section>
+        {tab === "timing" && <section className="stats-band">
+          <SectionHeading title="Thinking time" meta={`${formatInteger(timing.timedGames)} timed games`} />
+          <div className="stats-inline-metrics">
+            <InlineMetric label="Median move" value={formatDuration(timing.medianMoveMs)} />
+            <InlineMetric label="Middle 50%" value={`${formatDuration(timing.moveP25Ms)}-${formatDuration(timing.moveP75Ms)}`} />
+            <InlineMetric label="Late-game accuracy change" value={timing.fatigueDelta === null ? "--" : formatSignedPoints(timing.fatigueDelta)} />
+            <InlineMetric label="Time association / 2x" value={formatSignedPoints(timing.tempoEffect)} />
+          </div>
+          <div className="stats-split stats-time-grid">
+            <PaceTable rows={timing.pace} />
+            <LearningRateTable rows={timing.learningRates} />
+          </div>
+        </section>}
       </div>
-
-      <section className="stats-band">
-        <SectionHeading title="Skill Map" meta="sample-shrunk" />
-        <div className="stats-breakdown-grid">
-          <Breakdown title="Game phase" rows={skill.phases} />
-          <Breakdown title="Color" rows={skill.colors} />
-          <Breakdown title="Opponent" rows={skill.opponents} suffix=" Elo" />
-          <Breakdown title="Position set" rows={skill.difficulties} />
-        </div>
-        <Breakdown title="Opening lines" rows={skill.openings} wide />
-      </section>
-
-      <section className="stats-band">
-        <SectionHeading title="Time" meta={`${formatInteger(timing.timedGames)} timed games`} />
-        <div className="stats-inline-metrics">
-          <InlineMetric label="Median move" value={formatDuration(timing.medianMoveMs)} />
-          <InlineMetric
-            label="Middle 50%"
-            value={`${formatDuration(timing.moveP25Ms)}-${formatDuration(timing.moveP75Ms)}`}
-          />
-          <InlineMetric
-            label="Late-game change"
-            value={timing.fatigueDelta === null ? "--" : formatSignedPoints(timing.fatigueDelta)}
-            detail={`${formatInteger(timing.fatigueGames)} games`}
-          />
-          <InlineMetric
-            label="Thinking effect"
-            value={`${formatSignedPoints(timing.tempoEffect)} / 2x time`}
-          />
-        </div>
-
-        <div className="stats-split stats-time-grid">
-          <PaceTable rows={timing.pace} />
-          <LearningRateTable rows={timing.learningRates} />
-        </div>
-      </section>
-
-      <section className="stats-band stats-coverage-band">
-        <SectionHeading title="Coverage" meta={`${formatInteger(overview.totalMoves)} moves`} />
-        <div className="coverage-grid">
-          <CoverageMetric
-            label="Lichess openings"
-            value={`${formatInteger(coverage.lichessGames)} games`}
-            percent={coverage.lichessShare}
-          />
-          <CoverageMetric
-            label="Color metadata"
-            value={`${formatInteger(coverage.whiteGames)} W / ${formatInteger(coverage.blackGames)} B`}
-            percent={coverage.colorCoverage}
-          />
-          <CoverageMetric
-            label="Difficulty model"
-            value={`${formatInteger(coverage.difficultyGames)} games`}
-            percent={progress.difficultyCoverage}
-          />
-          <CoverageMetric
-            label="Opening lines"
-            value={`${formatInteger(coverage.openingLines)} lines`}
-            percent={coverage.openingCoverage}
-          />
-        </div>
-      </section>
     </main>
   );
 }
@@ -319,85 +227,6 @@ function SectionHeading({ title, meta }: { title: string; meta: string }) {
       <h2>{title}</h2>
       <span>{meta}</span>
     </div>
-  );
-}
-
-function LegendItem({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="stats-legend-item">
-      <span className={`stats-legend-swatch ${className}`} />
-      {label}
-    </span>
-  );
-}
-
-function ProgressChart({ points }: { points: ProgressSeriesPoint[] }) {
-  if (points.length === 0) return <EmptyState label="No game history yet" />;
-
-  const values = points.flatMap((point) => [
-    point.rolling10,
-    point.rolling25,
-    point.adjusted25,
-    point.low80,
-    point.high80
-  ]);
-  const minimum = Math.max(0, Math.floor(Math.min(...values) - 2));
-  const maximum = Math.min(100, Math.ceil(Math.max(TARGET_ACCURACY, ...values) + 1));
-  const x = (index: number) => (
-    points.length === 1 ? CHART_WIDTH / 2 : index * CHART_WIDTH / (points.length - 1)
-  );
-  const y = (value: number) => (
-    (maximum - value) * CHART_HEIGHT / (maximum - minimum || 1)
-  );
-  const pathFor = (valueFor: (point: ProgressSeriesPoint) => number) => points
-    .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(valueFor(point)).toFixed(2)}`)
-    .join(" ");
-  const bandPath = [
-    ...points.map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.high80).toFixed(2)}`),
-    ...points.slice().reverse().map((point, reverseIndex) => {
-      const index = points.length - reverseIndex - 1;
-      return `L${x(index).toFixed(2)},${y(point.low80).toFixed(2)}`;
-    }),
-    "Z"
-  ].join(" ");
-  const yTicks = Array.from({ length: 4 }, (_, index) => (
-    minimum + (maximum - minimum) * index / 3
-  ));
-  const xTicks = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
-  const yAxisTicks = yTicks.map((tick) => ({
-    key: String(tick),
-    label: `${tick.toFixed(0)}%`,
-    position: y(tick)
-  }));
-  const xAxisTicks = xTicks.map((index) => ({
-    key: String(index),
-    label: `Game ${points[index].game}`,
-    position: x(index)
-  }));
-
-  return (
-    <ChartFrame
-      titleId="progress-chart-title"
-      descriptionId="progress-chart-description"
-      title="Rolling accuracy over games"
-      description="Ten-game, twenty-five-game, and difficulty-adjusted accuracy with an eighty percent interval."
-      yTicks={yAxisTicks}
-      xTicks={xAxisTicks}
-    >
-        {minimum <= TARGET_ACCURACY && maximum >= TARGET_ACCURACY && (
-          <line
-            className="stats-chart-target"
-            x1={0}
-            x2={CHART_WIDTH}
-            y1={y(TARGET_ACCURACY)}
-            y2={y(TARGET_ACCURACY)}
-          />
-        )}
-        <path className="stats-chart-band" d={bandPath} />
-        <path className="stats-chart-line stats-chart-line--adjusted" d={pathFor((point) => point.adjusted25)} />
-        <path className="stats-chart-line stats-chart-line--25" d={pathFor((point) => point.rolling25)} />
-        <path className="stats-chart-line stats-chart-line--10" d={pathFor((point) => point.rolling10)} />
-    </ChartFrame>
   );
 }
 
