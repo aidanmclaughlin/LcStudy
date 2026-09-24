@@ -10,7 +10,7 @@ import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
 import { useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { JourneyChart } from "./journey-chart";
-import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
+import type { CurrentGamePoint, RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
 
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 100;
@@ -38,7 +38,7 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
       <header className="stats-header">
         <h1>Stats</h1>
         <span className="stats-header-count">{formatInteger(overview.totalGames)} games</span>
-        {!embedded && <a className="btn stats-back" href="/"><ArrowLeft size={18} aria-hidden="true" />Game</a>}
+        {!embedded && <a className="stats-back" href="/"><ArrowLeft size={16} aria-hidden="true" />Game</a>}
       </header>
 
       <section className="stats-metric-grid" aria-label="Progress summary">
@@ -67,9 +67,9 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
             <SectionHeading title="Accuracy & pace" />
             <JourneyChart journey={journey} currentGame={currentGame} />
           </section>
-          <section className="stats-band stats-elo-band">
-            <SectionHeading title="Maia-equivalent Elo" meta="25-game estimate / 80% range" />
-            <MaiaEloChart points={elo.series} minimum={elo.calibration.minimumElo} maximum={elo.calibration.maximumElo} />
+          <section className="stats-band stats-accuracy-band">
+            <SectionHeading title="100-game accuracy" meta={progress.accuracy100.length ? formatPercent(progress.accuracy100.at(-1)!.accuracy) : undefined} />
+            <RollingAccuracyChart points={progress.accuracy100} />
           </section>
           <Details title="Learning & target">
             <div className="stats-split">
@@ -156,45 +156,30 @@ function Metric({
   );
 }
 
-function MaiaEloChart({
-  points,
-  minimum,
-  maximum
-}: {
-  points: MaiaEloSeriesPoint[];
-  minimum: number;
-  maximum: number;
-}) {
-  if (points.length === 0) return <EmptyState label="No post-opening history yet" />;
+function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
+  if (points.length === 0) return <EmptyState label="Available after 100 scored games" />;
 
+  const values = points.map(point => point.accuracy);
+  const low = Math.min(...values), high = Math.max(...values);
+  const padding = Math.max(0.5, (high - low) * 0.1);
+  const minimum = Math.max(0, low - padding), maximum = Math.min(100, high + padding);
+  const firstGame = points[0].game, lastGame = points.at(-1)!.game;
   const x = (index: number) => (
-    points.length === 1 ? CHART_WIDTH / 2 : index * CHART_WIDTH / (points.length - 1)
+    points.length === 1 ? CHART_WIDTH / 2 : (points[index].game - firstGame) * CHART_WIDTH / (lastGame - firstGame)
   );
   const y = (value: number) => (
     (maximum - value) * CHART_HEIGHT / (maximum - minimum || 1)
   );
   const linePath = points
-    .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.elo).toFixed(2)}`)
-    .join(" ");
-  const bandPath = [
-    ...points.map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.high80).toFixed(2)}`),
-    ...points.slice().reverse().map((point, reverseIndex) => {
-      const index = points.length - reverseIndex - 1;
-      return `L${x(index).toFixed(2)},${y(point.low80).toFixed(2)}`;
-    }),
-    "Z"
-  ].join(" ");
+    .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.accuracy).toFixed(2)}`)
+    .join(" ") + (points.length === 1 ? "h0.01" : "");
   const yTicks = Array.from({ length: 4 }, (_, index) => (
     minimum + (maximum - minimum) * index / 3
   ));
   const xTicks = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
-  const yAxisTicks = yTicks.map((tick, index) => ({
+  const yAxisTicks = yTicks.map(tick => ({
     key: String(tick),
-    label: index === 0
-      ? `<${formatInteger(minimum)}`
-      : index === yTicks.length - 1
-        ? `${formatInteger(maximum)}+`
-        : formatInteger(tick),
+    label: formatPercent(tick),
     position: y(tick)
   }));
   const xAxisTicks = xTicks.map((index) => ({
@@ -205,16 +190,15 @@ function MaiaEloChart({
 
   return (
     <ChartFrame
-      className="stats-elo-chart-wrap"
-      titleId="elo-chart-title"
-      descriptionId="elo-chart-description"
-      title="Maia-equivalent Elo over games"
-      description="Twenty-five-game Maia-2 rapid equivalent rating with an eighty percent uncertainty interval."
+      className="stats-accuracy-chart-wrap"
+      titleId="accuracy-chart-title"
+      descriptionId="accuracy-chart-description"
+      title="100-game rolling accuracy over games"
+      description="Average accuracy of the most recent 100 scored games at each point, with each game weighted equally."
       yTicks={yAxisTicks}
       xTicks={xAxisTicks}
     >
-        <path className="stats-elo-chart-band" d={bandPath} />
-        <path className="stats-elo-chart-line" d={linePath} />
+        <path className="stats-accuracy-chart-line" d={linePath} style={points.length === 1 ? { strokeWidth: 6 } : undefined} />
     </ChartFrame>
   );
 }

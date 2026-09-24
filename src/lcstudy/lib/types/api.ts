@@ -94,7 +94,7 @@ export interface StatsResponse {
 /** Single game entry in history response */
 export interface GameHistoryEntry {
   date: string;
-  average_accuracy: number;
+  average_accuracy: number | null;
   total_moves: number;
   accuracy_history: number[];
   maia_level: number;

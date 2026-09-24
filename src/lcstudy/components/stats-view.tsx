@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ChartNoAxesCombined, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowLeft, ChevronRight, RefreshCw } from "lucide-react";
 import type { ProgressDashboardStats } from "@/lib/progress-stats";
 import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
 
@@ -11,7 +11,7 @@ const Dashboard = dynamic(() => import("./stats-dashboard").then(module => modul
   loading: () => <div className="stats-empty" role="status">Loading progress...</div>
 });
 
-export function StatsView() {
+export function StatsView({ children }: { children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -80,13 +80,15 @@ export function StatsView() {
   }
 
   return <>
-    <button ref={trigger} type="button" className="btn stats-trigger" onClick={show} aria-haspopup="dialog">
-      <ChartNoAxesCombined size={20} aria-hidden="true" />Stats
+    <button ref={trigger} type="button" className="panel panel-stats stats-trigger" onClick={show}
+      aria-label="Accuracy summary, open statistics" aria-haspopup="dialog" aria-controls="stats-dialog" aria-expanded={open}
+      title="View progress statistics">
+      {children}<ChevronRight className="stats-trigger-chevron" size={14} aria-hidden="true" />
     </button>
     <dialog ref={dialog} id="stats-dialog" className="stats-dialog" aria-label="Progress statistics" onCancel={event => { event.preventDefault(); close(); }}>
       {open && <>
         <div className="stats-dialog-bar">
-          <button type="button" className="btn stats-back" onClick={close} autoFocus><ArrowLeft size={18} aria-hidden="true" />Resume game</button>
+          <button type="button" className="stats-back" onClick={close} autoFocus><ArrowLeft size={16} aria-hidden="true" />Resume game</button>
           <span className="sr-only">Game paused</span>
           {loading && <span className="stats-refreshing" role="status">Updating...</span>}
         </div>

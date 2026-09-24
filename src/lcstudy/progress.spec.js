@@ -15,14 +15,14 @@ async function setup(page, context) {
     window.__currentGamePoint = null;
     window.addEventListener('lcstudy:current-game', event => { window.__currentGamePoint = event.detail; });
   });
-  const { buildAccuracyJourney } = await import('./public/legacy/js/modules/journey.mjs');
+  const { buildAccuracyJourney, buildRollingAccuracy } = await import('./public/legacy/js/modules/journey.mjs');
   const journey = buildAccuracyJourney(history.map(game => ({ accuracy: game.average_accuracy, totalMoves: game.total_moves, thinkTimeMs: game.think_time_ms })), 25, Infinity);
   const row = { label: 'Opening', accuracy: 85, exactRate: 45, moves: 100, games: 10 };
   const stats = {
     journey,
     overview: { totalGames: 160, totalMoves: 3200, recent25: 84, recent10: 85, best25: 89, allTimeAccuracy: 78, exactRate: 45, activeHours: 3.8 },
     elo: { current: { elo: 1320, low80: 1200, high80: 1420, games: 25, bound: null }, calibration: { minimumElo: 1050, maximumElo: 2100 }, series: Array.from({ length: 100 }, (_, i) => ({ game: i + 1, elo: 1200 + i, low80: 1100 + i, high80: 1300 + i })) },
-    progress: { adjustedRecent25: 83, trendPer100: 6.2, difficultyCoverage: 0.9, forecast: { remainingHours: 23, remainingGames: 1800, remainingGamesLow: 800, remainingGamesHigh: 6500 } },
+    progress: { accuracy100: buildRollingAccuracy(history.map(game => game.average_accuracy)), adjustedRecent25: 83, trendPer100: 6.2, difficultyCoverage: 0.9, forecast: { remainingHours: 23, remainingGames: 1800, remainingGamesLow: 800, remainingGamesHigh: 6500 } },
     consistency: { recentDeviation: 4.2 },
     timing: { timedGames: 160, medianMoveMs: 2300, moveP25Ms: 1200, moveP75Ms: 4600, fatigueDelta: -2, tempoEffect: 1.2, pace: [{ label: 'Fast', accuracy: 81, games: 30 }], learningRates: [{ minutes: 2, games: 20, hours: 1, rateMean: 1, rateLow: -1, rateHigh: 2 }] },
     skill: { phases: [row], colors: [{ ...row, label: 'White' }], opponents: [{ ...row, label: '1500' }], difficulties: [row], openings: [{ ...row, label: 'e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 O-O d6' }] },
@@ -50,7 +50,7 @@ async function setup(page, context) {
   await page.goto('/');
   await expect(page.locator('#board')).toHaveAttribute('aria-busy', 'false');
   await page.evaluate(async () => (await import('/legacy/js/modules/state.js')).setSoundEnabled(false));
-  return { calls, moves };
+  return { calls, moves, stats };
 }
 
 async function snapshot(page) {
@@ -69,10 +69,25 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await expect(page.locator('#accuracy-chart')).toHaveCount(0);
   await expect(page.locator('.journey-canvas')).toHaveCount(0);
   expect(await currentGamePoint(page)).toBeNull();
-  await expect(page.locator('#hours-left-count')).toContainText('160 played');
-  const trigger = await page.getByRole('button', { name: 'Stats', exact: true }).boundingBox();
+  await expect(page.locator('#hours-left-count')).toHaveCount(0);
+  await expect(page.locator('.stats-trigger .stat-tile')).toHaveCount(3);
+  const accuracy100 = history.slice(-100).reduce((sum, game) => sum + game.average_accuracy, 0) / 100;
+  const pace100 = history.slice(-100).reduce((sum, game) => sum + game.think_time_ms / game.total_moves / 1000, 0) / 100;
+  await expect(page.locator('#avg-accuracy')).toHaveText(`${accuracy100.toFixed(1)}%`);
+  await expect(page.locator('#avg-move-time')).toHaveText(`${pace100.toFixed(2)}s`);
+  await expect(page.locator('.panel-chart #game-accuracy')).toHaveText('--');
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.getByRole('button', { name: 'Stats', exact: true })).toHaveCount(0);
+  const trigger = await page.getByRole('button', { name: 'Accuracy summary, open statistics' }).boundingBox();
   expect(trigger.height).toBeGreaterThanOrEqual(48);
   expect(trigger.width).toBeGreaterThan(250);
+  const viewport = page.viewportSize();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.locator('.stats-trigger .stat-value').evaluateAll(values => values.every(value => value.scrollWidth <= value.clientWidth))).toBe(true);
+  }
+  await page.setViewportSize(viewport);
   await page.screenshot({ path: testInfo.outputPath('game-page.png') });
   for (let i = 0; i < 10; i += 2) {
     await page.locator(`[data-square="${moves[i].uci.slice(0, 2)}"]`).click();
@@ -83,6 +98,12 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   expect(before.scores).toHaveLength(5);
   await expect.poll(async () => (await currentGamePoint(page))?.moves).toBe(5);
   const livePoint = await currentGamePoint(page);
+  await expect(page.locator('.panel-chart #game-accuracy')).toHaveText('100.0%');
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'better');
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-direction', 'up');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('data-tone', 'better');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('data-direction', 'down');
+  await page.screenshot({ path: testInfo.outputPath('game-metrics.png') });
   const expectedPoint = await page.evaluate(async () => {
     const { buildCurrentGamePoint } = await import('/legacy/js/modules/journey.mjs');
     const { getMoveAccuracies } = await import('/legacy/js/modules/state.js');
@@ -92,7 +113,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   expect(livePoint).toEqual(expectedPoint);
   const sessionCount = calls.sessions;
   await page.evaluate(() => { window.originalBoard = document.getElementById('board'); });
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.locator('#avg-accuracy').click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Stats', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog').locator('.journey-time-key')).toContainText('Newer');
@@ -126,7 +147,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   expect(await snapshot(page)).toEqual(before);
   expect(await page.evaluate(() => window.originalBoard === document.getElementById('board'))).toBe(true);
   for (const exit of ['escape', 'back']) {
-    await page.getByRole('button', { name: 'Stats', exact: true }).click();
+    await page.getByRole('button', { name: 'Accuracy summary, open statistics' }).click();
     if (exit === 'escape') await page.keyboard.press('Escape');
     else await page.goBack();
     await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -142,7 +163,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await page.locator('[data-square=c3]').click();
   await expect.poll(async () => (await snapshot(page)).scores.length).toBe(6);
   await expect.poll(async () => (await currentGamePoint(page))?.moves).toBe(6);
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.getByRole('button', { name: 'Accuracy summary, open statistics' }).click();
   await expect(page.locator('.journey-current')).toContainText('Current game / 6 moves');
   await page.getByRole('button', { name: 'Resume game' }).click();
 });
@@ -151,25 +172,25 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   const { calls } = await setup(page, context);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const before = await snapshot(page);
-  await expect(page.locator('#hours-left-count')).toContainText('160 played');
   const progressWithoutChart = await page.evaluate(async () => {
     const state = await import('/legacy/js/modules/state.js');
     const charts = await import('/legacy/js/modules/charts.js');
     const savedChart = state.getMoveAccuracyChart(), savedHistory = state.getGameHistory();
     try {
       state.setMoveAccuracyChart(null);
-      state.setGameHistory(savedHistory.slice(0, 1));
-      charts.updateCharts();
-      return document.getElementById('hours-left-count').textContent;
+      state.setGameHistory(savedHistory.slice(0, 99));
+      charts.updateStatistics();
+      return document.getElementById('avg-accuracy').textContent;
     } finally {
       state.setMoveAccuracyChart(savedChart);
       state.setGameHistory(savedHistory);
-      charts.updateCharts();
+      charts.updateStatistics();
     }
   });
-  expect(progressWithoutChart).toMatch(/^1 played \/ [\d,.]+h left$/);
+  expect(progressWithoutChart).toBe('--');
   calls.fail = true;
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.getByRole('button', { name: 'Accuracy summary, open statistics' }).focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('could not be loaded');
   calls.fail = false;
   await page.getByRole('button', { name: 'Retry' }).click();
@@ -177,6 +198,19 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundImage === getComputedStyle(document.getElementById('stats-dialog')).backgroundImage)).toBe(true);
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('.stats-page')).getPropertyValue('--text-primary') === getComputedStyle(document.documentElement).getPropertyValue('--text-primary'))).toBe(true);
   await expect(page.locator('.stats-metric')).toHaveCount(3);
+  await expect(page.getByRole('heading', { name: '100-game accuracy', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toHaveCount(0);
+  await expect(page.locator('.stats-accuracy-chart-wrap .stats-chart-x-label')).toHaveText(['Game 100', 'Game 130', 'Game 160']);
+  const latestAccuracy = history.slice(-100).reduce((sum, game) => sum + game.average_accuracy, 0) / 100;
+  await expect(page.locator('.stats-accuracy-band .stats-section-heading > span')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
+  const backStyles = await page.getByRole('button', { name: 'Resume game' }).evaluate(button => {
+    const style = getComputedStyle(button), box = button.getBoundingClientRect();
+    return { background: style.backgroundImage, shadow: style.boxShadow, height: box.height, width: box.width };
+  });
+  expect(backStyles.background).toBe('none');
+  expect(backStyles.shadow).toBe('none');
+  expect(backStyles.height).toBeGreaterThanOrEqual(44);
+  expect(backStyles.width).toBeLessThan(130);
   await expect(page.getByRole('heading', { name: 'Current form', exact: true })).not.toBeVisible();
   for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
@@ -207,6 +241,10 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
       }
       await page.locator('#stats-dialog').evaluate(el => { el.scrollTop = 0; });
       if (width === 390 || width === 1440) await page.screenshot({ path: testInfo.outputPath(`${width}-${tab}.png`) });
+      if (tab === 'Overview' && (width === 390 || width === 1440)) {
+        await page.locator('.stats-accuracy-band').scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath(`${width}-accuracy.png`) });
+      }
     }
   }
   await page.getByRole('button', { name: 'Resume game' }).click();
@@ -214,4 +252,74 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   expect(await snapshot(page)).toEqual(before);
   expect(calls.saves).toBe(0);
   expect(errors).toEqual([]);
+});
+
+test('rolling accuracy renders empty, single-point, and constant histories', async ({ page, context }) => {
+  const { stats } = await setup(page, context);
+  const { buildRollingAccuracy } = await import('./public/legacy/js/modules/journey.mjs');
+  for (const scores of [Array(99).fill(80), Array(100).fill(80), Array(120).fill(0), Array(120).fill(100)]) {
+    stats.progress.accuracy100 = buildRollingAccuracy(scores);
+    await page.locator('#avg-accuracy').click();
+    if (scores.length < 100) {
+      await expect(page.getByText('Available after 100 scored games')).toBeVisible();
+      await expect(page.locator('.stats-accuracy-chart-line')).toHaveCount(0);
+    } else {
+      await expect(page.locator('.stats-accuracy-chart-line')).toHaveAttribute('d', /^M[\d., Lh]+$/);
+      expect(await page.locator('.stats-accuracy-chart-line').evaluate(path => path.getTotalLength())).toBeGreaterThan(0);
+      const labels = await page.locator('.stats-accuracy-chart-wrap .stats-chart-y-axis').innerText();
+      expect(labels).not.toMatch(/NaN|Infinity/);
+      await expect(page.locator('.stats-accuracy-band .stats-section-heading > span')).toHaveText(`${scores[0].toFixed(1)}%`);
+    }
+    await page.getByRole('button', { name: 'Resume game' }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'Accuracy summary, open statistics' })).toBeFocused();
+  }
+});
+
+test('live comparison arrows distinguish accuracy and pace, ties, and missing timing', async ({ page, context }, testInfo) => {
+  await setup(page, context);
+  await page.locator('[data-square=e2]').click();
+  await page.locator('[data-square=e4]').click();
+  await expect.poll(async () => (await snapshot(page)).ply).toBe(2);
+  const configure = async (accuracy, paceMultiplier, timed = true) => page.evaluate(async ({ accuracy, paceMultiplier, timed }) => {
+    const state = await import('/legacy/js/modules/state.js');
+    const clock = await import('/legacy/js/modules/timeclock.js');
+    const charts = await import('/legacy/js/modules/charts.js');
+    const seconds = clock.getMoveTimesMs()[0] / 1000;
+    state.setMoveAccuracies([accuracy]);
+    state.setGameHistory(Array.from({ length: 100 }, () => ({
+      average_accuracy: 80, total_moves: 20, think_time_ms: timed ? seconds * paceMultiplier * 20000 : null
+    })));
+    charts.updateStatistics();
+  }, { accuracy, paceMultiplier, timed });
+  await configure(90, 2);
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'better');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('data-tone', 'better');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('data-direction', 'down');
+  await configure(70, 0.5);
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'worse');
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-direction', 'down');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('data-tone', 'worse');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('data-direction', 'up');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('title', /slower than your 100-game average/);
+  await expect(page.locator('#game-accuracy')).toHaveText('70.0%');
+  await page.setViewportSize({ width: 320, height: 844 });
+  expect(await page.locator('.stats-trigger').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await page.locator('.stat-value-row').evaluateAll(rows => rows.every(el => el.scrollWidth <= el.clientWidth))).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('narrow-metrics.png') });
+  await configure(80, 1);
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('aria-hidden', 'true');
+  await configure(90, 1, false);
+  await expect(page.locator('#avg-move-time')).toHaveText('--');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'better');
+  await page.evaluate(async () => {
+    const state = await import('/legacy/js/modules/state.js');
+    state.setMoveAccuracies([]);
+    (await import('/legacy/js/modules/timeclock.js')).startGameClock();
+    (await import('/legacy/js/modules/charts.js')).updateStatistics();
+  });
+  await expect(page.locator('#game-accuracy')).toHaveText('--');
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
 });

@@ -22,19 +22,6 @@
   overflow: hidden;
 }
 
-.panel-goal {
-  flex-shrink: 0;
-  padding: 12px 14px;
-}
-
-.panel-goal .panel-section-heading {
-  gap: 6px;
-}
-
-.panel-goal .panel-section-heading h2 {
-  min-width: 0;
-}
-
 .panel-section-heading {
   display: flex;
   justify-content: space-between;
@@ -72,6 +59,17 @@
 .panel-metric--accent {
   color: var(--color-error);
 }
+
+.move-chart-heading { flex-wrap: wrap; }
+.move-chart-summary { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.move-chart-summary .panel-metric { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.move-chart-summary .panel-count { border-left: 1px solid var(--border-light); padding-left: 8px; }
+.stat-value-row { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 0; }
+.metric-comparison { display: inline-flex; flex: 0 0 12px; width: 12px; height: 12px; visibility: hidden; }
+.metric-comparison[data-direction] { visibility: visible; }
+.metric-comparison[data-direction="down"] { transform: rotate(180deg); }
+.metric-comparison[data-tone="better"] { color: var(--color-success); }
+.metric-comparison[data-tone="worse"] { color: var(--color-error); }
 
 /* Accuracy summary */
 .panel-stats {
@@ -178,10 +176,6 @@
     padding: 16px;
   }
 
-  .panel-goal {
-    padding: 14px 16px;
-  }
-
   .panel-stats {
     width: 100%;
   }
@@ -211,14 +205,6 @@
   .panel-stats {
     gap: 6px;
     padding: 8px;
-  }
-
-  .panel-goal .panel-section-heading h2 {
-    font-size: 0.8rem;
-  }
-
-  .panel-goal .panel-count {
-    font-size: 0.68rem;
   }
 
   .stat-tile {

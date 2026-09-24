@@ -7,7 +7,7 @@
  *
  * Layout:
  * - Board column: Chessboard powered by chessboard-element
- * - Sidebar: Stats access, accuracy summary, per-move chart, move history
+ * - Sidebar: Accuracy summary with Stats access, per-move chart, move history
  */
 
 import Script from "next/script";
@@ -16,6 +16,7 @@ import { redirect } from "next/navigation";
 import { getAuthSession } from "@/lib/auth";
 import { CompletionSignOutButton } from "@/components/auth-controls";
 import { StatsView } from "@/components/stats-view";
+import { ArrowUp } from "lucide-react";
 
 export default async function HomePage() {
   const session = await getAuthSession();
@@ -70,48 +71,38 @@ export default async function HomePage() {
 
           {/* Sidebar Panels */}
           <div className="sidebar">
-            <StatsView />
             {/* Accuracy Summary Panel */}
-            <div className="panel panel-stats" aria-label="Accuracy summary">
-              <div className="stat-tile">
-                <span className="stat-label">All-time</span>
-                <span id="all-time-accuracy" className="stat-value">0.0%</span>
-              </div>
-              <div className="stat-tile">
-                <span className="stat-label">10-game</span>
-                <span id="avg-accuracy" className="stat-value">0.0%</span>
-              </div>
-              <div className="stat-tile">
-                <span className="stat-label">1-game</span>
-                <span id="game-accuracy" className="stat-value">0.0%</span>
-              </div>
-              <div className="stat-tile">
+            <StatsView>
+              <span className="stat-tile">
+                <span className="stat-label">100-game</span>
+                <span className="stat-value-row">
+                  <span id="avg-accuracy" className="stat-value">--</span>
+                  <span id="accuracy-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
+                </span>
+              </span>
+              <span className="stat-tile">
+                <span className="stat-label">100-game pace</span>
+                <span className="stat-value-row">
+                  <span id="avg-move-time" className="stat-value">--</span>
+                  <span id="pace-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
+                </span>
+              </span>
+              <span className="stat-tile">
                 <span className="stat-label">Move</span>
                 <span id="move-feedback" className="stat-value stat-value--muted">
                   Pick move
                 </span>
-              </div>
-            </div>
-
-            {/* Hours Left Summary */}
-            <div className="panel panel-goal">
-              <div className="panel-section-heading">
-                <h2>Hours Left to 97%</h2>
-                <span
-                  id="hours-left-count"
-                  className="panel-count"
-                  title="Power-law estimate of time remaining to the 97% rolling average target"
-                >
-                  0 played / --h left
-                </span>
-              </div>
-            </div>
+              </span>
+            </StatsView>
 
             {/* Move Accuracy Chart Panel */}
             <div className="panel panel-chart">
-              <div className="panel-section-heading">
+              <div className="panel-section-heading move-chart-heading">
                 <h2>Accuracy Over Moves</h2>
-                <span id="move-chart-count" className="panel-count">0 moves</span>
+                <span className="move-chart-summary">
+                  <strong id="game-accuracy" className="panel-metric" title="Current game accuracy">--</strong>
+                  <span id="move-chart-count" className="panel-count">0 moves</span>
+                </span>
               </div>
               <div className="chart-container">
                 <canvas id="move-accuracy-chart" />

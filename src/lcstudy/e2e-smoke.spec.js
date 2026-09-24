@@ -263,11 +263,10 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const sessionData = await (await sessionResponsePromise).json();
   await page.waitForSelector('#board .piece');
   await expect(page.locator('#completion-overlay')).toBeHidden();
-  await expect(page.getByRole('heading', { name: 'Hours Left to 97%' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '25-Game Accuracy' })).toBeVisible();
+  await expect(page.locator('#hours-left-count')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Accuracy Over Moves' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Stats', exact: true })).toBeVisible();
-  await expect(page.locator('.panel-chart canvas')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Accuracy summary, open statistics' })).toBeVisible();
+  await expect(page.locator('.panel-chart canvas')).toHaveCount(1);
   await expect(page.locator('.panel-goal canvas')).toHaveCount(0);
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
   await expect(page.locator('input[switch][data-lcstudy-direct-haptic]')).toHaveCount(64);
@@ -275,15 +274,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
 
   const originalViewport = page.viewportSize();
   await page.setViewportSize({ width: 320, height: 844 });
-  const narrowGoalFits = await page.locator('.panel-goal').evaluate((panel) => {
-    const count = panel.querySelector('#hours-left-count');
-    const originalText = count?.textContent;
-    if (count) count.textContent = '16 played / 1,300h left';
-    const fits = panel.scrollWidth <= panel.clientWidth;
-    if (count) count.textContent = originalText;
-    return fits;
-  });
-  expect(narrowGoalFits).toBe(true);
+  expect(await page.locator('.stats-trigger').evaluate(panel => panel.scrollWidth <= panel.clientWidth)).toBe(true);
   if (originalViewport) await page.setViewportSize(originalViewport);
 
   const firstMove = sessionData.moves[sessionData.ply];
@@ -354,73 +345,25 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   expect(vibrateCalls).toEqual([]);
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
   await expect(page.locator('input[switch][data-lcstudy-direct-haptic]')).toHaveCount(64);
-  const allTimeMetricText = await page.locator('#all-time-accuracy').textContent();
   const metricText = await page.locator('#avg-accuracy').textContent();
   const gameMetricText = await page.locator('#game-accuracy').textContent();
   const feedbackText = await page.locator('#move-feedback').textContent();
   const historyText = await page.locator('#move-list').textContent();
-  if (!allTimeMetricText?.includes('%') || !metricText?.includes('%') || !gameMetricText?.includes('%') || !feedbackText?.includes('%')) {
-    throw new Error(`Expected accuracy metrics, got ${allTimeMetricText} / ${metricText} / ${gameMetricText} / ${feedbackText}`);
+  if (!metricText || !gameMetricText?.includes('%') || !feedbackText?.includes('%')) {
+    throw new Error(`Expected accuracy metrics, got ${metricText} / ${gameMetricText} / ${feedbackText}`);
   }
   if (feedbackText.includes('100.0')) {
     throw new Error(`Expected legal wrong move accuracy below 100%, got ${feedbackText}`);
   }
-  const accuracyView = await page.evaluate(async () => {
-    const state = await import('/legacy/js/modules/state.js');
-    const charts = await import('/legacy/js/modules/charts.js');
-    const originalHistory = state.getGameHistory();
-    const originalMoves = state.getMoveAccuracies();
-
-    state.setMoveAccuracies([]);
-    charts.updateCharts();
-    const normalEstimate = charts.calculateCurrentGoalEstimate(originalHistory, []);
-
-    state.setGameHistory(originalHistory.slice(0, 1));
-    charts.updateCharts();
-    const firstGameEstimate = charts.calculateCurrentGoalEstimate(originalHistory.slice(0, 1), []);
-    const firstGame = {
-      countText: document.getElementById('hours-left-count')?.textContent,
-      title: document.getElementById('hours-left-count')?.title,
-      hoursLeftMs: firstGameEstimate.hoursLeftMs,
-    };
-
-    state.setGameHistory(originalHistory.map((game) => ({
-      ...game,
-      duration_ms: Number(game.duration_ms) * 2,
-    })));
-    charts.updateCharts();
-    const slowerEstimate = charts.calculateCurrentGoalEstimate(state.getGameHistory(), []);
-
-    state.setGameHistory(originalHistory.map((game, index) => ({
-      ...game,
-      duration_ms: index === 0 ? Number(game.duration_ms) * 1000 : game.duration_ms,
-    })));
-    charts.updateCharts();
-    const outlierEstimate = charts.calculateCurrentGoalEstimate(state.getGameHistory(), []);
-
-    state.setGameHistory(originalHistory);
-    state.setMoveAccuracies(originalMoves);
-    charts.updateCharts();
-    return {
-      normalHours: normalEstimate.hoursLeftMs / 3600000,
-      slowerHours: slowerEstimate.hoursLeftMs / 3600000,
-      outlierHours: outlierEstimate.hoursLeftMs / 3600000,
-      firstGame,
-    };
-  });
   await expect(page.locator('#accuracy-chart')).toHaveCount(0);
-  expect(accuracyView.slowerHours / accuracyView.normalHours).toBeCloseTo(2, 5);
-  expect(accuracyView.outlierHours / accuracyView.normalHours).toBeLessThan(1.05);
-  expect(accuracyView.firstGame.hoursLeftMs).toBeGreaterThan(0);
-  expect(accuracyView.firstGame.countText).toMatch(/^1 played \/ [\d,.]+h left$/);
-  expect(accuracyView.firstGame.title).toContain('Power-law estimate from 1 game');
+  await expect(page.locator('#hours-left-count')).toHaveCount(0);
 
   const sessionResponsesBeforeReturn = successfulSessionResponses;
   const beforeStats = await page.evaluate(async () => {
     const state = await import('/legacy/js/modules/state.js');
     return { id: state.getSessionId(), scores: state.getMoveAccuracies(), fen: state.getChessEngine().fen() };
   });
-  await page.getByRole('button', { name: 'Stats', exact: true }).click();
+  await page.getByRole('button', { name: 'Accuracy summary, open statistics' }).click();
   await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await page.getByRole('button', { name: 'Resume game' }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -475,7 +418,7 @@ test.describe('progress dashboard', () => {
       secret: process.env.NEXTAUTH_SECRET,
       token: { sub: user.id, userId: user.id, email: user.email, name: user.name },
     });
-    const fixtureRows = Array.from({ length: 36 }, (_, index) => {
+    const fixtureRows = Array.from({ length: 120 }, (_, index) => {
       const accuracy = 81 + index * 0.13 + Math.sin(index * 0.7) * 0.6;
       const totalMoves = 12 + (index % 9);
       const gameId = `stats-e2e-${Date.now()}-${index}`;
@@ -544,16 +487,16 @@ test.describe('progress dashboard', () => {
 
       await page.goto('/stats', { waitUntil: 'networkidle' });
       await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: '100-game accuracy', exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Accuracy & pace', exact: true })).toBeVisible();
       await expect(page.locator('.journey-canvas canvas')).toBeVisible();
       const eloMetric = page.locator('.stats-metric').filter({ hasText: 'Maia Elo' });
       await expect(eloMetric.locator('strong')).toHaveText('1,300');
       await expect(eloMetric).toHaveAttribute('title', /80% range 1,190 to 1,410/);
       await expect(page.locator('.stats-progress-chart')).toHaveCount(1);
-      await expect(page.locator('.stats-elo-chart-line')).toHaveCount(1);
-      await expect(page.locator('.stats-elo-band .stats-chart-label').filter({ hasText: '<1,050' })).toHaveCount(1);
-      await expect(page.locator('.stats-elo-band .stats-chart-label').filter({ hasText: '2,100+' })).toHaveCount(1);
+      await expect(page.locator('.stats-accuracy-chart-line')).toHaveCount(1);
+      await expect(page.locator('.stats-accuracy-band .stats-chart-label').filter({ hasText: 'Game 100' })).toHaveCount(1);
+      await expect(page.locator('.stats-accuracy-band .stats-chart-label').filter({ hasText: 'Game 120' })).toHaveCount(1);
       await page.getByRole('tab', { name: 'Breakdowns' }).click();
       await expect(page.locator('.stats-breakdown-row')).not.toHaveCount(0);
       await page.getByRole('tab', { name: 'Timing', exact: true }).click();

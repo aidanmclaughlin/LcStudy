@@ -1,3 +1,34 @@
+/** Full windows of scored games, preserving game numbers when scores are missing. */
+export function buildRollingAccuracy(accuracies, windowSize = 100) {
+  if (!Number.isInteger(windowSize) || windowSize < 1) throw new RangeError('Invalid accuracy window');
+  const points = [], window = [];
+  let sum = 0;
+  accuracies.forEach((accuracy, index) => {
+    if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return;
+    window.push(accuracy);
+    sum += accuracy;
+    if (window.length > windowSize) sum -= window.shift();
+    if (window.length === windowSize) points.push({ game: index + 1, accuracy: sum / windowSize });
+  });
+  return points;
+}
+
+/** Home baselines share the latest scored games and weight each game equally. */
+export function recentPerformance(history, windowSize = 100) {
+  const games = [];
+  for (let i = history.length - 1; i >= 0 && games.length < windowSize; i--) {
+    const game = history[i];
+    if (Number.isFinite(game.accuracy) && game.accuracy >= 0 && game.accuracy <= 100) games.push(game);
+  }
+  if (games.length < windowSize) return { accuracy: null, secondsPerMove: null };
+  const timed = games.every(game => Number.isFinite(game.totalMoves) && game.totalMoves > 0 &&
+    Number.isFinite(game.thinkTimeMs) && game.thinkTimeMs > 0);
+  return {
+    accuracy: games.reduce((sum, game) => sum + game.accuracy, 0) / windowSize,
+    secondsPerMove: timed ? games.reduce((sum, game) => sum + game.thinkTimeMs / game.totalMoves / 1000, 0) / windowSize : null
+  };
+}
+
 /** Matched, equally game-weighted speed/accuracy windows. No elapsed-time substitution. */
 export function buildAccuracyJourney(history, windowSize = 25, limit = 100) {
   const windows = [];

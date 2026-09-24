@@ -1,14 +1,48 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildAccuracyJourney, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
+import { buildAccuracyJourney, buildRollingAccuracy, recentPerformance, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
 
 const game = (accuracy = 80, seconds = 3, totalMoves = 20) => ({ accuracy, totalMoves, thinkTimeMs: seconds * totalMoves * 1000 });
+
+test('100-game accuracy waits for full windows and drops the oldest game', () => {
+  assert.deepEqual(buildRollingAccuracy([]), []);
+  assert.deepEqual(buildRollingAccuracy(Array(99).fill(80)), []);
+  const accuracies = Array.from({ length: 101 }, (_, i) => i);
+  assert.deepEqual(buildRollingAccuracy(accuracies), [
+    { game: 100, accuracy: 49.5 }, { game: 101, accuracy: 50.5 }
+  ]);
+  assert.equal(accuracies.length, 101);
+});
+
+test('rolling accuracy skips invalid scores without losing historical game numbers', () => {
+  const scores = [...Array(99).fill(80), null, NaN, Infinity, -1, 101, 100, 0];
+  assert.deepEqual(buildRollingAccuracy(scores), [
+    { game: 105, accuracy: 80.2 }, { game: 106, accuracy: 79.4 }
+  ]);
+  for (const value of [0, 80, 100]) {
+    assert.deepEqual(buildRollingAccuracy(Array(100).fill(value)), [{ game: 100, accuracy: value }]);
+  }
+  assert.throws(() => buildRollingAccuracy([80], 0), RangeError);
+});
 
 test('both axes use the same 25 games with equal game weights', () => {
   const history = Array.from({ length: 25 }, (_, index) => game(60 + index, index + 1, index + 1));
   const { points } = buildAccuracyJourney(history);
   assert.equal(points.length, 1);
   assert.deepEqual(points[0], { x: 13, y: 72, game: 25, startGame: 1, games: 25, provisional: false });
+});
+
+test('home baselines match the 100-game chart and equally weight game pace', () => {
+  const history = Array.from({ length: 140 }, (_, i) => game(i / 2, i + 1, i + 1));
+  const baseline = recentPerformance(history);
+  assert.equal(baseline.accuracy, buildRollingAccuracy(history.map(game => game.accuracy)).at(-1).accuracy);
+  assert.equal(baseline.secondsPerMove, 90.5);
+  assert.deepEqual(recentPerformance([...history, game(null)]), baseline);
+  assert.deepEqual(recentPerformance(history.slice(0, 99)), { accuracy: null, secondsPerMove: null });
+  history.at(-1).thinkTimeMs = null;
+  const missingTiming = recentPerformance(history);
+  assert.equal(missingTiming.accuracy, baseline.accuracy);
+  assert.equal(missingTiming.secondsPerMove, null);
 });
 
 test('rolling context is calculated before truncating to the last 100 windows', () => {
