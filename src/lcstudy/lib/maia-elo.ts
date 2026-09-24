@@ -5,7 +5,7 @@ import type { UserGameStatsRow } from "@/lib/db";
 
 const INTERVAL_Z_80 = 1.2815515655446004;
 const DEFAULT_GAME_DEVIATION = 12;
-export const MAIA_ELO_WINDOW = 25;
+export const MAIA_ELO_WINDOW = 100;
 
 type RatingBound = "low" | "high" | null;
 

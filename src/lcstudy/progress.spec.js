@@ -22,7 +22,7 @@ async function setup(page, context) {
   const stats = {
     journey,
     overview: { totalGames: 160, totalMoves: 3200, recent25: 84, recent10: 85, best25: 89, allTimeAccuracy: 78, exactRate: 45, activeHours: 3.8 },
-    elo: { current: { elo: 1320, low80: 1200, high80: 1420, games: 25, bound: null }, calibration: { minimumElo: 1050, maximumElo: 2100 }, series: Array.from({ length: 100 }, (_, i) => ({ game: i + 1, elo: 1200 + i, low80: 1100 + i, high80: 1300 + i })) },
+    elo: { current: { elo: 1320, low80: 1200, high80: 1420, games: 100, bound: null }, calibration: { minimumElo: 1050, maximumElo: 2100 }, series: Array.from({ length: 100 }, (_, i) => ({ game: i + 1, elo: 1200 + i, low80: 1100 + i, high80: 1300 + i })) },
     progress: { accuracy100: buildCurrentScoringAccuracy(history.map(game => ({ accuracy: game.average_accuracy, playedAt: game.date }))), adjustedRecent25: 83, trendPer100: 6.2, difficultyCoverage: 0.9, forecast: { remainingHours: 23, remainingGames: 1800, remainingGamesLow: 800, remainingGamesHigh: 6500 } },
     consistency: { recentDeviation: 4.2 },
     timing: { timedGames: 160, medianMoveMs: 2300, moveP25Ms: 1200, moveP75Ms: 4600, fatigueDelta: -2, tempoEffect: 1.2, pace: [{ label: 'Fast', accuracy: 81, games: 30 }], learningRates: [{ minutes: 2, games: 20, hours: 1, rateMean: 1, rateLow: -1, rateHigh: 2 }] },
@@ -199,6 +199,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundImage === getComputedStyle(document.getElementById('stats-dialog')).backgroundImage)).toBe(true);
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('.stats-page')).getPropertyValue('--text-primary') === getComputedStyle(document.documentElement).getPropertyValue('--text-primary'))).toBe(true);
   await expect(page.locator('.stats-metric')).toHaveCount(3);
+  await expect(page.locator('.stats-metric').filter({ hasText: 'Maia Elo' })).toHaveAttribute('title', /last 100 eligible games; 80% range/);
   await expect(page.getByRole('heading', { name: '100-game accuracy', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toHaveCount(0);
   await expect(page.locator('.stats-accuracy-chart-wrap .stats-chart-x-label')).toHaveText(['Game 120', 'Game 140', 'Game 160']);
@@ -323,4 +324,31 @@ test('live comparison arrows distinguish accuracy and pace, ties, and missing ti
   });
   await expect(page.locator('#game-accuracy')).toHaveText('--');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('Maia Elo uses the latest 100 eligible games, skipping opening-only games', () => {
+  const { computeMaiaElo, MAIA_ELO_WINDOW } = require('./lib/maia-elo');
+  expect(MAIA_ELO_WINDOW).toBe(100);
+  const history = Array.from({ length: 125 }, (_, index) => ({
+    accuracyHistory: [...Array(5).fill(0), ...Array(5).fill(index < 25 ? 10 : index < 100 ? 60 : 100)]
+  })).flatMap(game => [game, { accuracyHistory: Array(5).fill(100) }]);
+  const result = computeMaiaElo(history);
+  expect(result.current).toMatchObject({ game: 249, games: 100, moves: 500, accuracy: 70 });
+  expect(result.series).toHaveLength(125);
+  expect(result.series[98].games).toBe(99);
+  expect(result.series[99].games).toBe(100);
+  expect(result.series.every(point => point.games <= 100)).toBe(true);
+  const changedOldGames = history.map((game, index) => index < 50 ? { accuracyHistory: Array(10).fill(100) } : game);
+  expect(computeMaiaElo(changedOldGames).current).toEqual(result.current);
+});
+
+test('Maia Elo preserves empty and partial eligible-game histories', () => {
+  const { computeMaiaElo } = require('./lib/maia-elo');
+  expect(computeMaiaElo([]).current).toBeNull();
+  expect(computeMaiaElo([{ accuracyHistory: Array(5).fill(100) }]).current).toBeNull();
+  const result = computeMaiaElo([
+    { accuracyHistory: [...Array(5).fill(0), 80] },
+    { accuracyHistory: [...Array(5).fill(100), 100, 100] }
+  ]);
+  expect(result.current).toMatchObject({ game: 2, games: 2, moves: 3, accuracy: 90 });
 });

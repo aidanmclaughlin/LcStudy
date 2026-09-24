@@ -45,7 +45,7 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
         <Metric label="25-game accuracy" value={overview.totalGames ? formatPercent(overview.recent25) : "--"} />
         <Metric label="Thinking / move" value={latest ? `${latest.x.toFixed(2)}s` : "--"} />
         <Metric label="Maia Elo" value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
-          title={elo.current ? `Maia-2 rapid equivalent estimate; 80% range ${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}. Not an official rating.` : "No eligible positions"} />
+          title={elo.current ? `Maia-2 rapid equivalent over the last ${elo.current.games} eligible games; 80% range ${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}. Not an official rating.` : "No eligible positions"} />
       </section>
 
       <nav className="stats-tabs" role="tablist" aria-label="Statistics sections">
