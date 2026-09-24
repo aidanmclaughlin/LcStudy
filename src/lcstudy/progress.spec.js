@@ -5,6 +5,7 @@ const { Chess } = require('chess.js');
 process.loadEnvFile(path.join(__dirname, '.env.local'));
 
 const history = Array.from({ length: 160 }, (_, i) => ({
+  date: new Date(Date.UTC(2026, 6, i < 20 ? 4 : 6, 0, i)).toISOString(),
   average_accuracy: 70 + i * 0.1 + Math.sin(i / 7) * 4, total_moves: 20,
   think_time_ms: (4 - i * 0.01 + Math.cos(i / 9) * 0.5) * 20000,
   duration_ms: 90000, accuracy_history: Array(20).fill(80), maia_level: 1500
@@ -15,14 +16,14 @@ async function setup(page, context) {
     window.__currentGamePoint = null;
     window.addEventListener('lcstudy:current-game', event => { window.__currentGamePoint = event.detail; });
   });
-  const { buildAccuracyJourney, buildRollingAccuracy } = await import('./public/legacy/js/modules/journey.mjs');
+  const { buildAccuracyJourney, buildCurrentScoringAccuracy } = await import('./public/legacy/js/modules/journey.mjs');
   const journey = buildAccuracyJourney(history.map(game => ({ accuracy: game.average_accuracy, totalMoves: game.total_moves, thinkTimeMs: game.think_time_ms })), 25, Infinity);
   const row = { label: 'Opening', accuracy: 85, exactRate: 45, moves: 100, games: 10 };
   const stats = {
     journey,
     overview: { totalGames: 160, totalMoves: 3200, recent25: 84, recent10: 85, best25: 89, allTimeAccuracy: 78, exactRate: 45, activeHours: 3.8 },
     elo: { current: { elo: 1320, low80: 1200, high80: 1420, games: 25, bound: null }, calibration: { minimumElo: 1050, maximumElo: 2100 }, series: Array.from({ length: 100 }, (_, i) => ({ game: i + 1, elo: 1200 + i, low80: 1100 + i, high80: 1300 + i })) },
-    progress: { accuracy100: buildRollingAccuracy(history.map(game => game.average_accuracy)), adjustedRecent25: 83, trendPer100: 6.2, difficultyCoverage: 0.9, forecast: { remainingHours: 23, remainingGames: 1800, remainingGamesLow: 800, remainingGamesHigh: 6500 } },
+    progress: { accuracy100: buildCurrentScoringAccuracy(history.map(game => ({ accuracy: game.average_accuracy, playedAt: game.date }))), adjustedRecent25: 83, trendPer100: 6.2, difficultyCoverage: 0.9, forecast: { remainingHours: 23, remainingGames: 1800, remainingGamesLow: 800, remainingGamesHigh: 6500 } },
     consistency: { recentDeviation: 4.2 },
     timing: { timedGames: 160, medianMoveMs: 2300, moveP25Ms: 1200, moveP75Ms: 4600, fatigueDelta: -2, tempoEffect: 1.2, pace: [{ label: 'Fast', accuracy: 81, games: 30 }], learningRates: [{ minutes: 2, games: 20, hours: 1, rateMean: 1, rateLow: -1, rateHigh: 2 }] },
     skill: { phases: [row], colors: [{ ...row, label: 'White' }], opponents: [{ ...row, label: '1500' }], difficulties: [row], openings: [{ ...row, label: 'e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 O-O d6' }] },
@@ -200,7 +201,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   await expect(page.locator('.stats-metric')).toHaveCount(3);
   await expect(page.getByRole('heading', { name: '100-game accuracy', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toHaveCount(0);
-  await expect(page.locator('.stats-accuracy-chart-wrap .stats-chart-x-label')).toHaveText(['Game 100', 'Game 130', 'Game 160']);
+  await expect(page.locator('.stats-accuracy-chart-wrap .stats-chart-x-label')).toHaveText(['Game 120', 'Game 140', 'Game 160']);
   const latestAccuracy = history.slice(-100).reduce((sum, game) => sum + game.average_accuracy, 0) / 100;
   await expect(page.locator('.stats-accuracy-band .stats-section-heading > span')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
   const backStyles = await page.getByRole('button', { name: 'Resume game' }).evaluate(button => {
@@ -261,7 +262,7 @@ test('rolling accuracy renders empty, single-point, and constant histories', asy
     stats.progress.accuracy100 = buildRollingAccuracy(scores);
     await page.locator('#avg-accuracy').click();
     if (scores.length < 100) {
-      await expect(page.getByText('Available after 100 scored games')).toBeVisible();
+      await expect(page.getByText('Available after 100 games with current scoring')).toBeVisible();
       await expect(page.locator('.stats-accuracy-chart-line')).toHaveCount(0);
     } else {
       await expect(page.locator('.stats-accuracy-chart-line')).toHaveAttribute('d', /^M[\d., Lh]+$/);

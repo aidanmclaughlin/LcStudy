@@ -1,8 +1,32 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildAccuracyJourney, buildRollingAccuracy, recentPerformance, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
+import { buildAccuracyJourney, buildRollingAccuracy, buildCurrentScoringAccuracy, SEARCH_GRADING_STARTED_AT, recentPerformance, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
 
 const game = (accuracy = 80, seconds = 3, totalMoves = 20) => ({ accuracy, totalMoves, thinkTimeMs: seconds * totalMoves * 1000 });
+
+test('current-scoring chart never mixes grading eras or renumbers games', () => {
+  const cutoff = Date.parse(SEARCH_GRADING_STARTED_AT);
+  const oldGames = Array.from({ length: 104 }, () => ({ accuracy: 30, playedAt: new Date(cutoff - 1) }));
+  const newGames = Array.from({ length: 100 }, () => ({ accuracy: 80, playedAt: new Date(cutoff) }));
+  assert.deepEqual(buildCurrentScoringAccuracy(oldGames), []);
+  assert.deepEqual(buildCurrentScoringAccuracy([...oldGames, ...newGames.slice(0, 99)]), []);
+  const history = [...oldGames, ...newGames, { accuracy: 20, playedAt: SEARCH_GRADING_STARTED_AT }];
+  assert.deepEqual(buildCurrentScoringAccuracy(history), [
+    { game: 204, accuracy: 80 }, { game: 205, accuracy: 79.4 }
+  ]);
+  assert.equal(history.length, 205);
+  assert.equal(history[0].accuracy, 30);
+});
+
+test('undated and unscored games cannot contaminate current-scoring windows', () => {
+  const history = [
+    { accuracy: 0, playedAt: 'invalid' },
+    ...Array.from({ length: 99 }, () => ({ accuracy: 85, playedAt: SEARCH_GRADING_STARTED_AT })),
+    { accuracy: null, playedAt: SEARCH_GRADING_STARTED_AT },
+    { accuracy: 85, playedAt: SEARCH_GRADING_STARTED_AT }
+  ];
+  assert.deepEqual(buildCurrentScoringAccuracy(history), [{ game: 102, accuracy: 85 }]);
+});
 
 test('100-game accuracy waits for full windows and drops the oldest game', () => {
   assert.deepEqual(buildRollingAccuracy([]), []);

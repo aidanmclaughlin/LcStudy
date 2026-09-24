@@ -1,3 +1,13 @@
+// Full v2 corpus deployment (a3ce615): policy-ratio and search-based grades are not comparable.
+export const SEARCH_GRADING_STARTED_AT = '2026-07-05T07:39:27Z';
+
+export function buildCurrentScoringAccuracy(history, windowSize = 100) {
+  const startedAt = Date.parse(SEARCH_GRADING_STARTED_AT);
+  return buildRollingAccuracy(history.map(game => (
+    new Date(game.playedAt).getTime() >= startedAt ? game.accuracy : null
+  )), windowSize);
+}
+
 /** Full windows of scored games, preserving game numbers when scores are missing. */
 export function buildRollingAccuracy(accuracies, windowSize = 100) {
   if (!Number.isInteger(windowSize) || windowSize < 1) throw new RangeError('Invalid accuracy window');

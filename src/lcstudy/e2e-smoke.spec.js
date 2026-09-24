@@ -431,7 +431,7 @@ test.describe('progress dashboard', () => {
           metadata: { openingSource: 'lichess-rated-rapid-dump' },
         },
         difficulty: 70 + Math.sin(index * 0.45) * 8,
-        playedAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+        playedAt: new Date(Date.UTC(2026, 6, 6, 0, index)).toISOString(),
         accuracy,
         totalMoves,
         accuracyHistory: Array.from({ length: totalMoves }, (_, moveIndex) => (

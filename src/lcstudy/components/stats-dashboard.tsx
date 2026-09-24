@@ -157,7 +157,7 @@ function Metric({
 }
 
 function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
-  if (points.length === 0) return <EmptyState label="Available after 100 scored games" />;
+  if (points.length === 0) return <EmptyState label="Available after 100 games with current scoring" />;
 
   const values = points.map(point => point.accuracy);
   const low = Math.min(...values), high = Math.max(...values);
@@ -194,7 +194,7 @@ function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
       titleId="accuracy-chart-title"
       descriptionId="accuracy-chart-description"
       title="100-game rolling accuracy over games"
-      description="Average accuracy of the most recent 100 scored games at each point, with each game weighted equally."
+      description="Average accuracy of the most recent 100 games scored under the current search-based grading system, with each game weighted equally. Earlier policy-based scores are excluded."
       yTicks={yAxisTicks}
       xTicks={xAxisTicks}
     >

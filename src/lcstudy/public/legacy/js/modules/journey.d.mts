@@ -1,5 +1,7 @@
 import type { ChartConfiguration } from 'chart.js';
 export interface RollingAccuracyPoint { game: number; accuracy: number }
+export const SEARCH_GRADING_STARTED_AT: string;
+export function buildCurrentScoringAccuracy(history: { accuracy: number | null; playedAt: string | Date }[], windowSize?: number): RollingAccuracyPoint[];
 export function buildRollingAccuracy(accuracies: (number | null)[], windowSize?: number): RollingAccuracyPoint[];
 export interface JourneyGame { accuracy: number | null; totalMoves: number; thinkTimeMs: number | null }
 export function recentPerformance(history: JourneyGame[], windowSize?: number): { accuracy: number | null; secondsPerMove: number | null };
