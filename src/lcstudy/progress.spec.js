@@ -2,6 +2,7 @@ const path = require('node:path');
 const { test, expect } = require('@playwright/test');
 const { encode } = require('next-auth/jwt');
 const { Chess } = require('chess.js');
+const { computeProgressDashboard } = require('./lib/progress-stats');
 process.loadEnvFile(path.join(__dirname, '.env.local'));
 
 const history = Array.from({ length: 160 }, (_, i) => ({
@@ -11,24 +12,27 @@ const history = Array.from({ length: 160 }, (_, i) => ({
   duration_ms: 90000, accuracy_history: Array(20).fill(80), maia_level: 1500
 }));
 
+function statsRow(accuracy, index, overrides = {}) {
+  return {
+    userId: 'fixture', gameId: `lichess_maia2_fixture_${index}`, attempts: 20, solved: true,
+    accuracy, averageAccuracy: accuracy, playedAt: new Date(Date.UTC(2026, 6, 6, 0, index)),
+    totalMoves: 20, averageRetries: 0, accuracyHistory: Array(20).fill(accuracy),
+    maiaLevel: 1500, durationMs: 90000, thinkTimeMs: 60000, moveTimesMs: Array(20).fill(3000),
+    suggestedThinkMs: null, difficulty: null, leelaColor: 'w',
+    openingLine: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3', 'Nf6', 'O-O', 'd6'],
+    openingSource: 'lichess', openingRatingGroup: '1500', ...overrides
+  };
+}
+
 async function setup(page, context) {
   await page.addInitScript(() => {
     window.__currentGamePoint = null;
     window.addEventListener('lcstudy:current-game', event => { window.__currentGamePoint = event.detail; });
   });
-  const { buildAccuracyJourney, buildCurrentScoringAccuracy } = await import('./public/legacy/js/modules/journey.mjs');
-  const journey = buildAccuracyJourney(history.map(game => ({ accuracy: game.average_accuracy, totalMoves: game.total_moves, thinkTimeMs: game.think_time_ms })), 25, Infinity);
-  const row = { label: 'Opening', accuracy: 85, exactRate: 45, moves: 100, games: 10 };
-  const stats = {
-    journey,
-    overview: { totalGames: 160, totalMoves: 3200, recent25: 84, recent10: 85, best25: 89, allTimeAccuracy: 78, exactRate: 45, activeHours: 3.8 },
-    elo: { current: { elo: 1320, low80: 1200, high80: 1420, games: 100, bound: null }, calibration: { minimumElo: 1050, maximumElo: 2100 }, series: Array.from({ length: 100 }, (_, i) => ({ game: i + 1, elo: 1200 + i, low80: 1100 + i, high80: 1300 + i })) },
-    progress: { accuracy100: buildCurrentScoringAccuracy(history.map(game => ({ accuracy: game.average_accuracy, playedAt: game.date }))), adjustedRecent25: 83, trendPer100: 6.2, difficultyCoverage: 0.9, forecast: { remainingHours: 23, remainingGames: 1800, remainingGamesLow: 800, remainingGamesHigh: 6500 } },
-    consistency: { recentDeviation: 4.2 },
-    timing: { timedGames: 160, medianMoveMs: 2300, moveP25Ms: 1200, moveP75Ms: 4600, fatigueDelta: -2, tempoEffect: 1.2, pace: [{ label: 'Fast', accuracy: 81, games: 30 }], learningRates: [{ minutes: 2, games: 20, hours: 1, rateMean: 1, rateLow: -1, rateHigh: 2 }] },
-    skill: { phases: [row], colors: [{ ...row, label: 'White' }], opponents: [{ ...row, label: '1500' }], difficulties: [row], openings: [{ ...row, label: 'e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 O-O d6' }] },
-    coverage: { lichessGames: 150, lichessShare: 0.9, whiteGames: 80, blackGames: 80, colorCoverage: 1, difficultyGames: 160, openingLines: 32, openingCoverage: 1 }
-  };
+  const stats = computeProgressDashboard(history.map((game, index) => statsRow(game.average_accuracy, index, {
+    playedAt: new Date(game.date), thinkTimeMs: game.think_time_ms,
+    moveTimesMs: Array(20).fill(game.think_time_ms / 20)
+  })));
   const token = await encode({ secret: process.env.NEXTAUTH_SECRET, token: { sub: '00000000-0000-4000-8000-000000000099', userId: '00000000-0000-4000-8000-000000000099', name: 'Progress test' } });
   await context.addCookies([{ name: 'next-auth.session-token', value: token, url: 'http://127.0.0.1:3110', httpOnly: true, sameSite: 'Lax' }]);
   const game = new Chess(); const starting_fen = game.fen();
@@ -204,6 +208,10 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toHaveCount(0);
   await expect(page.locator('.stats-accuracy-chart-wrap .stats-chart-x-label')).toHaveText(['Game 120', 'Game 140', 'Game 160']);
   const latestAccuracy = history.slice(-100).reduce((sum, game) => sum + game.average_accuracy, 0) / 100;
+  const latestPace = history.slice(-100).reduce((sum, game) => sum + game.think_time_ms / game.total_moves / 1000, 0) / 100;
+  await expect(page.locator('.stats-metric').filter({ hasText: '100-game accuracy' }).locator('strong')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
+  await expect(page.locator('.stats-metric').filter({ hasText: '100-game pace' }).locator('strong')).toHaveText(`${latestPace.toFixed(2)}s`);
+  await expect(page.locator('.journey-caption')).toContainText('Games 61-160');
   await expect(page.locator('.stats-accuracy-band .stats-section-heading > span')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
   const backStyles = await page.getByRole('button', { name: 'Resume game' }).evaluate(button => {
     const style = getComputedStyle(button), box = button.getBoundingClientRect();
@@ -219,6 +227,9 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
     await page.getByRole('tab', { name: 'Overview' }).click();
     await page.locator('summary').filter({ hasText: 'Learning & target' }).click();
     await expect(page.getByRole('heading', { name: 'Current form', exact: true })).toBeVisible();
+    await expect(page.getByText('Best 100-game accuracy', { exact: true })).toBeVisible();
+    await expect(page.getByText('Difficulty-adjusted / 100', { exact: true })).toBeVisible();
+    await expect(page.getByText('10-game target / estimate', { exact: true })).toBeVisible();
     await page.locator('summary').filter({ hasText: 'Learning & target' }).click();
     const chart = await page.locator('.journey-canvas').boundingBox();
     expect(chart.width).toBeGreaterThan(width <= 600 ? width - 36 : 600);
@@ -229,6 +240,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
     await page.getByRole('button', { name: 'Recent 100', exact: true }).click();
     for (const tab of ['Overview', 'Breakdowns', 'Timing']) {
       await page.getByRole('tab', { name: tab, exact: true }).click();
+      if (tab !== 'Overview') await expect(page.locator('.stats-band > .stats-section-heading > span')).toContainText('Last 100 scored games');
       if (tab === 'Overview') await expect.poll(async () => page.locator('.journey-canvas canvas').evaluate(canvas =>
         canvas.width > 0 && canvas.height > 0 && canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(value => value > 0)
       )).toBe(true);
@@ -258,7 +270,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
 
 test('rolling accuracy renders empty, single-point, and constant histories', async ({ page, context }) => {
   const { stats } = await setup(page, context);
-  const { buildRollingAccuracy } = await import('./public/legacy/js/modules/journey.mjs');
+  const { buildRollingAccuracy } = require('./public/legacy/js/modules/journey.mjs');
   for (const scores of [Array(99).fill(80), Array(100).fill(80), Array(120).fill(0), Array(120).fill(100)]) {
     stats.progress.accuracy100 = buildRollingAccuracy(scores);
     await page.locator('#avg-accuracy').click();
@@ -351,4 +363,51 @@ test('Maia Elo preserves empty and partial eligible-game histories', () => {
     { accuracyHistory: [...Array(5).fill(100), 100, 100] }
   ]);
   expect(result.current).toMatchObject({ game: 2, games: 2, moves: 3, accuracy: 90 });
+});
+
+test('dashboard performance uses 100 scored games while coverage stays lifetime', () => {
+  const rows = Array.from({ length: 125 }, (_, index) => statsRow(index < 25 ? 10 : index < 100 ? 60 : 100, index, {
+    leelaColor: index < 25 ? 'b' : 'w',
+    thinkTimeMs: index < 25 ? 200000 : index < 100 ? 60000 : 20000,
+    moveTimesMs: Array(20).fill(index < 25 ? 10000 : index < 100 ? 3000 : 1000)
+  }));
+  const stats = computeProgressDashboard(rows);
+  expect(stats.overview).toMatchObject({ totalGames: 125, totalMoves: 2500, recentGames: 100, recent100: 70, recentSecondsPerMove: 2.5, best100: 70 });
+  expect(stats.progress.adjustedRecent100).toBe(70);
+  expect(stats.progress.series.at(-1)).toMatchObject({ rolling100: 70, adjusted100: 70 });
+  expect(stats.consistency.recentDeviation).toBeCloseTo(Math.sqrt(30000 / 99), 8);
+  expect(stats.journey.windowSize).toBe(100);
+  expect(stats.journey.points.at(-1)).toMatchObject({ game: 125, startGame: 26, games: 100, x: 2.5, y: 70, provisional: false });
+  expect(stats.timing).toMatchObject({ timedGames: 100, medianMoveMs: 3000, fatigueGames: 100 });
+  expect(stats.timing.pace.reduce((sum, group) => sum + group.games, 0)).toBe(100);
+  expect(stats.skill.colors).toEqual([{ label: 'White', accuracy: 70, exactRate: 25, games: 100, moves: 2000 }]);
+  expect(stats.coverage).toMatchObject({ whiteGames: 100, blackGames: 25, timedGames: 125, lichessGames: 125 });
+  expect(stats.overview.activeHours).toBeCloseTo(10000000 / 3600000, 8);
+
+  const changedOldGames = rows.map((row, index) => index < 25 ? statsRow(100, index) : row);
+  const changed = computeProgressDashboard(changedOldGames);
+  expect(changed.overview.recent100).toBe(stats.overview.recent100);
+  expect(changed.progress.trendPer100).toBe(stats.progress.trendPer100);
+  expect(changed.consistency).toEqual(stats.consistency);
+  expect(changed.skill).toEqual(stats.skill);
+  expect(changed.timing).toEqual(stats.timing);
+
+  const unscored = statsRow(null, 125, { accuracyHistory: [] });
+  const skipped = computeProgressDashboard([...rows, unscored]);
+  expect(skipped.overview).toMatchObject({ recent100: 70, recentSecondsPerMove: 2.5, recentGames: 100, totalGames: 126 });
+});
+
+test('dashboard handles short histories and never uses stale pace', () => {
+  const empty = computeProgressDashboard([]);
+  expect(empty.overview).toMatchObject({ recentGames: 0, recent100: null, recentSecondsPerMove: null, best100: null });
+  const rows = Array.from({ length: 101 }, (_, index) => statsRow(80, index));
+  const partial = computeProgressDashboard(rows.slice(0, 99));
+  expect(partial.overview).toMatchObject({ recentGames: 99, recent100: null, recentSecondsPerMove: null, best100: null });
+  expect(partial.journey.points.at(-1)).toMatchObject({ games: 99, provisional: true });
+  expect(partial.journey.frontier).toEqual([]);
+  const missingTiming = computeProgressDashboard([...rows.slice(0, 100), { ...rows[100], thinkTimeMs: null }]);
+  expect(missingTiming.overview).toMatchObject({ recent100: 80, recentSecondsPerMove: null });
+  expect(missingTiming.journey.points.at(-1).game).toBe(100);
+  const full = computeProgressDashboard([statsRow(100, 0), ...rows.slice(0, 99)]);
+  expect(full.overview.best100).toBeCloseTo(80.2);
 });

@@ -49,11 +49,11 @@ test('rolling accuracy skips invalid scores without losing historical game numbe
   assert.throws(() => buildRollingAccuracy([80], 0), RangeError);
 });
 
-test('both axes use the same 25 games with equal game weights', () => {
-  const history = Array.from({ length: 25 }, (_, index) => game(60 + index, index + 1, index + 1));
+test('both axes use the same 100 games with equal game weights', () => {
+  const history = Array.from({ length: 100 }, (_, index) => game(index, index + 1, index + 1));
   const { points } = buildAccuracyJourney(history);
   assert.equal(points.length, 1);
-  assert.deepEqual(points[0], { x: 13, y: 72, game: 25, startGame: 1, games: 25, provisional: false });
+  assert.deepEqual(points[0], { x: 50.5, y: 49.5, game: 100, startGame: 1, games: 100, provisional: false });
 });
 
 test('home baselines match the 100-game chart and equally weight game pace', () => {
@@ -70,23 +70,23 @@ test('home baselines match the 100-game chart and equally weight game pace', () 
 });
 
 test('rolling context is calculated before truncating to the last 100 windows', () => {
-  const { points } = buildAccuracyJourney(Array.from({ length: 150 }, (_, i) => game(i / 2, 1 + i)));
+  const { points } = buildAccuracyJourney(Array.from({ length: 200 }, (_, i) => game(i / 2, 1 + i)));
   assert.equal(points.length, 100);
-  assert.equal(points[0].game, 51);
-  assert.equal(points[0].startGame, 27);
-  assert.equal(points[0].y, 19);
-  assert.equal(points.at(-1).game, 150);
+  assert.equal(points[0].game, 101);
+  assert.equal(points[0].startGame, 2);
+  assert.equal(points[0].y, 25.25);
+  assert.equal(points.at(-1).game, 200);
 });
 
 test('missing timing breaks a window instead of treating it as fast or substituting duration', () => {
-  const history = [...Array(25).fill(game()), { ...game(), thinkTimeMs: null, durationMs: 1000 }, ...Array(25).fill(game(90, 2))];
+  const history = [...Array(100).fill(game()), { ...game(), thinkTimeMs: null, durationMs: 1000 }, ...Array(100).fill(game(90, 2))];
   const result = buildAccuracyJourney(history);
-  assert.deepEqual(result.points.map(point => point.game), [25, 51]);
-  assert.equal(result.timedGames, 50);
-  assert.equal(result.points[1].startGame, 27);
+  assert.deepEqual(result.points.map(point => point.game), [100, 201]);
+  assert.equal(result.timedGames, 200);
+  assert.equal(result.points[1].startGame, 102);
 });
 
-test('warmup is provisional and cannot define the 25-game frontier', () => {
+test('warmup is provisional and cannot define the 100-game frontier', () => {
   const result = buildAccuracyJourney([game(100, 0.1)]);
   assert.equal(result.points[0].provisional, true);
   assert.deepEqual(result.frontier, []);
@@ -102,7 +102,7 @@ test('Pareto frontier rejects slower or less accurate points and keeps newest ti
 
 test('constant and extreme accuracy values still have usable axes', () => {
   for (const accuracy of [0, 80, 100]) {
-    const config = createJourneyChartConfig(buildAccuracyJourney(Array(25).fill(game(accuracy, 2))));
+    const config = createJourneyChartConfig(buildAccuracyJourney(Array(100).fill(game(accuracy, 2))));
     assert.ok(config.options.scales.y.max > config.options.scales.y.min);
     assert.ok(config.options.scales.x.max > config.options.scales.x.min);
     assert.ok(config.options.scales.y.min >= 0);
@@ -123,7 +123,7 @@ test('current game pairs submitted accuracy with submitted thinking time', () =>
 });
 
 test('live marker expands axes without changing the recorded frontier', () => {
-  const journey = buildAccuracyJourney(Array(25).fill(game(80, 3)));
+  const journey = buildAccuracyJourney(Array(100).fill(game(80, 3)));
   const current = buildCurrentGamePoint([100], [1000]);
   const config = createJourneyChartConfig(journey, false, current);
   assert.deepEqual(config.data.datasets.find(dataset => dataset.label === 'Current game').data, [current]);

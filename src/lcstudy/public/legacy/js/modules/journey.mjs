@@ -40,7 +40,7 @@ export function recentPerformance(history, windowSize = 100) {
 }
 
 /** Matched, equally game-weighted speed/accuracy windows. No elapsed-time substitution. */
-export function buildAccuracyJourney(history, windowSize = 25, limit = 100) {
+export function buildAccuracyJourney(history, windowSize = 100, limit = 100) {
   const windows = [];
   let run = [];
   let timedGames = 0;

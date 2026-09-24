@@ -41,7 +41,7 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
       {(!hasPoints || error) && <div className="stats-empty" role="status">{error ? "Chart unavailable" : "No timed game history yet"}</div>}
     </div>
     <div className="journey-caption">
-      <span>{latest ? `Games ${latest.startGame}-${latest.game}${latest.provisional ? ` / ${latest.games} of 25 / provisional` : ""}` : "25-game windows"}</span>
+      <span>{latest ? `Games ${latest.startGame}-${latest.game}${latest.provisional ? ` / ${latest.games} of ${journey.windowSize} / provisional` : ""}` : `${journey.windowSize}-game windows`}</span>
       <span>{latest ? `${latest.y.toFixed(1)}% / ${latest.x.toFixed(2)}s per move` : "--"}</span>
     </div>
     {currentGame && <div className="journey-caption journey-current">

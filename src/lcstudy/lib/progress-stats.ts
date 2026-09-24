@@ -3,9 +3,9 @@
 import { fitCoach } from "@/lib/coach";
 import type { UserGameStatsRow } from "@/lib/db";
 import { computeMaiaElo, type MaiaEloStats } from "@/lib/maia-elo";
-import { buildAccuracyJourney, buildCurrentScoringAccuracy, type AccuracyJourney, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
+import { buildAccuracyJourney, buildCurrentScoringAccuracy, recentPerformance, type AccuracyJourney, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
 
-const RECENT_WINDOW = 25;
+const RECENT_WINDOW = 100;
 const TARGET_WINDOW = 10;
 export const TARGET_ACCURACY = 97;
 const FORECAST_CEILING = 100;
@@ -20,8 +20,8 @@ const INTERVAL_Z_80 = 1.282;
 export interface ProgressSeriesPoint {
   game: number;
   rolling10: number;
-  rolling25: number;
-  adjusted25: number;
+  rolling100: number;
+  adjusted100: number;
   low80: number;
   high80: number;
 }
@@ -70,18 +70,19 @@ export interface ProgressDashboardStats {
     totalGames: number;
     totalMoves: number;
     allTimeAccuracy: number;
-    recent10: number;
-    recent25: number;
-    recent25Low: number;
-    recent25High: number;
-    best25: number;
+    recentGames: number;
+    recent100: number | null;
+    recentSecondsPerMove: number | null;
+    recent100Low: number;
+    recent100High: number;
+    best100: number | null;
     exactRate: number;
     activeHours: number;
   };
   progress: {
     series: ProgressSeriesPoint[];
     accuracy100: RollingAccuracyPoint[];
-    adjustedRecent25: number;
+    adjustedRecent100: number;
     trendPer100: number;
     trendLow: number;
     trendHigh: number;
@@ -157,7 +158,8 @@ export function computeProgressDashboard(
       historyIndex,
       accuracy: finiteNumber(row.averageAccuracy)
     }))
-    .filter((entry): entry is Omit<ValidGame, "adjustedAccuracy"> => entry.accuracy !== null);
+    .filter((entry): entry is Omit<ValidGame, "adjustedAccuracy"> =>
+      entry.accuracy !== null && entry.accuracy >= 0 && entry.accuracy <= 100);
 
   const knownDifficulties = validRows
     .map((entry) => finiteNumber(entry.row.difficulty))
@@ -177,16 +179,21 @@ export function computeProgressDashboard(
   const accuracies = validGames.map((game) => game.accuracy);
   const adjusted = validGames.map((game) => game.adjustedAccuracy);
   const series = buildProgressSeries(accuracies, adjusted);
+  const recentGames = validGames.slice(-RECENT_WINDOW);
+  const recentHistory = recentGames.map(game => game.row);
   const recent = accuracies.slice(-RECENT_WINDOW);
   const recentInterval = meanInterval(recent);
+  const baseline = recentPerformance(validGames.map(game => ({
+    accuracy: game.accuracy, totalMoves: game.row.totalMoves, thinkTimeMs: game.row.thinkTimeMs
+  })), RECENT_WINDOW);
   const moveScores = history.flatMap((game) => validMoveScores(game.accuracyHistory));
   const totalMoves = history.reduce((sum, game) => sum + Math.max(0, game.totalMoves), 0);
   const activePracticeMs = history.reduce((sum, game) => {
     const value = positiveNumber(game.thinkTimeMs) ?? positiveNumber(game.durationMs);
     return sum + (value ?? 0);
   }, 0);
-  const trend = linearTrend(adjusted.slice(-Math.min(120, adjusted.length)));
-  const observations = buildMoveObservations(validGames);
+  const trend = linearTrend(adjusted.slice(-RECENT_WINDOW));
+  const observations = buildMoveObservations(recentGames);
   const globalMoveMean = mean(observations.map((move) => move.accuracy));
   const globalExactRate = rate(observations.map((move) => isExact(move.accuracy)));
   const groupPriorMoves = 24;
@@ -222,7 +229,7 @@ export function computeProgressDashboard(
     globalExactRate,
     groupPriorMoves
   );
-  const openingOrder = mostCommonOpenings(validGames, 7);
+  const openingOrder = mostCommonOpenings(recentGames, 7);
   const openingSet = new Set(openingOrder);
   const openingObservations = observations
     .filter((move) => move.opening !== null)
@@ -238,9 +245,9 @@ export function computeProgressDashboard(
     globalExactRate,
     groupPriorMoves
   );
-  const recovery = recoverySummary(history);
-  const fatigue = fatigueSummary(history);
-  const timing = timingSummary(validGames);
+  const recovery = recoverySummary(recentHistory);
+  const fatigue = fatigueSummary(recentHistory);
+  const timing = timingSummary(recentGames);
   const colorGames = validGames.filter((game) => game.row.leelaColor !== null);
   const openingGames = validGames.filter((game) => game.row.openingLine.length > 0);
   const lichessGames = validGames.filter((game) => isLichessGame(game.row)).length;
@@ -256,11 +263,12 @@ export function computeProgressDashboard(
       totalGames: history.length,
       totalMoves,
       allTimeAccuracy: weightedGameAccuracy(history),
-      recent10: mean(accuracies.slice(-TARGET_WINDOW)),
-      recent25: mean(recent),
-      recent25Low: recentInterval.low,
-      recent25High: recentInterval.high,
-      best25: bestRollingAverage(accuracies, RECENT_WINDOW),
+      recentGames: recentGames.length,
+      recent100: baseline.accuracy,
+      recentSecondsPerMove: baseline.secondsPerMove,
+      recent100Low: recentInterval.low,
+      recent100High: recentInterval.high,
+      best100: bestRollingAverage(accuracies, RECENT_WINDOW),
       exactRate: rate(moveScores.map(isExact)) * 100,
       activeHours: activePracticeMs / 3_600_000
     },
@@ -269,7 +277,7 @@ export function computeProgressDashboard(
       accuracy100: buildCurrentScoringAccuracy(history.map(game => ({
         accuracy: finiteNumber(game.averageAccuracy), playedAt: game.playedAt
       }))),
-      adjustedRecent25: mean(adjusted.slice(-RECENT_WINDOW)),
+      adjustedRecent100: mean(adjusted.slice(-RECENT_WINDOW)),
       trendPer100: trend.slope * 100,
       trendLow: trend.low * 100,
       trendHigh: trend.high * 100,
@@ -301,7 +309,8 @@ export function computeProgressDashboard(
       blackGames: colorGames.filter((game) => game.row.leelaColor === "b").length,
       colorCoverage: validGames.length > 0 ? colorGames.length / validGames.length : 0,
       difficultyGames: knownDifficulties.length,
-      timedGames: timing.timedGames,
+      timedGames: validGames.filter(game => game.row.totalMoves > 0 &&
+        (positiveNumber(game.row.thinkTimeMs) ?? positiveNumber(game.row.durationMs)) !== null).length,
       openingLines: new Set(openingGames.map((game) => openingKey(game.row))).size,
       openingCoverage: validGames.length > 0 ? openingGames.length / validGames.length : 0
     }
@@ -314,15 +323,15 @@ function buildProgressSeries(
 ): ProgressSeriesPoint[] {
   return accuracies.map((_, index) => {
     const recent10 = accuracies.slice(Math.max(0, index - TARGET_WINDOW + 1), index + 1);
-    const recent25 = accuracies.slice(Math.max(0, index - RECENT_WINDOW + 1), index + 1);
-    const adjusted25 = adjusted.slice(Math.max(0, index - RECENT_WINDOW + 1), index + 1);
-    const interval = meanInterval(recent25);
+    const recent100 = accuracies.slice(Math.max(0, index - RECENT_WINDOW + 1), index + 1);
+    const adjusted100 = adjusted.slice(Math.max(0, index - RECENT_WINDOW + 1), index + 1);
+    const interval = meanInterval(recent100);
 
     return {
       game: index + 1,
       rolling10: mean(recent10),
-      rolling25: mean(recent25),
-      adjusted25: mean(adjusted25),
+      rolling100: mean(recent100),
+      adjusted100: mean(adjusted100),
       low80: interval.low,
       high80: interval.high
     };
@@ -728,15 +737,14 @@ function meanInterval(values: number[]): { low: number; high: number } {
   };
 }
 
-function bestRollingAverage(values: number[], windowSize: number): number {
-  if (values.length === 0) return 0;
+function bestRollingAverage(values: number[], windowSize: number): number | null {
+  if (values.length < windowSize) return null;
   let best = -Infinity;
-  for (let index = 0; index < values.length; index++) {
-    if (values.length >= windowSize && index + 1 < windowSize) continue;
-    const window = values.slice(Math.max(0, index - windowSize + 1), index + 1);
+  for (let index = windowSize - 1; index < values.length; index++) {
+    const window = values.slice(index - windowSize + 1, index + 1);
     best = Math.max(best, mean(window));
   }
-  return Number.isFinite(best) ? best : 0;
+  return best;
 }
 
 function weightedGameAccuracy(history: UserGameStatsRow[]): number {

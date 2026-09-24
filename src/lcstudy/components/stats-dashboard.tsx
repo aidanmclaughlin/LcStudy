@@ -30,7 +30,7 @@ interface StatsDashboardProps {
 export function StatsDashboard({ stats, embedded = false, currentGame = null }: StatsDashboardProps) {
   const { elo, overview, progress, consistency, timing, skill, coverage, journey } = stats;
   const [tab, setTab] = useState("overview");
-  const latest = journey.points.at(-1);
+  const recentSample = `Last ${overview.recentGames} scored games`;
   const tabs = [["overview", "Overview"], ["breakdowns", "Breakdowns"], ["timing", "Timing"]];
 
   return (
@@ -42,8 +42,9 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
       </header>
 
       <section className="stats-metric-grid" aria-label="Progress summary">
-        <Metric label="25-game accuracy" value={overview.totalGames ? formatPercent(overview.recent25) : "--"} />
-        <Metric label="Thinking / move" value={latest ? `${latest.x.toFixed(2)}s` : "--"} />
+        <Metric label="100-game accuracy" value={overview.recent100 === null ? "--" : formatPercent(overview.recent100)} />
+        <Metric label="100-game pace" value={overview.recentSecondsPerMove === null ? "--" : `${overview.recentSecondsPerMove.toFixed(2)}s`}
+          title="Mean thinking seconds per move over the last 100 scored games, with each game weighted equally" />
         <Metric label="Maia Elo" value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
           title={elo.current ? `Maia-2 rapid equivalent over the last ${elo.current.games} eligible games; 80% range ${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}. Not an official rating.` : "No eligible positions"} />
       </section>
@@ -64,7 +65,7 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
       <div role="tabpanel" id={`stats-panel-${tab}`} aria-labelledby={`stats-tab-${tab}`}>
         {tab === "overview" && <>
           <section className="stats-band stats-journey-band">
-            <SectionHeading title="Accuracy & pace" />
+            <SectionHeading title="Accuracy & pace" meta={`${journey.windowSize}-game averages`} />
             <JourneyChart journey={journey} currentGame={currentGame} />
           </section>
           <section className="stats-band stats-accuracy-band">
@@ -74,11 +75,11 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
           <Details title="Learning & target">
             <div className="stats-split">
               <section className="stats-section">
-                <SectionHeading title="Current form" meta="recent games" />
+                <SectionHeading title="Current form" meta={recentSample} />
                 <dl className="stats-definition-list">
-                  <Definition label="10-game accuracy" value={formatPercent(overview.recent10)} />
-                  <Definition label="Best 25-game accuracy" value={formatPercent(overview.best25)} />
-                  <Definition label="Difficulty-adjusted / 25" value={formatPercent(progress.adjustedRecent25)} />
+                  <Definition label="100-game accuracy" value={overview.recent100 === null ? "--" : formatPercent(overview.recent100)} />
+                  <Definition label="Best 100-game accuracy" value={overview.best100 === null ? "--" : formatPercent(overview.best100)} />
+                  <Definition label="Difficulty-adjusted / 100" value={overview.recentGames === 100 ? formatPercent(progress.adjustedRecent100) : "--"} />
                   <Definition label="Trend / 100 games" value={formatSignedPoints(progress.trendPer100)} />
                   <Definition label="Game-to-game spread" value={`${consistency.recentDeviation.toFixed(1)} pts`} />
                 </dl>
@@ -99,7 +100,7 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
 
         {tab === "breakdowns" && <>
           <section className="stats-band">
-            <SectionHeading title="Performance by position" meta="sample-adjusted averages" />
+            <SectionHeading title="Performance by position" meta={recentSample} />
             <div className="stats-breakdown-grid">
               <Breakdown title="Game phase" rows={skill.phases} />
               <Breakdown title="Color" rows={skill.colors} />
@@ -111,7 +112,7 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
             <Breakdown title="Accuracy by line" rows={skill.openings} />
           </Details>
           <Details title="Data coverage">
-            <SectionHeading title="Sample" meta={`${formatInteger(overview.totalGames)} games / ${formatInteger(overview.totalMoves)} moves`} />
+            <SectionHeading title="Sample" meta={`Lifetime / ${formatInteger(overview.totalGames)} games / ${formatInteger(overview.totalMoves)} moves`} />
             <div className="coverage-grid">
               <CoverageMetric label="Lichess openings" value={`${formatInteger(coverage.lichessGames)} games`} percent={coverage.lichessShare} />
               <CoverageMetric label="Color" value={`${coverage.whiteGames} W / ${coverage.blackGames} B`} percent={coverage.colorCoverage} />
@@ -122,7 +123,7 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
         </>}
 
         {tab === "timing" && <section className="stats-band">
-          <SectionHeading title="Thinking time" meta={`${formatHours(overview.activeHours)} practice / ${formatInteger(timing.timedGames)} timed games`} />
+          <SectionHeading title="Thinking time" meta={`${recentSample} / ${formatInteger(timing.timedGames)} timed`} />
           <div className="stats-inline-metrics">
             <InlineMetric label="Median move" value={formatDuration(timing.medianMoveMs)} />
             <InlineMetric label="Middle 50%" value={`${formatDuration(timing.moveP25Ms)}-${formatDuration(timing.moveP75Ms)}`} />
