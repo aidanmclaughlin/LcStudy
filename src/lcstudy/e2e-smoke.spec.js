@@ -368,7 +368,6 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   const accuracyView = await page.evaluate(async () => {
     const state = await import('/legacy/js/modules/state.js');
     const charts = await import('/legacy/js/modules/charts.js');
-    const chart = state.getAccuracyChart();
     const originalHistory = state.getGameHistory();
     const originalMoves = state.getMoveAccuracies();
 
@@ -382,7 +381,6 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     const firstGame = {
       countText: document.getElementById('hours-left-count')?.textContent,
       title: document.getElementById('hours-left-count')?.title,
-      chartPoints: chart.data.datasets.find(dataset => dataset.label === 'Journey').data.length,
       hoursLeftMs: firstGameEstimate.hoursLeftMs,
     };
 
@@ -403,43 +401,19 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     state.setGameHistory(originalHistory);
     state.setMoveAccuracies(originalMoves);
     charts.updateCharts();
-    const dataset = chart.data.datasets.find(item => item.label === 'Journey');
-    const points = dataset.data;
-    const perGame = originalHistory.map(game => Number(game.average_accuracy));
-    const expectedLast = perGame.slice(-25).reduce((sum, value) => sum + value, 0) / 25;
-    const firstWindow = perGame.slice(perGame.length - 100 - 24, perGame.length - 100 + 1);
-    const expectedFirst = firstWindow.reduce((sum, value) => sum + value, 0) / 25;
-
     return {
-      label: dataset.label, pointCount: points.length,
-      firstAccuracy: points[0].y, expectedFirst,
-      lastAccuracy: points.at(-1).y, expectedLast,
-      lastGame: points.at(-1).game,
-      gameCountText: document.getElementById('accuracy-chart-count')?.textContent,
-      axisMinimum: chart.options.scales.y.min,
-      dataMinimum: Math.min(...points.map(point => point.y)),
-      pointRadius: dataset.pointRadius,
       normalHours: normalEstimate.hoursLeftMs / 3600000,
       slowerHours: slowerEstimate.hoursLeftMs / 3600000,
       outlierHours: outlierEstimate.hoursLeftMs / 3600000,
       firstGame,
     };
   });
-  expect(accuracyView.label).toBe('Journey');
-  expect(accuracyView.pointCount).toBe(100);
-  expect(accuracyView.firstAccuracy).toBeCloseTo(accuracyView.expectedFirst, 8);
-  expect(accuracyView.lastAccuracy).toBeCloseTo(accuracyView.expectedLast, 8);
-  expect(accuracyView.lastGame).toBe(125);
-  expect(accuracyView.gameCountText).toBe('125 games');
-  expect(accuracyView.axisMinimum).toBeGreaterThan(0);
-  expect(accuracyView.axisMinimum).toBeLessThanOrEqual(accuracyView.dataMinimum);
-  expect(accuracyView.pointRadius).toBe(0);
+  await expect(page.locator('#accuracy-chart')).toHaveCount(0);
   expect(accuracyView.slowerHours / accuracyView.normalHours).toBeCloseTo(2, 5);
   expect(accuracyView.outlierHours / accuracyView.normalHours).toBeLessThan(1.05);
   expect(accuracyView.firstGame.hoursLeftMs).toBeGreaterThan(0);
   expect(accuracyView.firstGame.countText).toMatch(/^1 played \/ [\d,.]+h left$/);
   expect(accuracyView.firstGame.title).toContain('Power-law estimate from 1 game');
-  expect(accuracyView.firstGame.chartPoints).toBe(1);
 
   const sessionResponsesBeforeReturn = successfulSessionResponses;
   const beforeStats = await page.evaluate(async () => {
@@ -447,7 +421,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     return { id: state.getSessionId(), scores: state.getMoveAccuracies(), fen: state.getChessEngine().fen() };
   });
   await page.getByRole('button', { name: 'Stats', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Progress', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
   await page.getByRole('button', { name: 'Resume game' }).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(page.locator('#board')).toBeVisible();
@@ -569,13 +543,13 @@ test.describe('progress dashboard', () => {
       ]);
 
       await page.goto('/stats', { waitUntil: 'networkidle' });
-      await expect(page.getByRole('heading', { name: 'Progress', level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Accuracy & pace', exact: true })).toBeVisible();
       await expect(page.locator('.journey-canvas canvas')).toBeVisible();
       const eloMetric = page.locator('.stats-metric').filter({ hasText: 'Maia Elo' });
       await expect(eloMetric.locator('strong')).toHaveText('1,300');
-      await expect(eloMetric.locator('.stats-metric-detail')).toHaveText('1,190 to 1,410 / 80% range');
+      await expect(eloMetric).toHaveAttribute('title', /80% range 1,190 to 1,410/);
       await expect(page.locator('.stats-progress-chart')).toHaveCount(1);
       await expect(page.locator('.stats-elo-chart-line')).toHaveCount(1);
       await expect(page.locator('.stats-elo-band .stats-chart-label').filter({ hasText: '<1,050' })).toHaveCount(1);
@@ -654,7 +628,7 @@ test.describe('progress dashboard', () => {
       });
       expect(mobileLayout.charts).toHaveLength(1);
       expect(mobileLayout.backHeight).toBeGreaterThanOrEqual(38);
-      expect(Math.abs(mobileLayout.firstMetricWidth - (mobileLayout.pageWidth - 32) / 2)).toBeLessThan(1);
+      expect(Math.abs(mobileLayout.firstMetricWidth - (mobileLayout.pageWidth - 32) / 3)).toBeLessThan(1);
       for (const chart of mobileLayout.charts) {
         expect(chart.wrapperX).toBeCloseTo(4, 0);
         expect(chart.wrapperWidth).toBeCloseTo(mobileLayout.viewportWidth - 8, 0);

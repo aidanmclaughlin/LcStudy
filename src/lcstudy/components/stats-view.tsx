@@ -80,17 +80,17 @@ export function StatsView() {
   }
 
   return <>
-    <button ref={trigger} type="button" className="panel-stats-link" onClick={show} aria-haspopup="dialog">
-      <ChartNoAxesCombined size={14} aria-hidden="true" />Stats
+    <button ref={trigger} type="button" className="btn stats-trigger" onClick={show} aria-haspopup="dialog">
+      <ChartNoAxesCombined size={20} aria-hidden="true" />Stats
     </button>
     <dialog ref={dialog} id="stats-dialog" className="stats-dialog" aria-label="Progress statistics" onCancel={event => { event.preventDefault(); close(); }}>
       {open && <>
         <div className="stats-dialog-bar">
-          <button type="button" className="stats-back" onClick={close} autoFocus><ArrowLeft size={18} aria-hidden="true" />Resume game</button>
-          <span className="stats-pause-status">Game paused</span>
+          <button type="button" className="btn stats-back" onClick={close} autoFocus><ArrowLeft size={18} aria-hidden="true" />Resume game</button>
+          <span className="sr-only">Game paused</span>
           {loading && <span className="stats-refreshing" role="status">Updating...</span>}
         </div>
-        {error ? <div className="stats-load-state" role="alert"><p>{error}</p><button type="button" className="stats-back" onClick={() => setRevision(value => value + 1)}><RefreshCw size={16} aria-hidden="true" />Retry</button></div>
+        {error ? <div className="stats-load-state" role="alert"><p>{error}</p><button type="button" className="btn stats-back" onClick={() => setRevision(value => value + 1)}><RefreshCw size={16} aria-hidden="true" />Retry</button></div>
           : stats ? <Dashboard stats={stats} embedded currentGame={currentGame} /> : <div className="stats-load-state" role="status">Loading progress...</div>}
       </>}
     </dialog>

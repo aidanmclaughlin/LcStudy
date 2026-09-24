@@ -92,9 +92,6 @@ let lastMoveHighlights = { user: null, opponent: null };
 // Chart State
 // =============================================================================
 
-/** Chart.js accuracy chart instance */
-let accuracyChart = null;
-
 /** Chart.js per-move accuracy chart instance */
 let moveAccuracyChart = null;
 
@@ -141,7 +138,6 @@ export function getCurrentMoveIndex() { return currentMoveIndex; }
 export function getIsReviewingMoves() { return isReviewingMoves; }
 export function getLiveFen() { return liveFen; }
 export function getLastMoveHighlights() { return lastMoveHighlights; }
-export function getAccuracyChart() { return accuracyChart; }
 export function getMoveAccuracyChart() { return moveAccuracyChart; }
 export function isSoundEnabled() { return soundEnabled; }
 export function getAudioContext() { return audioContext; }
@@ -170,7 +166,6 @@ export function setCurrentMoveIndex(index) { currentMoveIndex = index; }
 export function setIsReviewingMoves(reviewing) { isReviewingMoves = reviewing; }
 export function setLiveFen(fen) { liveFen = fen; }
 export function setLastMoveHighlights(highlights) { lastMoveHighlights = highlights; }
-export function setAccuracyChart(chart) { accuracyChart = chart; }
 export function setMoveAccuracyChart(chart) { moveAccuracyChart = chart; }
 export function setSoundEnabled(enabled) { soundEnabled = enabled; }
 export function setAudioContext(ctx) { audioContext = ctx; }

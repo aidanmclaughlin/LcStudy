@@ -11,6 +11,10 @@ const history = Array.from({ length: 160 }, (_, i) => ({
 }));
 
 async function setup(page, context) {
+  await page.addInitScript(() => {
+    window.__currentGamePoint = null;
+    window.addEventListener('lcstudy:current-game', event => { window.__currentGamePoint = event.detail; });
+  });
   const { buildAccuracyJourney } = await import('./public/legacy/js/modules/journey.mjs');
   const journey = buildAccuracyJourney(history.map(game => ({ accuracy: game.average_accuracy, totalMoves: game.total_moves, thinkTimeMs: game.think_time_ms })), 25, Infinity);
   const row = { label: 'Opening', accuracy: 85, exactRate: 45, moves: 100, games: 10 };
@@ -57,21 +61,19 @@ async function snapshot(page) {
 }
 
 async function currentGamePoint(page) {
-  return page.evaluate(() => window.Chart.getChart('accuracy-chart').data.datasets.find(dataset => dataset.label === 'Current game').data[0] || null);
+  return page.evaluate(() => window.__currentGamePoint);
 }
 
 test('Stats preserves a played game and excludes time spent away', async ({ page, context }, testInfo) => {
   const { calls, moves } = await setup(page, context);
-  await expect.poll(() => page.evaluate(() => Boolean(window.Chart?.getChart('accuracy-chart')))).toBe(true);
+  await expect(page.locator('#accuracy-chart')).toHaveCount(0);
+  await expect(page.locator('.journey-canvas')).toHaveCount(0);
   expect(await currentGamePoint(page)).toBeNull();
-  await expect(page.locator('.journey-time-key')).toContainText('Older');
-  await expect.poll(() => page.evaluate(() => {
-    const chart = window.Chart.getChart('accuracy-chart');
-    const dataset = chart.data.datasets.find(item => item.label === 'Journey');
-    if (dataset.data.length < 2) return false;
-    const color = index => dataset.segment.borderColor({ p0: { raw: dataset.data[index] }, p1: { raw: dataset.data[index + 1] } });
-    return color(0) !== color(dataset.data.length - 2) && chart.config.plugins.some(plugin => plugin.id === 'journey-direction');
-  })).toBe(true);
+  await expect(page.locator('#hours-left-count')).toContainText('160 played');
+  const trigger = await page.getByRole('button', { name: 'Stats', exact: true }).boundingBox();
+  expect(trigger.height).toBeGreaterThanOrEqual(48);
+  expect(trigger.width).toBeGreaterThan(250);
+  await page.screenshot({ path: testInfo.outputPath('game-page.png') });
   for (let i = 0; i < 10; i += 2) {
     await page.locator(`[data-square="${moves[i].uci.slice(0, 2)}"]`).click();
     await page.locator(`[data-square="${moves[i].uci.slice(2, 4)}"]`).click();
@@ -92,7 +94,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await page.evaluate(() => { window.originalBoard = document.getElementById('board'); });
   await page.getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Progress', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Stats', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog').locator('.journey-time-key')).toContainText('Newer');
   await expect(page.locator('.journey-current')).toContainText('Current game / 5 moves');
   await expect(page.locator('.journey-current')).toContainText(`${livePoint.y.toFixed(1)}% / ${livePoint.x.toFixed(2)}s per move`);
@@ -149,15 +151,39 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   const { calls } = await setup(page, context);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const before = await snapshot(page);
+  await expect(page.locator('#hours-left-count')).toContainText('160 played');
+  const progressWithoutChart = await page.evaluate(async () => {
+    const state = await import('/legacy/js/modules/state.js');
+    const charts = await import('/legacy/js/modules/charts.js');
+    const savedChart = state.getMoveAccuracyChart(), savedHistory = state.getGameHistory();
+    try {
+      state.setMoveAccuracyChart(null);
+      state.setGameHistory(savedHistory.slice(0, 1));
+      charts.updateCharts();
+      return document.getElementById('hours-left-count').textContent;
+    } finally {
+      state.setMoveAccuracyChart(savedChart);
+      state.setGameHistory(savedHistory);
+      charts.updateCharts();
+    }
+  });
+  expect(progressWithoutChart).toMatch(/^1 played \/ [\d,.]+h left$/);
   calls.fail = true;
   await page.getByRole('button', { name: 'Stats', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('could not be loaded');
   calls.fail = false;
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(page.locator('.journey-canvas canvas')).toBeVisible();
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundImage === getComputedStyle(document.getElementById('stats-dialog')).backgroundImage)).toBe(true);
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('.stats-page')).getPropertyValue('--text-primary') === getComputedStyle(document.documentElement).getPropertyValue('--text-primary'))).toBe(true);
+  await expect(page.locator('.stats-metric')).toHaveCount(3);
+  await expect(page.getByRole('heading', { name: 'Current form', exact: true })).not.toBeVisible();
   for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.getByRole('tab', { name: 'Overview' }).click();
+    await page.locator('summary').filter({ hasText: 'Learning & target' }).click();
+    await expect(page.getByRole('heading', { name: 'Current form', exact: true })).toBeVisible();
+    await page.locator('summary').filter({ hasText: 'Learning & target' }).click();
     const chart = await page.locator('.journey-canvas').boundingBox();
     expect(chart.width).toBeGreaterThan(width <= 600 ? width - 36 : 600);
     expect(chart.height).toBeGreaterThanOrEqual(300);
@@ -172,6 +198,14 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
       )).toBe(true);
       expect(await page.locator('#stats-dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       expect(await page.locator('.stats-page').evaluate(el => getComputedStyle(el).caretColor)).toBe('rgba(0, 0, 0, 0)');
+      if (tab === 'Breakdowns') {
+        await page.locator('summary').filter({ hasText: 'Opening lines' }).click();
+        await expect(page.getByRole('heading', { name: 'Accuracy by line' })).toBeVisible();
+        await page.locator('summary').filter({ hasText: 'Data coverage' }).click();
+        await expect(page.getByRole('heading', { name: 'Sample', exact: true })).toBeVisible();
+        expect(await page.locator('#stats-dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
+      await page.locator('#stats-dialog').evaluate(el => { el.scrollTop = 0; });
       if (width === 390 || width === 1440) await page.screenshot({ path: testInfo.outputPath(`${width}-${tab}.png`) });
     }
   }

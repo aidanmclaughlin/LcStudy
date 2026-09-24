@@ -29,6 +29,9 @@
   --bg-secondary: #0b1324;
   --bg-surface: rgba(17, 24, 39, 0.7);
   --bg-panel: rgba(15, 23, 42, 0.9);
+  --app-background:
+    radial-gradient(1200px 800px at 10% 10%, #0f1a34 0%, var(--bg-primary) 50%),
+    linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
 
   /* Text colors */
   --text-primary: #f8fafc;

@@ -3,12 +3,10 @@
  * @module charts
  */
 
-import { buildAccuracyJourney, buildCurrentGamePoint, createJourneyChartConfig } from './journey.mjs';
+import { buildCurrentGamePoint } from './journey.mjs';
 import { getMoveTimesMs } from './timeclock.js';
 import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS } from './constants.js';
 import {
-  getAccuracyChart,
-  setAccuracyChart,
   getMoveAccuracyChart,
   setMoveAccuracyChart,
   getMoveAccuracies,
@@ -18,9 +16,7 @@ import {
   getIsReviewingMoves
 } from './state.js';
 
-let lastAccuracyChartSignature = '';
-let lastJourneySignature = '';
-let cachedJourney = buildAccuracyJourney([]);
+let lastCurrentGameSignature = '';
 let lastMoveChartSignature = '';
 const chartHeadingCounts = {};
 const ACCURACY_TARGET = 97;
@@ -34,18 +30,20 @@ const PROJECTION_OBSERVATION_SIGMA = 10;
 let lastGoalSignature = '';
 let lastGoalProjection = null;
 
-function publishCurrentGame() {
+function publishCurrentGame(force = false) {
   const point = buildCurrentGamePoint(getMoveAccuracies(), getMoveTimesMs());
+  const signature = JSON.stringify(point);
+  if (!force && signature === lastCurrentGameSignature) return;
+  lastCurrentGameSignature = signature;
   window.dispatchEvent(new CustomEvent('lcstudy:current-game', { detail: point }));
-  return point;
 }
 
 window.addEventListener('lcstudy:stats-visibility', event => {
-  if (event.detail?.open) publishCurrentGame();
+  if (event.detail?.open) publishCurrentGame(true);
 });
 
 /**
- * Initialize both Chart.js charts.
+ * Initialize the in-game move chart.
  * Must be called after Chart.js is loaded.
  */
 export function initializeCharts() {
@@ -54,17 +52,7 @@ export function initializeCharts() {
     return;
   }
 
-  initAccuracyChart();
   initMoveAccuracyChart();
-}
-
-/**
- * Initialize the matched speed-accuracy journey.
- */
-function initAccuracyChart() {
-  const ctx = document.getElementById('accuracy-chart')?.getContext('2d');
-  if (!ctx) return;
-  setAccuracyChart(new window.Chart(ctx, createJourneyChartConfig(buildAccuracyJourney([]), true)));
 }
 
 /**
@@ -121,10 +109,12 @@ function initMoveAccuracyChart() {
 }
 
 /**
- * Update both charts with current data.
+ * Update in-game progress independently of chart initialization.
  */
 export function updateCharts() {
-  updateAccuracyChart();
+  const gameHistory = getGameHistory();
+  updateAccuracyGoalCount(gameHistory, calculateCurrentGoalEstimate(gameHistory, getMoveAccuracies()));
+  publishCurrentGame();
   updateMoveAccuracyChart();
 }
 
@@ -150,39 +140,6 @@ export function scheduleChartsUpdate() {
   } else {
     setTimeout(run, 0);
   }
-}
-
-/**
- * Keep the recorded-window frontier separate from the live game's marker.
- */
-function updateAccuracyChart() {
-  const chart = getAccuracyChart();
-  if (!chart) return;
-  const gameHistory = getGameHistory();
-  updateAccuracyGoalCount(gameHistory, calculateCurrentGoalEstimate(gameHistory, getMoveAccuracies()));
-  updateChartCount('accuracy-chart-count', gameHistory.length, 'game');
-  const currentGame = buildCurrentGamePoint(getMoveAccuracies(), getMoveTimesMs());
-  const historySignature = JSON.stringify(gameHistory.map(game => [game.average_accuracy, game.total_moves, game.think_time_ms]));
-  const signature = `${historySignature}|${JSON.stringify(currentGame)}`;
-  if (signature === lastAccuracyChartSignature) return;
-  lastAccuracyChartSignature = signature;
-  if (historySignature !== lastJourneySignature) {
-    lastJourneySignature = historySignature;
-    cachedJourney = buildAccuracyJourney(gameHistory.map(game => ({
-      accuracy: game.average_accuracy,
-      totalMoves: game.total_moves,
-      thinkTimeMs: game.think_time_ms
-    })));
-  }
-  const config = createJourneyChartConfig(cachedJourney, true, currentGame);
-  chart.data = config.data;
-  chart.options.scales = config.options.scales;
-  const empty = document.getElementById('journey-empty');
-  const hasPoints = cachedJourney.points.length > 0 || currentGame !== null;
-  if (empty) empty.hidden = hasPoints;
-  chart.canvas.style.visibility = hasPoints ? 'visible' : 'hidden';
-  chart.update('none');
-  window.dispatchEvent(new CustomEvent('lcstudy:current-game', { detail: currentGame }));
 }
 
 /**

@@ -7,7 +7,7 @@
  *
  * Layout:
  * - Board column: Chessboard powered by chessboard-element
- * - Sidebar: Stats, charts (accuracy over games, per-move accuracy), move history
+ * - Sidebar: Stats access, accuracy summary, per-move chart, move history
  */
 
 import Script from "next/script";
@@ -70,6 +70,7 @@ export default async function HomePage() {
 
           {/* Sidebar Panels */}
           <div className="sidebar">
+            <StatsView />
             {/* Accuracy Summary Panel */}
             <div className="panel panel-stats" aria-label="Accuracy summary">
               <div className="stat-tile">
@@ -103,22 +104,6 @@ export default async function HomePage() {
                 >
                   0 played / --h left
                 </span>
-              </div>
-            </div>
-
-            {/* Game Accuracy Chart Panel */}
-            <div className="panel panel-chart">
-              <div className="panel-section-heading">
-                <h2>Accuracy &amp; Pace</h2>
-                <div className="panel-heading-actions">
-                  <span id="accuracy-chart-count" className="panel-count">0 games</span>
-                  <StatsView />
-                </div>
-              </div>
-              <div className="journey-time-key" aria-label="Journey chronology: older blue to newer gold"><span>Older</span><i aria-hidden="true" /><span>Newer</span></div>
-              <div className="chart-container">
-                <canvas id="accuracy-chart" role="img" aria-label="25-game accuracy versus thinking seconds per move, from older blue to newer gold with direction arrows" />
-                <span id="journey-empty" className="journey-empty" role="status">No timed game history yet</span>
               </div>
             </div>
 

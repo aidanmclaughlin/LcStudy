@@ -27,7 +27,7 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
     <div className="journey-toolbar">
       <div className="stats-chart-legend">
         <span className="journey-time-key" aria-label="Journey chronology: older blue to newer gold"><span>Older</span><i aria-hidden="true" /><span>Newer</span></span>
-        <span><i className="frontier-key" />Observed frontier</span>
+        <span><i className="frontier-key" />Frontier</span>
         <span><i className="latest-key" />Latest</span>
         {currentGame && <span><i className="current-game-key" />Current game</span>}
       </div>
@@ -41,7 +41,7 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
       {(!hasPoints || error) && <div className="stats-empty" role="status">{error ? "Chart unavailable" : "No timed game history yet"}</div>}
     </div>
     <div className="journey-caption">
-      <span>{latest ? `Games ${latest.startGame}-${latest.game}${latest.provisional ? ` / ${latest.games} of 25 / provisional` : " / 25-game windows"}` : "25-game windows"}</span>
+      <span>{latest ? `Games ${latest.startGame}-${latest.game}${latest.provisional ? ` / ${latest.games} of 25 / provisional` : ""}` : "25-game windows"}</span>
       <span>{latest ? `${latest.y.toFixed(1)}% / ${latest.x.toFixed(2)}s per move` : "--"}</span>
     </div>
     {currentGame && <div className="journey-caption journey-current">

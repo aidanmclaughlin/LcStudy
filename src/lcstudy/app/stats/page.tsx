@@ -7,7 +7,7 @@ import { getUserGameStatsHistory } from "@/lib/db";
 import { computeProgressDashboard } from "@/lib/progress-stats";
 
 export const metadata: Metadata = {
-  title: "Progress | LcStudy"
+  title: "Stats | LcStudy"
 };
 
 export const dynamic = "force-dynamic";

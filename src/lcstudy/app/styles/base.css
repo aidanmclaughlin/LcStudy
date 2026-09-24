@@ -21,9 +21,7 @@ body {
   overflow-y: auto;
   font-family: var(--font-sans);
   color: var(--text-secondary);
-  background:
-    radial-gradient(1200px 800px at 10% 10%, #0f1a34 0%, var(--bg-primary) 50%),
-    linear-gradient(180deg, var(--bg-primary), var(--bg-secondary));
+  background: var(--app-background);
 }
 
 /* Scrollbar hiding utility */

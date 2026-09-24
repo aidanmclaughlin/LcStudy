@@ -8,7 +8,7 @@ import type {
 import { TARGET_ACCURACY } from "@/lib/progress-stats";
 import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
 import { useState, type ReactNode } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { JourneyChart } from "./journey-chart";
 import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
 
@@ -36,20 +36,16 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
   return (
     <main className="stats-page">
       <header className="stats-header">
-        <div className="stats-title-group">
-          <span className="stats-brand">LCStudy</span><h1>Progress</h1>
-        </div>
-        <span className="stats-header-count">{formatInteger(overview.totalGames)} games / {formatInteger(overview.totalMoves)} moves</span>
-        {!embedded && <a className="stats-back" href="/"><ArrowLeft size={18} aria-hidden="true" />Game</a>}
+        <h1>Stats</h1>
+        <span className="stats-header-count">{formatInteger(overview.totalGames)} games</span>
+        {!embedded && <a className="btn stats-back" href="/"><ArrowLeft size={18} aria-hidden="true" />Game</a>}
       </header>
 
       <section className="stats-metric-grid" aria-label="Progress summary">
-        <Metric label="25-game accuracy" value={overview.totalGames ? formatPercent(overview.recent25) : "--"} detail={`Best ${formatPercent(overview.best25)}`} tone="green" />
-        <Metric label="Thinking / move" value={latest ? `${latest.x.toFixed(2)}s` : "--"} detail={latest ? `${latest.games}-game window` : "No timed games"} tone="blue" />
+        <Metric label="25-game accuracy" value={overview.totalGames ? formatPercent(overview.recent25) : "--"} />
+        <Metric label="Thinking / move" value={latest ? `${latest.x.toFixed(2)}s` : "--"} />
         <Metric label="Maia Elo" value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
-          detail={elo.current ? `${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)} / 80% range` : "No eligible positions"}
-          title="Maia-2 rapid equivalent estimate, not an official rating" tone="rose" />
-        <Metric label="Active practice" value={formatHours(overview.activeHours)} detail={`${formatInteger(timing.timedGames)} timed games`} tone="amber" />
+          title={elo.current ? `Maia-2 rapid equivalent estimate; 80% range ${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}. Not an official rating.` : "No eligible positions"} />
       </section>
 
       <nav className="stats-tabs" role="tablist" aria-label="Statistics sections">
@@ -68,34 +64,37 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
       <div role="tabpanel" id={`stats-panel-${tab}`} aria-labelledby={`stats-tab-${tab}`}>
         {tab === "overview" && <>
           <section className="stats-band stats-journey-band">
-            <SectionHeading title="Accuracy & pace" meta="25-game windows" />
+            <SectionHeading title="Accuracy & pace" />
             <JourneyChart journey={journey} currentGame={currentGame} />
           </section>
-          <div className="stats-split">
-            <section className="stats-section">
-              <SectionHeading title="Current form" meta="recent games" />
-              <dl className="stats-definition-list">
-                <Definition label="10-game accuracy" value={formatPercent(overview.recent10)} />
-                <Definition label="Difficulty-adjusted / 25" value={formatPercent(progress.adjustedRecent25)} />
-                <Definition label="Trend / 100 games" value={formatSignedPoints(progress.trendPer100)} />
-                <Definition label="Game-to-game spread" value={`${consistency.recentDeviation.toFixed(1)} pts`} />
-              </dl>
-            </section>
-            <section className="stats-section">
-              <SectionHeading title={`Road to ${TARGET_ACCURACY}%`} meta="10-game target / estimate" />
-              {progress.forecast ? <div className="forecast-layout">
-                <div><strong className="stats-feature-value">{formatNullableHours(progress.forecast.remainingHours)}</strong><span className="stats-feature-label">estimated remaining</span></div>
-                <dl className="stats-definition-list">
-                  <Definition label="Games left" value={formatInteger(progress.forecast.remainingGames)} />
-                  <Definition label="80% range / games" value={`${formatInteger(progress.forecast.remainingGamesLow)}-${formatInteger(progress.forecast.remainingGamesHigh)}`} />
-                </dl>
-              </div> : <EmptyState label="No scored games yet" />}
-            </section>
-          </div>
           <section className="stats-band stats-elo-band">
             <SectionHeading title="Maia-equivalent Elo" meta="25-game estimate / 80% range" />
             <MaiaEloChart points={elo.series} minimum={elo.calibration.minimumElo} maximum={elo.calibration.maximumElo} />
           </section>
+          <Details title="Learning & target">
+            <div className="stats-split">
+              <section className="stats-section">
+                <SectionHeading title="Current form" meta="recent games" />
+                <dl className="stats-definition-list">
+                  <Definition label="10-game accuracy" value={formatPercent(overview.recent10)} />
+                  <Definition label="Best 25-game accuracy" value={formatPercent(overview.best25)} />
+                  <Definition label="Difficulty-adjusted / 25" value={formatPercent(progress.adjustedRecent25)} />
+                  <Definition label="Trend / 100 games" value={formatSignedPoints(progress.trendPer100)} />
+                  <Definition label="Game-to-game spread" value={`${consistency.recentDeviation.toFixed(1)} pts`} />
+                </dl>
+              </section>
+              <section className="stats-section">
+                <SectionHeading title={`Road to ${TARGET_ACCURACY}%`} meta="10-game target / estimate" />
+                {progress.forecast ? <div className="forecast-layout">
+                  <div><strong className="stats-feature-value">{formatNullableHours(progress.forecast.remainingHours)}</strong><span className="stats-feature-label">estimated remaining</span></div>
+                  <dl className="stats-definition-list">
+                    <Definition label="Games left" value={formatInteger(progress.forecast.remainingGames)} />
+                    <Definition label="80% range / games" value={`${formatInteger(progress.forecast.remainingGamesLow)}-${formatInteger(progress.forecast.remainingGamesHigh)}`} />
+                  </dl>
+                </div> : <EmptyState label="No scored games yet" />}
+              </section>
+            </div>
+          </Details>
         </>}
 
         {tab === "breakdowns" && <>
@@ -107,21 +106,23 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
               <Breakdown title="Opponent" rows={skill.opponents} suffix=" Elo" />
               <Breakdown title="Position difficulty" rows={skill.difficulties} />
             </div>
-            <Breakdown title="Opening lines" rows={skill.openings} wide />
           </section>
-          <section className="stats-band">
-            <SectionHeading title="Data coverage" meta={`${formatInteger(overview.totalGames)} games`} />
+          <Details title="Opening lines">
+            <Breakdown title="Accuracy by line" rows={skill.openings} />
+          </Details>
+          <Details title="Data coverage">
+            <SectionHeading title="Sample" meta={`${formatInteger(overview.totalGames)} games / ${formatInteger(overview.totalMoves)} moves`} />
             <div className="coverage-grid">
               <CoverageMetric label="Lichess openings" value={`${formatInteger(coverage.lichessGames)} games`} percent={coverage.lichessShare} />
               <CoverageMetric label="Color" value={`${coverage.whiteGames} W / ${coverage.blackGames} B`} percent={coverage.colorCoverage} />
               <CoverageMetric label="Difficulty" value={`${coverage.difficultyGames} games`} percent={progress.difficultyCoverage} />
               <CoverageMetric label="Openings" value={`${coverage.openingLines} lines`} percent={coverage.openingCoverage} />
             </div>
-          </section>
+          </Details>
         </>}
 
         {tab === "timing" && <section className="stats-band">
-          <SectionHeading title="Thinking time" meta={`${formatInteger(timing.timedGames)} timed games`} />
+          <SectionHeading title="Thinking time" meta={`${formatHours(overview.activeHours)} practice / ${formatInteger(timing.timedGames)} timed games`} />
           <div className="stats-inline-metrics">
             <InlineMetric label="Median move" value={formatDuration(timing.medianMoveMs)} />
             <InlineMetric label="Middle 50%" value={`${formatDuration(timing.moveP25Ms)}-${formatDuration(timing.moveP75Ms)}`} />
@@ -141,21 +142,16 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
 function Metric({
   label,
   value,
-  detail,
-  title,
-  tone = "neutral"
+  title
 }: {
   label: string;
   value: string;
-  detail?: string;
   title?: string;
-  tone?: "neutral" | "green" | "violet" | "amber" | "blue" | "rose";
 }) {
   return (
-    <div className={`stats-metric stats-metric--${tone}`} title={title}>
+    <div className="stats-metric" title={title}>
       <span className="stats-metric-label">{label}</span>
       <strong>{value}</strong>
-      {detail && <span className="stats-metric-detail">{detail}</span>}
     </div>
   );
 }
@@ -223,13 +219,20 @@ function MaiaEloChart({
   );
 }
 
-function SectionHeading({ title, meta }: { title: string; meta: string }) {
+function SectionHeading({ title, meta }: { title: string; meta?: string }) {
   return (
     <div className="stats-section-heading">
       <h2>{title}</h2>
-      <span>{meta}</span>
+      {meta && <span>{meta}</span>}
     </div>
   );
+}
+
+function Details({ title, children }: { title: string; children: ReactNode }) {
+  return <details className="stats-details">
+    <summary>{title}<ChevronDown size={16} aria-hidden="true" /></summary>
+    <div className="stats-details-body">{children}</div>
+  </details>;
 }
 
 function ChartFrame({
@@ -328,16 +331,14 @@ function Definition({
 function Breakdown({
   title,
   rows,
-  suffix = "",
-  wide = false
+  suffix = ""
 }: {
   title: string;
   rows: GroupStat[];
   suffix?: string;
-  wide?: boolean;
 }) {
   return (
-    <div className={`stats-breakdown${wide ? " stats-breakdown--wide" : ""}`}>
+    <div className="stats-breakdown">
       <h3>{title}</h3>
       {rows.length === 0 ? (
         <EmptyState label="No recorded data" />
