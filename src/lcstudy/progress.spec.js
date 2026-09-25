@@ -75,12 +75,18 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await expect(page.locator('.journey-canvas')).toHaveCount(0);
   expect(await currentGamePoint(page)).toBeNull();
   await expect(page.locator('#hours-left-count')).toHaveCount(0);
-  await expect(page.locator('.stats-trigger .stat-tile')).toHaveCount(3);
+  await expect(page.locator('.stats-trigger .stat-tile')).toHaveCount(2);
+  await expect(page.locator('.stats-trigger #move-feedback')).toHaveCount(0);
+  await expect(page.locator('#move-chart-count')).toHaveCount(0);
+  await expect(page.locator('.move-chart-summary .move-chart-label')).toHaveText(['Game', 'Move']);
   const accuracy100 = history.slice(-100).reduce((sum, game) => sum + game.average_accuracy, 0) / 100;
   const pace100 = history.slice(-100).reduce((sum, game) => sum + game.think_time_ms / game.total_moves / 1000, 0) / 100;
   await expect(page.locator('#avg-accuracy')).toHaveText(`${accuracy100.toFixed(1)}%`);
   await expect(page.locator('#avg-move-time')).toHaveText(`${pace100.toFixed(2)}s`);
   await expect(page.locator('.panel-chart #game-accuracy')).toHaveText('--');
+  await expect(page.locator('.panel-chart #move-feedback')).toHaveText('--');
+  await expect(page.locator('#current-accuracy')).toHaveText('--');
+  await expect(page.locator('#current-move-time')).toHaveText('--');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
   await expect(page.locator('#pace-comparison')).toHaveAttribute('aria-hidden', 'true');
   await expect(page.getByRole('button', { name: 'Stats', exact: true })).toHaveCount(0);
@@ -104,6 +110,9 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await expect.poll(async () => (await currentGamePoint(page))?.moves).toBe(5);
   const livePoint = await currentGamePoint(page);
   await expect(page.locator('.panel-chart #game-accuracy')).toHaveText('100.0%');
+  await expect(page.locator('#current-accuracy')).toHaveText('100.0%');
+  await expect(page.locator('#current-move-time')).toHaveText(`${livePoint.x.toFixed(2)}s`);
+  await expect(page.locator('.panel-chart #move-feedback')).toHaveText('100.0%');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'better');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-direction', 'up');
   await expect(page.locator('#pace-comparison')).toHaveAttribute('data-tone', 'better');
@@ -317,6 +326,8 @@ test('live comparison arrows distinguish accuracy and pace, ties, and missing ti
   await expect(page.locator('#pace-comparison')).toHaveAttribute('data-direction', 'up');
   await expect(page.locator('#pace-comparison')).toHaveAttribute('title', /slower than your 100-game average/);
   await expect(page.locator('#game-accuracy')).toHaveText('70.0%');
+  await expect(page.locator('#current-accuracy')).toHaveText('70.0%');
+  expect(await page.locator('#current-move-time').innerText()).toMatch(/^\d+\.\d{2}s$/);
   await page.setViewportSize({ width: 320, height: 844 });
   expect(await page.locator('.stats-trigger').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   expect(await page.locator('.stat-value-row').evaluateAll(rows => rows.every(el => el.scrollWidth <= el.clientWidth))).toBe(true);
@@ -335,7 +346,68 @@ test('live comparison arrows distinguish accuracy and pace, ties, and missing ti
     (await import('/legacy/js/modules/charts.js')).updateStatistics();
   });
   await expect(page.locator('#game-accuracy')).toHaveText('--');
+  await expect(page.locator('#current-accuracy')).toHaveText('--');
+  await expect(page.locator('#current-move-time')).toHaveText('--');
+  await expect(page.locator('#move-feedback')).toHaveText('--');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('paired metrics stay compact and separate the game from move feedback', async ({ page, context }, testInfo) => {
+  await setup(page, context);
+  await page.evaluate(async () => {
+    const state = await import('/legacy/js/modules/state.js');
+    const charts = await import('/legacy/js/modules/charts.js');
+    const effects = await import('/legacy/js/modules/effects.js');
+    state.setMoveAccuracies([100, 0, 80]);
+    charts.updateStatistics();
+    effects.updateMoveFeedback({ accuracy: 80 });
+  });
+  await expect(page.locator('#current-accuracy')).toHaveText('60.0%');
+  await expect(page.locator('#game-accuracy')).toHaveText('60.0%');
+  await expect(page.locator('#move-feedback')).toHaveText('80.0%');
+  await expect(page.locator('#current-move-time')).toHaveText('--');
+  await expect(page.locator('#pace-comparison')).toHaveAttribute('aria-hidden', 'true');
+
+  await page.clock.install();
+  await page.evaluate(async () => {
+    const clock = await import('/legacy/js/modules/timeclock.js');
+    clock.startGameClock();
+    clock.promptBegin();
+  });
+  await page.clock.fastForward(123450);
+  await page.evaluate(async () => {
+    (await import('/legacy/js/modules/timeclock.js')).promptSubmit();
+    (await import('/legacy/js/modules/state.js')).setMoveAccuracies([100]);
+    (await import('/legacy/js/modules/charts.js')).updateStatistics();
+  });
+  await expect(page.locator('#current-accuracy')).toHaveText('100.0%');
+  await expect(page.locator('#current-move-time')).toHaveText('123.45s');
+
+  for (const width of [1440, 1024, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const heading = await page.locator('.move-chart-heading').boundingBox();
+    const summary = await page.locator('.stats-trigger').boundingBox();
+    expect(summary.height).toBeLessThanOrEqual(90);
+    expect(await page.locator('.stats-trigger .stat-label, .stats-trigger .stat-value').evaluateAll(elements => elements.every(element =>
+      element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight
+    ))).toBe(true);
+    expect(await page.locator('.stat-current').evaluateAll(rows => rows.every(row => {
+      const label = row.querySelector('.stat-current-label').getBoundingClientRect();
+      const value = row.querySelector('.stat-value-row').getBoundingClientRect();
+      return label.right <= value.left && row.scrollWidth <= row.clientWidth;
+    }))).toBe(true);
+    for (const feedback of [null, { loading: true }, { error: true }, { illegal: true }, { bestMoveSan: 'Nxf8=Q+' }, { accuracy: 100 }]) {
+      await page.evaluate(async feedback => (await import('/legacy/js/modules/effects.js')).updateMoveFeedback(feedback), feedback);
+      const next = await page.locator('.move-chart-heading').boundingBox();
+      expect(next.height).toBe(heading.height);
+      expect(await page.locator('.move-chart-stat').evaluateAll(stats => stats.every(stat => stat.scrollWidth <= stat.clientWidth && stat.scrollHeight <= stat.clientHeight))).toBe(true);
+      const title = await page.locator('.move-chart-heading h2').boundingBox();
+      const metrics = await page.locator('.move-chart-summary').boundingBox();
+      expect(title.x + title.width).toBeLessThanOrEqual(metrics.x);
+    }
+    await page.locator('.stats-trigger').screenshot({ path: testInfo.outputPath(`${width}-paired-summary.png`) });
+    await page.locator('.panel-chart').screenshot({ path: testInfo.outputPath(`${width}-move-header.png`) });
+  }
 });
 
 test('Maia Elo uses the latest 100 eligible games, skipping opening-only games', () => {

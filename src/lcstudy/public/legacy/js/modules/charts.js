@@ -18,7 +18,6 @@ import {
 
 let lastCurrentGameSignature = '';
 let lastMoveChartSignature = '';
-const chartHeadingCounts = {};
 function publishCurrentGame(force = false) {
   const point = buildCurrentGamePoint(getMoveAccuracies(), getMoveTimesMs());
   const signature = JSON.stringify(point);
@@ -137,7 +136,6 @@ function updateMoveAccuracyChart() {
   if (!chart) return;
 
   const moveAccuracies = getMoveAccuracies();
-  updateChartCount('move-chart-count', moveAccuracies.length, 'move');
 
   const moveHistory = getMoveHistory();
   const currentMoveIndex = getCurrentMoveIndex();
@@ -194,7 +192,6 @@ export function resetMoveAccuracyChart() {
   chart.data.labels = [];
   chart.data.datasets[0].data = [];
   lastMoveChartSignature = '';
-  updateChartCount('move-chart-count', 0, 'move');
   chart.update('none');
 }
 
@@ -218,13 +215,14 @@ export function updateStatistics() {
   updateMetric('avg-move-time', baseline.secondsPerMove, 2, 's',
     'Thinking seconds per move, averaged equally across your latest 100 scored games');
   updateMetric('game-accuracy', gameAccuracy, 1, '%', 'Current game accuracy');
+  updateMetric('current-accuracy', gameAccuracy, 1, '%', 'Current game accuracy');
+  updateMetric('current-move-time', current?.x ?? null, 2, 's', 'Mean thinking seconds per move in this game');
   updateComparison('accuracy-comparison', gameAccuracy, baseline.accuracy, false, 1);
   updateComparison('pace-comparison', current?.x ?? null, baseline.secondsPerMove, true, 2);
-  updateChartCount('move-chart-count', moveAccuracies.length, 'move');
 
   const moveElement = document.getElementById('move-feedback');
   if (moveElement && moveAccuracies.length === 0) {
-    moveElement.textContent = 'Pick move';
+    moveElement.textContent = '--';
     moveElement.style.color = '#94a3b8';
     moveElement.classList.add('stat-value--muted');
   }
@@ -259,18 +257,4 @@ function updateComparison(id, current, baseline, lowerIsBetter, digits) {
   element.title = description;
   element.setAttribute('aria-label', description);
   element.setAttribute('aria-hidden', 'false');
-}
-
-function updateChartCount(id, count, singular) {
-  const next = `${count} ${count === 1 ? singular : `${singular}s`}`;
-  let element = chartHeadingCounts[id];
-
-  if (!element) {
-    element = document.getElementById(id);
-    chartHeadingCounts[id] = element;
-  }
-
-  if (element && element.textContent !== next) {
-    element.textContent = next;
-  }
 }

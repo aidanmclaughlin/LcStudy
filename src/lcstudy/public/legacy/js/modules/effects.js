@@ -286,7 +286,7 @@ export function updateMoveFeedback(result = null) {
   if (!feedbackElement) return;
 
   if (!result) {
-    feedbackElement.textContent = 'Pick move';
+    feedbackElement.textContent = '--';
     feedbackElement.style.color = '#94a3b8';
     feedbackElement.classList.add('stat-value--muted');
     return;

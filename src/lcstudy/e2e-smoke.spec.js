@@ -264,7 +264,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.waitForSelector('#board .piece');
   await expect(page.locator('#completion-overlay')).toBeHidden();
   await expect(page.locator('#hours-left-count')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Accuracy Over Moves' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Move accuracy' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Accuracy summary, open statistics' })).toBeVisible();
   await expect(page.locator('.panel-chart canvas')).toHaveCount(1);
   await expect(page.locator('.panel-goal canvas')).toHaveCount(0);

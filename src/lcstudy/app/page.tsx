@@ -74,23 +74,25 @@ export default async function HomePage() {
             {/* Accuracy Summary Panel */}
             <StatsView>
               <span className="stat-tile">
-                <span className="stat-label">100-game</span>
-                <span className="stat-value-row">
-                  <span id="avg-accuracy" className="stat-value">--</span>
-                  <span id="accuracy-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
+                <span className="stat-label">100-game accuracy</span>
+                <span id="avg-accuracy" className="stat-value">--</span>
+                <span className="stat-current">
+                  <span className="stat-current-label">Game</span>
+                  <span className="stat-value-row">
+                    <span id="current-accuracy" className="stat-current-value">--</span>
+                    <span id="accuracy-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
+                  </span>
                 </span>
               </span>
               <span className="stat-tile">
                 <span className="stat-label">100-game pace</span>
-                <span className="stat-value-row">
-                  <span id="avg-move-time" className="stat-value">--</span>
-                  <span id="pace-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
-                </span>
-              </span>
-              <span className="stat-tile">
-                <span className="stat-label">Move</span>
-                <span id="move-feedback" className="stat-value stat-value--muted">
-                  Pick move
+                <span id="avg-move-time" className="stat-value">--</span>
+                <span className="stat-current">
+                  <span className="stat-current-label">Game</span>
+                  <span className="stat-value-row">
+                    <span id="current-move-time" className="stat-current-value">--</span>
+                    <span id="pace-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
+                  </span>
                 </span>
               </span>
             </StatsView>
@@ -98,10 +100,16 @@ export default async function HomePage() {
             {/* Move Accuracy Chart Panel */}
             <div className="panel panel-chart">
               <div className="panel-section-heading move-chart-heading">
-                <h2>Accuracy Over Moves</h2>
+                <h2>Move accuracy</h2>
                 <span className="move-chart-summary">
-                  <strong id="game-accuracy" className="panel-metric" title="Current game accuracy">--</strong>
-                  <span id="move-chart-count" className="panel-count">0 moves</span>
+                  <span className="move-chart-stat">
+                    <span className="move-chart-label">Game</span>
+                    <strong id="game-accuracy" className="panel-metric" title="Current game accuracy">--</strong>
+                  </span>
+                  <span className="move-chart-stat">
+                    <span className="move-chart-label">Move</span>
+                    <strong id="move-feedback" className="panel-metric stat-value--muted" role="status" aria-atomic="true">--</strong>
+                  </span>
                 </span>
               </div>
               <div className="chart-container">
