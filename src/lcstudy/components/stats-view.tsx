@@ -5,10 +5,11 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronRight, RefreshCw } from "lucide-react";
 import type { ProgressDashboardStats } from "@/lib/progress-stats";
 import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
+import { SignOutButton } from "./auth-controls";
 
 const Dashboard = dynamic(() => import("./stats-dashboard").then(module => module.StatsDashboard), {
   ssr: false,
-  loading: () => <div className="stats-empty" role="status">Loading progress...</div>
+  loading: () => <div className="stats-load-state" role="status">Loading progress…</div>
 });
 
 export function StatsView({ children }: { children: ReactNode }) {
@@ -83,17 +84,20 @@ export function StatsView({ children }: { children: ReactNode }) {
     <button ref={trigger} type="button" className="panel panel-stats stats-trigger" onClick={show}
       aria-label="Accuracy summary, open statistics" aria-haspopup="dialog" aria-controls="stats-dialog" aria-expanded={open}
       title="View progress statistics">
-      {children}<ChevronRight className="stats-trigger-chevron" size={14} aria-hidden="true" />
+      {children}<ChevronRight className="stats-trigger-chevron" size={16} aria-hidden="true" />
     </button>
     <dialog ref={dialog} id="stats-dialog" className="stats-dialog" aria-label="Progress statistics" onCancel={event => { event.preventDefault(); close(); }}>
       {open && <>
         <div className="stats-dialog-bar">
           <button type="button" className="stats-back" onClick={close} autoFocus><ArrowLeft size={16} aria-hidden="true" />Resume game</button>
           <span className="sr-only">Game paused</span>
-          {loading && <span className="stats-refreshing" role="status">Updating...</span>}
+          <div className="stats-bar-actions">
+            {loading && stats && <span className="stats-refreshing" role="status">Updating…</span>}
+            <SignOutButton className="stats-signout" />
+          </div>
         </div>
-        {error ? <div className="stats-load-state" role="alert"><p>{error}</p><button type="button" className="btn stats-back" onClick={() => setRevision(value => value + 1)}><RefreshCw size={16} aria-hidden="true" />Retry</button></div>
-          : stats ? <Dashboard stats={stats} embedded currentGame={currentGame} /> : <div className="stats-load-state" role="status">Loading progress...</div>}
+        {error ? <div className="stats-load-state" role="alert"><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}><RefreshCw size={15} aria-hidden="true" />Retry</button></div>
+          : stats ? <Dashboard stats={stats} embedded currentGame={currentGame} /> : <div className="stats-load-state" role="status">Loading progress…</div>}
       </>}
     </dialog>
   </>;

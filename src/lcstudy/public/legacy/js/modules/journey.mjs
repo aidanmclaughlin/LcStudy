@@ -132,19 +132,67 @@ export function journeyArrows(points, pixels, compact = false) {
   return arrows;
 }
 
+/** Round tick spacing (1, 2, 2.5, or 5 times a power of ten) giving about `targetTicks` intervals. */
+export function niceStep(span, targetTicks = 4) {
+  const raw = span > 0 && Number.isFinite(span) ? span / Math.max(1, targetTicks) : 1;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const fraction = raw / magnitude;
+  const nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 2.5 ? 2.5 : fraction <= 5 ? 5 : 10;
+  return nice * magnitude;
+}
+
+/** Axis bounds snapped outward to round ticks, so axes never end on values like 83.2% or 7.16s. */
+export function niceScale(low, high, { targetTicks = 4, floor = -Infinity, ceiling = Infinity, minSpan = 0 } = {}) {
+  if (!Number.isFinite(low) || !Number.isFinite(high)) [low, high] = [0, 1];
+  if (high - low < minSpan) {
+    const middle = (low + high) / 2;
+    [low, high] = [middle - minSpan / 2, middle + minSpan / 2];
+  }
+  low = Math.max(floor, low);
+  high = Math.min(ceiling, high);
+  const step = niceStep(high - low, targetTicks);
+  const round = value => Number(value.toFixed(10));
+  const min = round(Math.max(floor, Math.floor(low / step) * step));
+  const max = round(Math.min(ceiling, Math.ceil(high / step) * step));
+  const ticks = [];
+  for (let index = 0; min + index * step <= max + step / 1e6; index++) ticks.push(round(min + index * step));
+  return { min, max, step, ticks };
+}
+
+/**
+ * Keep the live game on the chart without rescaling the journey: a point outside
+ * the axes is pinned to the edge and its marker rotated to point toward the real value.
+ */
+export function pinToScale(point, x, y) {
+  const px = Math.min(x.max, Math.max(x.min, point.x));
+  const py = Math.min(y.max, Math.max(y.min, point.y));
+  if (px === point.x && py === point.y) return point;
+  const dx = Math.sign(point.x - px), dy = Math.sign(point.y - py);
+  return { ...point, x: px, y: py, actualX: point.x, actualY: point.y, rotation: Math.atan2(dx, dy) * 180 / Math.PI };
+}
+
+const CHART_TEXT = '#94a3b8';
+const CHART_GRID = 'rgba(148, 163, 184, 0.1)';
+const CHART_BG = '#0b1220';
+
 export function createJourneyChartConfig(journey, compact = false, currentGame = null) {
   const { points, frontier } = journey;
   const latest = points.at(-1);
-  const plotted = currentGame ? [...points, currentGame] : points;
-  const xs = plotted.map(point => point.x);
-  const ys = plotted.map(point => point.y);
+  // Axes follow the recorded journey; the live game only defines them when there is no history.
+  const scaled = points.length ? points : currentGame ? [currentGame] : [];
+  const xs = scaled.map(point => point.x);
+  const ys = scaled.map(point => point.y);
   const minX = xs.length ? Math.min(...xs) : 0;
   const maxX = xs.length ? Math.max(...xs) : 1;
   const minY = ys.length ? Math.min(...ys) : 0;
   const maxY = ys.length ? Math.max(...ys) : 100;
-  const padX = Math.max((maxX - minX) * 0.08, 0.2);
-  const padY = Math.max((maxY - minY) * 0.08, 0.5);
+  const padX = Math.max((maxX - minX) * 0.06, 0.1);
+  const padY = Math.max((maxY - minY) * 0.06, 0.25);
+  const xScale = niceScale(minX - padX, maxX + padX, { targetTicks: compact ? 4 : 6, floor: 0 });
+  const yScale = niceScale(minY - padY, maxY + padY, { targetTicks: 5, floor: 0, ceiling: 100 });
+  const live = currentGame ? pinToScale(currentGame, xScale, yScale) : null;
   const progressAt = game => points.length > 1 ? (game - points[0].game) / (latest.game - points[0].game) : 1;
+  const tickFont = { size: compact ? 10 : 12 };
   return {
     type: 'scatter',
     plugins: [{
@@ -172,11 +220,11 @@ export function createJourneyChartConfig(journey, compact = false, currentGame =
       }
     }],
     data: { datasets: [
-      { label: 'Current game', data: currentGame ? [currentGame] : [], pointStyle: 'triangle',
-        pointRadius: compact ? 6 : 8, pointHoverRadius: 10,
-        backgroundColor: '#eba5ac', borderColor: '#171b1e', borderWidth: 2 },
+      { label: 'Current game', data: live ? [live] : [], pointStyle: 'triangle',
+        pointRadius: compact ? 6 : 8, pointHoverRadius: 10, pointRotation: live?.rotation ?? 0,
+        backgroundColor: '#eba5ac', borderColor: CHART_BG, borderWidth: 2 },
       { label: 'Latest', data: latest ? [latest] : [], pointRadius: compact ? 4 : 6,
-        pointHoverRadius: 8, backgroundColor: '#f4be65', borderColor: '#171b1e', borderWidth: 2 },
+        pointHoverRadius: 8, backgroundColor: '#f4be65', borderColor: CHART_BG, borderWidth: 2 },
       { label: 'Observed frontier', data: frontier, showLine: true, stepped: 'after',
         borderColor: '#60cdb1', backgroundColor: '#60cdb1', borderWidth: 1.5,
         borderDash: [4, 4], pointStyle: 'rectRot', pointRadius: compact ? 2 : 3, pointHoverRadius: 6 },
@@ -189,36 +237,41 @@ export function createJourneyChartConfig(journey, compact = false, currentGame =
           borderDash: context => context.p1.raw.game - context.p0.raw.game > 1 ? [2, 5] : undefined
         } },
       { label: 'Start', data: points.length > 1 ? [points[0]] : [], pointRadius: 3,
-        backgroundColor: '#171b1e', borderColor: journeyColor(0), borderWidth: 2 }
+        backgroundColor: CHART_BG, borderColor: journeyColor(0), borderWidth: 2 }
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
-      datasets: { scatter: { clip: 10 } },
+      datasets: { scatter: { clip: 12 } },
       interaction: { mode: 'nearest', intersect: false },
-      layout: { padding: { top: 8, right: 12, bottom: 0, left: 0 } },
+      layout: { padding: { top: 10, right: 12, bottom: 0, left: 0 } },
       plugins: {
         legend: { display: false },
         tooltip: {
-          displayColors: false, backgroundColor: '#20262a', titleColor: '#f0f3f5', bodyColor: '#dce4e8',
+          displayColors: false, backgroundColor: 'rgba(15, 23, 42, 0.96)', borderColor: 'rgba(148, 163, 184, 0.24)',
+          borderWidth: 1, cornerRadius: 8, padding: 10, titleColor: '#f8fafc', bodyColor: '#cbd5e1',
+          titleFont: { weight: '600' }, caretSize: 5,
           callbacks: {
             title: items => {
               const point = items[0]?.raw;
-              if (point?.currentGame) return `Current game / ${point.moves} ${point.moves === 1 ? 'move' : 'moves'}`;
-              return point ? `Games ${point.startGame}-${point.game}${point.provisional ? ' (provisional)' : ''}` : '';
+              if (point?.currentGame) return `Current game · ${point.moves} ${point.moves === 1 ? 'move' : 'moves'}`;
+              return point ? `Games ${point.startGame}–${point.game}${point.provisional ? ' (provisional)' : ''}` : '';
             },
-            label: context => `${context.raw.y.toFixed(1)}% accuracy / ${context.raw.x.toFixed(2)}s per move`
+            label: context => {
+              const { x, y, actualX = x, actualY = y } = context.raw;
+              return `${actualY.toFixed(1)}% accuracy · ${actualX.toFixed(2)}s per move`;
+            }
           }
         }
       },
       scales: {
-        x: { type: 'linear', min: Math.max(0, minX - padX), max: maxX + padX,
-          title: { display: true, text: compact ? 'Thinking seconds / move' : 'Thinking seconds per move', color: '#9ba9b2', font: { size: compact ? 10 : 12 } },
-          grid: { color: 'rgba(170,190,200,0.08)' }, border: { display: false },
-          ticks: { color: '#9ba9b2', maxTicksLimit: compact ? 4 : 7, font: { size: compact ? 10 : 12 }, callback: value => `${Number(value.toFixed(2))}s` } },
-        y: { min: Math.max(0, minY - padY), max: Math.min(100, maxY + padY),
-          title: { display: !compact, text: 'Accuracy', color: '#9ba9b2' },
-          grid: { color: 'rgba(170,190,200,0.12)' }, border: { display: false },
-          ticks: { color: '#9ba9b2', maxTicksLimit: 5, font: { size: compact ? 10 : 12 }, callback: value => `${Number(value.toFixed(1))}%` } }
+        x: { type: 'linear', min: xScale.min, max: xScale.max,
+          title: { display: true, text: compact ? 'Thinking seconds / move' : 'Thinking seconds per move', color: CHART_TEXT, font: tickFont, padding: { top: 6 } },
+          grid: { color: CHART_GRID }, border: { display: false },
+          ticks: { color: CHART_TEXT, stepSize: xScale.step, font: tickFont, callback: value => `${Number(value.toFixed(2))}s` } },
+        y: { min: yScale.min, max: yScale.max,
+          title: { display: !compact, text: 'Accuracy', color: CHART_TEXT, font: tickFont },
+          grid: { color: CHART_GRID }, border: { display: false },
+          ticks: { color: CHART_TEXT, stepSize: yScale.step, font: tickFont, callback: value => `${Number(value.toFixed(2))}%` } }
       }
     }
   };

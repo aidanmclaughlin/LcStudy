@@ -5,6 +5,7 @@
 
 import { CONFETTI_COLORS, CELEBRATION_COLORS } from './constants.js';
 import { playSuccessChime } from './audio.js';
+import { getMoveAccuracies } from './state.js';
 
 const BOARD_FLASH_CLASSES = ['board-flash-green', 'board-shake', 'board-flash-gray'];
 let boardFlashFrame = 0;
@@ -28,11 +29,29 @@ export function showCompletionOverlay(kicker = 'Checkmate') {
 
   const kickerEl = overlay.querySelector('.completion-kicker');
   if (kickerEl) kickerEl.textContent = kicker;
+  overlay.dataset.result = kicker === 'Checkmate' ? 'mate' : 'over';
+
+  const summaryEl = document.getElementById('completion-summary');
+  if (summaryEl) {
+    const accuracies = getMoveAccuracies();
+    const average = accuracies.length
+      ? accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length
+      : null;
+    summaryEl.textContent = average === null
+      ? ''
+      : `${average.toFixed(1)}% accuracy · ${accuracies.length} ${accuracies.length === 1 ? 'move' : 'moves'}`;
+  }
 
   overlay.hidden = false;
   overlay.removeAttribute('inert');
   overlay.setAttribute('aria-hidden', 'false');
-  requestAnimationFrame(() => overlay.classList.add('is-visible'));
+  requestAnimationFrame(() => {
+    overlay.classList.add('is-visible');
+    // Enter or Space starts the next game straight away.
+    if (!document.getElementById('stats-dialog')?.open) {
+      document.getElementById('completion-new')?.focus({ preventScroll: true });
+    }
+  });
 }
 
 export function hideCompletionOverlay() {
@@ -285,45 +304,21 @@ export function updateMoveFeedback(result = null) {
   const feedbackElement = document.getElementById('move-feedback');
   if (!feedbackElement) return;
 
-  if (!result) {
-    feedbackElement.textContent = '--';
-    feedbackElement.style.color = '#94a3b8';
-    feedbackElement.classList.add('stat-value--muted');
-    return;
-  }
+  const labelElement = document.getElementById('move-feedback-label');
+  const show = (text, tone, label = 'Move') => {
+    feedbackElement.textContent = text;
+    feedbackElement.dataset.tone = tone;
+    if (labelElement) labelElement.textContent = label;
+  };
 
-  if (result.loading) {
-    feedbackElement.textContent = 'Loading';
-    feedbackElement.style.color = '#94a3b8';
-    feedbackElement.classList.add('stat-value--muted');
-    return;
-  }
-
-  if (result.error) {
-    feedbackElement.textContent = 'Retry';
-    feedbackElement.style.color = '#ef4444';
-    feedbackElement.classList.remove('stat-value--muted');
-    return;
-  }
-
-  if (result.illegal) {
-    feedbackElement.textContent = 'Illegal move';
-    feedbackElement.style.color = '#94a3b8';
-    feedbackElement.classList.add('stat-value--muted');
-    return;
-  }
-
+  if (!result) return show('--', 'muted');
+  if (result.loading) return show('Loading', 'muted');
+  if (result.error) return show('Retry', 'bad');
+  if (result.illegal) return show('Illegal move', 'muted');
   if (result.bestMoveSan || result.bestMoveUci) {
-    feedbackElement.textContent = `Best: ${result.bestMoveSan || result.bestMoveUci}`;
-    feedbackElement.style.color = '#f59e0b';
-    feedbackElement.classList.remove('stat-value--muted');
-    return;
+    return show(result.bestMoveSan || result.bestMoveUci, 'best', 'Best');
   }
 
   const accuracy = Number(result.accuracy || 0);
-  const tone = accuracyTone(accuracy);
-
-  feedbackElement.textContent = `${accuracy.toFixed(1)}%`;
-  feedbackElement.style.color = tone.color;
-  feedbackElement.classList.remove('stat-value--muted');
+  show(`${accuracy.toFixed(1)}%`, accuracy >= 90 ? 'good' : accuracy >= 65 ? 'ok' : 'bad');
 }

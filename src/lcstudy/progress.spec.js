@@ -131,8 +131,8 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Stats', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog').locator('.journey-time-key')).toContainText('Newer');
-  await expect(page.locator('.journey-current')).toContainText('Current game / 5 moves');
-  await expect(page.locator('.journey-current')).toContainText(`${livePoint.y.toFixed(1)}% / ${livePoint.x.toFixed(2)}s per move`);
+  await expect(page.locator('.journey-current')).toContainText('Current game · 5 moves');
+  await expect(page.locator('.journey-current')).toContainText(`${livePoint.y.toFixed(1)}% · ${livePoint.x.toFixed(2)}s per move`);
   await expect.poll(() => page.locator('.journey-canvas canvas').evaluate(canvas => {
     const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
     let top = Infinity, bottom = -Infinity;
@@ -146,7 +146,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   })).toBeGreaterThan(6);
   await page.locator('.journey-figure').screenshot({ path: testInfo.outputPath('current-game-journey.png') });
   await page.getByRole('button', { name: 'All games', exact: true }).click();
-  await expect(page.locator('.journey-current')).toContainText('Current game / 5 moves');
+  await expect(page.locator('.journey-current')).toContainText('Current game · 5 moves');
   const elapsed = await page.evaluate(async () => (await import('/legacy/js/modules/timeclock.js')).getGameDurationMs());
   await page.waitForTimeout(700);
   const after = await page.evaluate(async () => (await import('/legacy/js/modules/timeclock.js')).getGameDurationMs());
@@ -178,7 +178,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await expect.poll(async () => (await snapshot(page)).scores.length).toBe(6);
   await expect.poll(async () => (await currentGamePoint(page))?.moves).toBe(6);
   await page.getByRole('button', { name: 'Accuracy summary, open statistics' }).click();
-  await expect(page.locator('.journey-current')).toContainText('Current game / 6 moves');
+  await expect(page.locator('.journey-current')).toContainText('Current game · 6 moves');
   await page.getByRole('button', { name: 'Resume game' }).click();
 });
 
@@ -220,7 +220,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   const latestPace = history.slice(-100).reduce((sum, game) => sum + game.think_time_ms / game.total_moves / 1000, 0) / 100;
   await expect(page.locator('.stats-metric').filter({ hasText: '100-game accuracy' }).locator('strong')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
   await expect(page.locator('.stats-metric').filter({ hasText: '100-game pace' }).locator('strong')).toHaveText(`${latestPace.toFixed(2)}s`);
-  await expect(page.locator('.journey-caption')).toContainText('Games 61-160');
+  await expect(page.locator('.journey-caption')).toContainText('Games 61–160');
   await expect(page.locator('.stats-accuracy-band .stats-section-heading > span')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
   const backStyles = await page.getByRole('button', { name: 'Resume game' }).evaluate(button => {
     const style = getComputedStyle(button), box = button.getBoundingClientRect();
@@ -238,7 +238,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
     await expect(page.getByRole('heading', { name: 'Current form', exact: true })).toBeVisible();
     await expect(page.getByText('Best 100-game accuracy', { exact: true })).toBeVisible();
     await expect(page.getByText('Difficulty-adjusted / 100', { exact: true })).toBeVisible();
-    await expect(page.getByText('10-game target / estimate', { exact: true })).toBeVisible();
+    await expect(page.getByText('10-game average · estimate', { exact: true })).toBeVisible();
     await page.locator('summary').filter({ hasText: 'Learning & target' }).click();
     const chart = await page.locator('.journey-canvas').boundingBox();
     expect(chart.width).toBeGreaterThan(width <= 600 ? width - 36 : 600);

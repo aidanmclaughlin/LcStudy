@@ -1,0 +1,68 @@
+/**
+ * Sign-in page.
+ */
+
+.signin {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.signin-card {
+  width: min(100%, 380px);
+  padding: 32px 28px 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  text-align: center;
+}
+
+.signin-mark {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 18px;
+  border-radius: 14px;
+  background: repeating-conic-gradient(var(--board-dark) 0 25%, var(--board-light) 0 50%) 0 0 / 100% 100%;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.16), 0 10px 24px -10px rgba(2, 6, 23, 0.9);
+}
+
+.signin-mark img {
+  width: 38px;
+  height: 38px;
+  filter: drop-shadow(0 2px 3px rgba(2, 6, 23, 0.35));
+}
+
+.signin-card h1 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.signin-card p {
+  margin: 8px 0 0;
+  text-wrap: balance;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.signin-google {
+  width: 100%;
+  height: 44px;
+  margin-top: 24px;
+  gap: 10px;
+  background: #fff;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.signin-google:hover {
+  background: #e2e8f0;
+}

@@ -1,56 +1,72 @@
 /**
- * Chessboard styles
+ * Chessboard: squares, pieces, highlights, and move animation ghosts.
  */
 
-/* Board container */
 #board {
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+  --board-ring: 0 0 0 1px rgba(148, 163, 184, 0.16);
   position: relative;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
-  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  /* Checkerboard shown before the squares render, so the first paint is never an empty box. */
+  background: repeating-conic-gradient(var(--board-dark) 0 25%, var(--board-light) 0 50%) 0 0 / 25% 25%;
+  box-shadow: var(--board-ring), var(--shadow-board);
   touch-action: none;
   contain: layout paint;
+  transition: box-shadow 180ms ease;
 }
 
-#board.is-loading {
+/* Review mode: an outer ring that never changes the board's size. */
+#board.reviewing-moves {
+  --board-ring: 0 0 0 3px var(--color-review);
+}
+
+#board.is-loading,
+#board.is-loading .square,
+#board.is-loading .piece {
   cursor: wait;
 }
 
+/* Only shows when a load takes long enough to notice. */
 #board.is-loading::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: 8;
   pointer-events: none;
-  background: rgba(15, 23, 42, 0.08);
-  animation: boardLoadingPulse 900ms ease-in-out infinite alternate;
-}
-
-#board.is-loading .square {
-  cursor: wait;
-}
-
-#board.is-loading .piece {
-  cursor: wait;
+  background: rgba(15, 23, 42, 0.4);
+  opacity: 0;
+  animation: boardLoadingPulse 900ms ease-in-out 250ms infinite alternate;
 }
 
 @keyframes boardLoadingPulse {
-  from { opacity: 0.16; }
-  to { opacity: 0.42; }
+  from { opacity: 0.15; }
+  to { opacity: 0.5; }
 }
 
-/* Square */
+/* Squares */
 .square {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   user-select: none;
-  position: relative;
+  -webkit-user-select: none;
+}
+
+.square.light {
+  background: var(--board-light);
+}
+
+.square.dark {
+  background: var(--board-dark);
+}
+
+.square.selected {
+  background-image: linear-gradient(var(--sq-selected), var(--sq-selected));
 }
 
 .direct-haptic-switch {
@@ -71,103 +87,68 @@
   pointer-events: none;
 }
 
-.square.light {
-  background: var(--board-light);
-}
-
-.square.dark {
-  background: var(--board-dark);
-}
-
-.square.selected {
-  box-shadow: inset 0 0 0 3px var(--board-selected);
-}
-
-.square.highlight {
-  box-shadow: inset 0 0 0 3px var(--board-highlight);
-}
-
+/* Last-move highlights: Leela's move (user) and Maia's reply (opponent). */
 .square.last-user-move::before,
 .square.last-opponent-move::before {
   content: '';
   position: absolute;
-  inset: 7%;
-  border-radius: 6px;
-  pointer-events: none;
+  inset: 0;
   z-index: 1;
+  pointer-events: none;
 }
 
 .square.last-user-move::before {
-  background: rgba(16, 185, 129, 0.18);
-  box-shadow: inset 0 0 0 2px rgba(16, 185, 129, 0.42);
+  background: var(--sq-user);
 }
 
 .square.last-opponent-move::before {
-  background: rgba(56, 189, 248, 0.16);
-  box-shadow: inset 0 0 0 2px rgba(56, 189, 248, 0.4);
+  background: var(--sq-opponent);
 }
 
 .square.last-user-move-from::before,
 .square.last-opponent-move-from::before {
-  opacity: 0.58;
-}
-
-.square.last-user-move-to::before,
-.square.last-opponent-move-to::before {
-  opacity: 0.94;
+  opacity: 0.6;
 }
 
 .square.last-user-move.last-opponent-move::before {
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.2) 0%,
-    rgba(16, 185, 129, 0.2) 50%,
-    rgba(56, 189, 248, 0.18) 50%,
-    rgba(56, 189, 248, 0.18) 100%
-  );
-  box-shadow:
-    inset 0 0 0 2px rgba(16, 185, 129, 0.35),
-    inset 0 0 0 4px rgba(56, 189, 248, 0.26);
+  opacity: 1;
+  background: linear-gradient(135deg, var(--sq-user) 50%, var(--sq-opponent) 50%);
 }
 
+/* Leela's move, flashed before it auto-plays after a miss. */
 .square.move-hint::after {
   content: '';
   position: absolute;
-  inset: 12%;
-  border-radius: 6px;
-  border: 2px solid rgba(250, 204, 21, 0.95);
-  box-shadow: 0 0 14px rgba(250, 204, 21, 0.55);
-  pointer-events: none;
+  inset: 0;
   z-index: 4;
-  animation: moveHintPulse 760ms ease forwards;
+  pointer-events: none;
+  background: rgba(250, 204, 21, 0.3);
+  box-shadow: inset 0 0 0 4px var(--sq-hint);
+  animation: moveHintPulse 760ms ease-out forwards;
 }
 
 .square.move-hint-from::after {
-  opacity: 0.7;
-}
-
-.square.move-hint-to::after {
-  inset: 9%;
+  background: rgba(250, 204, 21, 0.14);
 }
 
 @keyframes moveHintPulse {
-  0% { transform: scale(0.88); opacity: 0; }
-  22% { transform: scale(1.04); opacity: 1; }
-  100% { transform: scale(1); opacity: 0; }
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
-/* Piece */
+/* Pieces */
 .piece {
+  position: relative;
+  z-index: 2;
   width: 85%;
   height: 85%;
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
   cursor: grab;
-  transition: transform 0.1s ease;
   touch-action: none;
-  position: relative;
-  z-index: 2;
   backface-visibility: hidden;
   will-change: transform;
 }
@@ -180,10 +161,6 @@
   rotate: 180deg;
 }
 
-.piece.animate {
-  transform: scale(1.1);
-}
-
 .piece.is-dragging-source {
   opacity: 0;
 }
@@ -191,9 +168,9 @@
 .move-ghost,
 .drag-ghost {
   position: fixed;
+  z-index: 9999;
   margin: 0;
   pointer-events: none;
-  z-index: 9999;
   will-change: transform;
   backface-visibility: hidden;
 }
@@ -216,43 +193,23 @@
   background-position: center;
 }
 
-/* Hit indicator on correct move */
+.drag-ghost-piece {
+  transform: scale(1.1);
+  filter: drop-shadow(0 8px 10px rgba(2, 6, 23, 0.35));
+}
+
+/* Ring pulse on the destination square of a correct move. */
 .square .hit {
   position: absolute;
-  width: 80%;
-  height: 80%;
-  border-radius: 10px;
-  border: 3px solid rgba(234, 179, 8, 0.95);
-  box-shadow: 0 0 12px rgba(234, 179, 8, 0.8);
-  animation: hitPulse 380ms ease-out forwards;
-  pointer-events: none;
+  inset: 0;
   z-index: 3;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 4px rgba(250, 204, 21, 0.95);
+  animation: hitPulse 380ms ease-out forwards;
 }
 
 @keyframes hitPulse {
-  0% { transform: scale(0.8); opacity: 0; }
-  50% { transform: scale(1.05); opacity: 1; }
-  100% { transform: scale(1); opacity: 0; }
-}
-
-/* Move review indicator */
-.reviewing-moves {
-  border: 3px solid var(--color-warning) !important;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5) !important;
-}
-
-.reviewing-moves::after {
-  content: 'REVIEWING MOVES - Use ← → arrows to navigate';
-  position: absolute;
-  top: -30px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(245, 158, 11, 0.9);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: bold;
-  white-space: nowrap;
-  z-index: 10;
+  0% { opacity: 0; transform: scale(0.82); }
+  45% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
 }

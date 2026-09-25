@@ -1,0 +1,500 @@
+/**
+ * Game sidebar (accuracy summary, move chart, move list), buttons, and the
+ * game-over card.
+ */
+
+/* ---------------------------------------------------------------------------
+   Panels
+   --------------------------------------------------------------------------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.panel-heading h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Accuracy summary (opens Stats)
+   --------------------------------------------------------------------------- */
+
+.stats-trigger {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) 24px;
+  width: 100%;
+  padding: 0;
+  flex-shrink: 0;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.stats-trigger:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-light);
+}
+
+.stat-tile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 6px 10px 14px;
+}
+
+.stat-tile + .stat-tile {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.stat-label {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stat-value {
+  overflow: hidden;
+  margin-top: 1px;
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 28px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.stat-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.stat-current-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.stat-current-value {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stat-value-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Reserved width keeps values from shifting when an arrow appears. */
+.metric-comparison {
+  display: inline-flex;
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  visibility: hidden;
+}
+
+.metric-comparison[data-direction] {
+  visibility: visible;
+}
+
+.metric-comparison[data-direction="down"] {
+  transform: rotate(180deg);
+}
+
+.metric-comparison[data-tone="better"] {
+  color: var(--color-success);
+}
+
+.metric-comparison[data-tone="worse"] {
+  color: var(--color-error);
+}
+
+.stats-trigger-chevron {
+  align-self: center;
+  color: var(--text-faint);
+  transition: color 150ms ease, transform 150ms ease;
+}
+
+.stats-trigger:hover .stats-trigger-chevron {
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+/* ---------------------------------------------------------------------------
+   Move accuracy chart
+   --------------------------------------------------------------------------- */
+
+.panel-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 12px 14px 8px;
+  overflow: hidden;
+}
+
+.move-chart-heading {
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.move-chart-heading h2 {
+  min-width: 0;
+}
+
+.move-chart-summary {
+  display: grid;
+  grid-template-columns: 52px 92px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.move-chart-stat {
+  display: grid;
+  grid-template-rows: 14px 18px;
+  min-width: 0;
+}
+
+.move-chart-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.panel-metric {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.panel-metric[data-tone="muted"] { color: var(--text-muted); font-weight: 500; }
+.panel-metric[data-tone="good"] { color: var(--color-success); }
+.panel-metric[data-tone="ok"] { color: var(--color-warning); }
+.panel-metric[data-tone="bad"] { color: var(--color-error); }
+.panel-metric[data-tone="best"] { color: var(--sq-hint); }
+
+/* Canvas is absolutely positioned so Chart.js never feeds back into flex sizing. */
+.chart-container {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.chart-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Move list and review controls
+   --------------------------------------------------------------------------- */
+
+.panel-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 10px 10px 10px 14px;
+}
+
+.move-review-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.review-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.review-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+.review-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.review-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px 0 8px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.review-status[hidden] {
+  display: none;
+}
+
+.review-status:hover {
+  background: rgba(245, 158, 11, 0.26);
+  color: #fcd34d;
+}
+
+/* Fixed height beside the board, so a new line of moves never resizes the chart. */
+.pgn-moves {
+  height: 72px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.pgn-moves::-webkit-scrollbar {
+  display: none;
+}
+
+.pgn-moves.is-clipped {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px);
+}
+
+.move-list {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pgn-pair {
+  display: inline-flex;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.pgn-num {
+  margin-right: 1px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.pgn-move {
+  padding: 1px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.pgn-move:hover {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text-primary);
+}
+
+.pgn-move.is-current,
+.pgn-move.is-current:hover {
+  background: var(--color-review);
+  color: #1c1204;
+  font-weight: 600;
+}
+
+.pgn-empty {
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.btn-primary {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--color-brand-dark);
+}
+
+.btn-secondary {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background: rgba(148, 163, 184, 0.18);
+  border-color: var(--border-medium);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ---------------------------------------------------------------------------
+   Game-over panel (top of the sidebar, never over the final position)
+   --------------------------------------------------------------------------- */
+
+.completion-panel {
+  display: grid;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 14px;
+  border-color: rgba(134, 239, 172, 0.26);
+  background:
+    linear-gradient(180deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0) 70%),
+    var(--surface);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 180ms ease, transform 240ms var(--ease-out);
+}
+
+.completion-panel[hidden] {
+  display: none;
+}
+
+.completion-panel.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.completion-panel[data-result="over"] {
+  border-color: var(--border-light);
+  background: var(--surface);
+}
+
+.completion-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.completion-kicker {
+  color: #86efac;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.completion-panel[data-result="over"] .completion-kicker {
+  color: var(--text-muted);
+}
+
+.completion-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.completion-summary {
+  min-height: 18px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.completion-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------------------
+   Portrait / stacked layout
+   --------------------------------------------------------------------------- */
+
+@media not all and (orientation: landscape) and (min-width: 600px) {
+  .panel-chart {
+    flex: none;
+    height: clamp(180px, 46vw, 260px);
+  }
+
+  .pgn-moves {
+    height: auto;
+    max-height: 96px;
+  }
+}

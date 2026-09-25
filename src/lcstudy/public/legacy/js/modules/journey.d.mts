@@ -14,3 +14,7 @@ export function buildCurrentGamePoint(accuracies: number[], moveTimesMs: number[
 export function journeyColor(progress: number): string;
 export function journeyArrows(points: JourneyPoint[], pixels: { x: number; y: number }[], compact?: boolean): { x: number; y: number; dx: number; dy: number; progress: number }[];
 export function createJourneyChartConfig(journey: AccuracyJourney, compact?: boolean, currentGame?: CurrentGamePoint | null): ChartConfiguration<'scatter', (JourneyPoint | CurrentGamePoint)[]>;
+export interface NiceScale { min: number; max: number; step: number; ticks: number[] }
+export function niceStep(span: number, targetTicks?: number): number;
+export function niceScale(low: number, high: number, options?: { targetTicks?: number; floor?: number; ceiling?: number; minSpan?: number }): NiceScale;
+export function pinToScale<T extends { x: number; y: number }>(point: T, x: { min: number; max: number }, y: { min: number; max: number }): T & { actualX?: number; actualY?: number; rotation?: number };

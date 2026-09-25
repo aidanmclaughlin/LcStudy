@@ -1,5 +1,5 @@
 /**
- * Base styles and resets
+ * Resets and global defaults.
  */
 
 @tailwind base;
@@ -8,39 +8,43 @@
 
 html {
   min-height: 100%;
-  margin: 0;
-  padding: 0;
   overflow-x: hidden;
+  background: var(--bg-primary);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
-  padding: 0;
   overflow-x: hidden;
-  overflow-y: auto;
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
   color: var(--text-secondary);
   background: var(--app-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar hiding utility */
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
+button {
+  touch-action: manipulation;
 }
 
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+:focus-visible {
+  outline: 2px solid var(--color-brand-light);
+  outline-offset: 2px;
 }
 
-/* Animation bounce for numbers */
-.num-bounce {
-  animation: numBounce 260ms ease-out;
-}
-
-@keyframes numBounce {
-  0% { transform: translateY(-2px) scale(0.98); }
-  60% { transform: translateY(0) scale(1.06); }
-  100% { transform: translateY(0) scale(1); }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

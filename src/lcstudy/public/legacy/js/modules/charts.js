@@ -5,7 +5,8 @@
 
 import { buildCurrentGamePoint, recentPerformance } from './journey.mjs';
 import { getMoveTimesMs } from './timeclock.js';
-import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS } from './constants.js';
+import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS, ACCURACY_COLORS } from './constants.js';
+import { updateMoveFeedback } from './effects.js';
 import {
   getMoveAccuracyChart,
   setMoveAccuracyChart,
@@ -55,25 +56,36 @@ function initMoveAccuracyChart() {
     data: {
       labels: [],
       datasets: [{
-        label: 'Move Accuracy',
+        label: 'Move accuracy',
         data: [],
-        backgroundColor: '#22c55e',
-        borderColor: 'transparent',
+        backgroundColor: ACCURACY_COLORS.good,
         borderWidth: 0,
-        borderRadius: 4,
-        maxBarThickness: 32,
-        borderSkipped: false
+        borderRadius: 3,
+        // Square bottoms sit on the baseline; a 0% move still shows as a stub.
+        borderSkipped: 'start',
+        minBarLength: 3,
+        barPercentage: 0.78,
+        categoryPercentage: 0.9,
+        maxBarThickness: 18
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: { duration: 180 },
       layout: {
-        padding: { left: 2, right: 10, top: 10, bottom: 2 }
+        padding: { left: 0, right: 2, top: 8, bottom: 0 }
       },
       plugins: {
         legend: { display: false },
-        tooltip: CHART_TOOLTIP_OPTIONS
+        tooltip: {
+          ...CHART_TOOLTIP_OPTIONS,
+          displayColors: false,
+          callbacks: {
+            title: items => `Move ${items[0].dataIndex + 1}`,
+            label: item => `${Number(item.raw).toFixed(1)}% accuracy`
+          }
+        }
       },
       scales: {
         y: {
@@ -82,10 +94,8 @@ function initMoveAccuracyChart() {
           max: 100,
           ticks: {
             ...CHART_SCALE_OPTIONS.ticks,
-            maxTicksLimit: 5,
-            callback: function(value) {
-              return `${value.toFixed(0)}%`;
-            }
+            stepSize: 50,
+            callback: value => `${value}%`
           }
         },
         x: { display: false }
@@ -163,21 +173,16 @@ function updateMoveAccuracyChart() {
     }
   }
 
-  // Generate colors by accuracy band.
+  // Color by accuracy band; while reviewing one of your moves, the other bars dim.
   const colors = moveAccuracies.map((accuracy, index) => {
-    const isCurrentMove = isReviewingMoves && currentUserMoveIndex === index;
-    if (isCurrentMove) return '#60a5fa';
-    return accuracy >= 90 ? '#22c55e' : accuracy >= 65 ? '#f59e0b' : '#ef4444';
+    const color = accuracy >= 90 ? ACCURACY_COLORS.good : accuracy >= 65 ? ACCURACY_COLORS.ok : ACCURACY_COLORS.bad;
+    const dimmed = isReviewingMoves && currentUserMoveIndex !== -1 && currentUserMoveIndex !== index;
+    return dimmed ? `${color}4d` : color;
   });
 
-  const borderColors = colors.map(color =>
-    color === '#60a5fa' ? '#2563eb' : color
-  );
-
-  chart.data.labels = moveAccuracies.map(() => '');
+  chart.data.labels = moveAccuracies.map((_, index) => String(index + 1));
   chart.data.datasets[0].data = moveAccuracies;
   chart.data.datasets[0].backgroundColor = colors;
-  chart.data.datasets[0].borderColor = borderColors;
 
   chart.update('none');
 }
@@ -220,11 +225,9 @@ export function updateStatistics() {
   updateComparison('accuracy-comparison', gameAccuracy, baseline.accuracy, false, 1);
   updateComparison('pace-comparison', current?.x ?? null, baseline.secondsPerMove, true, 2);
 
-  const moveElement = document.getElementById('move-feedback');
-  if (moveElement && moveAccuracies.length === 0) {
-    moveElement.textContent = '--';
-    moveElement.style.color = '#94a3b8';
-    moveElement.classList.add('stat-value--muted');
+  if (moveAccuracies.length === 0) {
+    const moveElement = document.getElementById('move-feedback');
+    if (moveElement && moveElement.textContent !== 'Loading') updateMoveFeedback(null);
   }
 }
 

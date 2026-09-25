@@ -40,15 +40,22 @@ export const CONFETTI_COLORS = ['#f59e0b', '#fbbf24', '#f87171', '#34d399', '#60
 /** Full confetti colors for game completion */
 export const CELEBRATION_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd', '#98d8c8', '#f7dc6f'];
 
+/** Move accuracy bands: >= 90 good, >= 65 ok, otherwise bad */
+export const ACCURACY_COLORS = {
+  good: '#22c55e',
+  ok: '#f59e0b',
+  bad: '#ef4444'
+};
+
 /** Chart.js common scale options */
 export const CHART_SCALE_OPTIONS = {
   grid: {
-    color: 'rgba(148, 163, 184, 0.12)',
-    drawBorder: false
+    color: 'rgba(148, 163, 184, 0.1)',
+    drawTicks: false
   },
   border: { display: false },
   ticks: {
-    color: '#94a3b8',
+    color: '#64748b',
     font: { size: 10, weight: '500' },
     padding: 6
   }
@@ -56,13 +63,14 @@ export const CHART_SCALE_OPTIONS = {
 
 /** Chart.js tooltip styling */
 export const CHART_TOOLTIP_OPTIONS = {
-  backgroundColor: 'rgba(15, 23, 42, 0.9)',
-  titleColor: '#f1f5f9',
+  backgroundColor: 'rgba(15, 23, 42, 0.96)',
+  titleColor: '#f8fafc',
   bodyColor: '#cbd5e1',
-  borderColor: 'rgba(148, 163, 184, 0.2)',
+  borderColor: 'rgba(148, 163, 184, 0.24)',
   borderWidth: 1,
   cornerRadius: 8,
-  padding: 10
+  padding: 8,
+  caretSize: 5
 };
 
 /**

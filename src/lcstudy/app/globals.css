@@ -1,14 +1,12 @@
 /**
- * LcStudy Global Styles
- * Imports all style modules in correct order.
+ * LcStudy global styles, in cascade order.
  */
 
 @import './styles/variables.css';
 @import './styles/base.css';
 @import './styles/layout.css';
 @import './styles/board.css';
-@import './styles/panels.css';
-@import './styles/buttons.css';
+@import './styles/game.css';
 @import './styles/effects.css';
-@import './styles/auth.css';
 @import './styles/stats.css';
+@import './styles/signin.css';

@@ -1,42 +1,36 @@
 /**
- * Layout system - grid, sidebar, responsive
+ * Game page layout: board + sidebar.
+ *
+ * Landscape screens size the board to the viewport so play never scrolls, with
+ * the sidebar matching its height. Portrait screens stack the sidebar below.
  */
 
-/* Root wrapper */
 .layout-root {
-  width: 100%;
+  --page-pad: clamp(12px, 2.5vmin, 32px);
   min-height: 100vh;
-  padding: clamp(18px, 3vw, 36px);
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
-  box-sizing: border-box;
-  max-width: none;
-}
-
-/* Main layout grid */
-.layout {
-  --board-size: min(70vw, 90vh);
-  display: flex;
-  gap: clamp(20px, 4vw, 52px);
   align-items: flex-start;
-  width: 100%;
-  max-width: 1200px;
+  padding: var(--page-pad);
 }
 
-/* Board column */
-.board-column {
-  flex: 1 1 0;
+.layout {
+  width: 100%;
+  max-width: 720px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.board-column {
+  min-width: 0;
 }
 
 .board-shell {
   position: relative;
-  width: min(var(--board-size), 640px);
+  width: 100%;
   aspect-ratio: 1 / 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .board-surface {
@@ -44,59 +38,39 @@
   height: 100%;
 }
 
-/* Sidebar */
 .sidebar {
-  flex: 0 0 min(28vw, 360px);
-  min-width: 280px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: clamp(12px, 1.6vh, 20px);
-  overflow: hidden;
-  height: min(var(--board-size), 640px);
+  gap: 12px;
 }
 
-/* ============================================
-   Responsive Breakpoints
-   ============================================ */
-
-@media (max-width: 1100px) {
-  .layout {
-    gap: clamp(16px, 5vw, 36px);
-  }
-}
-
-@media (max-width: 960px) {
-  .layout {
-    --board-size: min(92vw, 520px);
-    flex-direction: column;
+@media (orientation: landscape) and (min-width: 600px) {
+  .layout-root {
     align-items: center;
   }
 
-  .board-column {
-    width: 100%;
-  }
-
-  .board-shell {
-    width: var(--board-size);
+  .layout {
+    --sidebar-width: clamp(288px, 25vw, 360px);
+    --layout-gap: clamp(16px, 2.2vw, 32px);
+    --board-size: min(
+      100vh - 2 * var(--page-pad),
+      100vw - 2 * var(--page-pad) - var(--sidebar-width) - var(--layout-gap),
+      880px
+    );
+    --board-size: min(
+      100dvh - 2 * var(--page-pad),
+      100vw - 2 * var(--page-pad) - var(--sidebar-width) - var(--layout-gap),
+      880px
+    );
+    width: auto;
     max-width: none;
+    display: grid;
+    grid-template-columns: var(--board-size) var(--sidebar-width);
+    gap: var(--layout-gap);
   }
 
   .sidebar {
-    flex: 1 1 auto;
-    width: var(--board-size);
-    min-width: 0;
-    max-width: var(--board-size);
-    height: auto;
-    gap: clamp(14px, 3vh, 22px);
-  }
-}
-
-@media (max-width: 600px) {
-  .layout-root {
-    padding: 10px 12px 30px;
-  }
-
-  .sidebar {
-    gap: 14px;
+    height: var(--board-size);
   }
 }

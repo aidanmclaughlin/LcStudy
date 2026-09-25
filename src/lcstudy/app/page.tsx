@@ -6,17 +6,16 @@
  * loaded as an ES module (main.js).
  *
  * Layout:
- * - Board column: Chessboard powered by chessboard-element
- * - Sidebar: Accuracy summary with Stats access, per-move chart, move history
+ * - Board column: Chessboard (rendered by board.js)
+ * - Sidebar: Game-over panel, accuracy summary with Stats access, per-move chart, move list
  */
 
 import Script from "next/script";
 import { redirect } from "next/navigation";
+import { ArrowUp, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { getAuthSession } from "@/lib/auth";
-import { CompletionSignOutButton } from "@/components/auth-controls";
 import { StatsView } from "@/components/stats-view";
-import { ArrowUp } from "lucide-react";
 
 export default async function HomePage() {
   const session = await getAuthSession();
@@ -29,48 +28,41 @@ export default async function HomePage() {
     <>
       <Script src="/legacy/js/main.js" strategy="afterInteractive" type="module" />
 
-      <div className="wrap layout-root">
+      <main className="layout-root">
         <div className="layout">
           {/* Chess Board */}
           <div className="board-column">
             <div className="board-shell">
               <div id="board" className="board-surface" />
-              <div
-                id="completion-overlay"
-                className="completion-overlay"
-                aria-live="polite"
-                aria-hidden="true"
-                hidden
-              >
-                <div className="completion-dock">
-                  <div className="completion-copy">
-                    <span className="completion-kicker">Checkmate</span>
-                    <span className="completion-title">Game complete</span>
-                  </div>
-                  <div className="completion-actions">
-                    <button
-                      id="completion-review"
-                      className="btn btn-sm completion-review"
-                      type="button"
-                    >
-                      Review
-                    </button>
-                    <button
-                      id="completion-new"
-                      className="btn btn-sm"
-                      type="button"
-                    >
-                      New Game
-                    </button>
-                    <CompletionSignOutButton />
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
           {/* Sidebar Panels */}
           <div className="sidebar">
+            {/* Game-over panel: beside the board so the final position stays visible */}
+            <section
+              id="completion-overlay"
+              className="panel completion-panel"
+              aria-live="polite"
+              aria-labelledby="completion-title"
+              aria-hidden="true"
+              hidden
+            >
+              <div className="completion-copy">
+                <span className="completion-kicker">Checkmate</span>
+                <h2 id="completion-title" className="completion-title">Game complete</h2>
+                <p id="completion-summary" className="completion-summary" />
+              </div>
+              <div className="completion-actions">
+                <button id="completion-review" className="btn btn-secondary" type="button">
+                  Review
+                </button>
+                <button id="completion-new" className="btn btn-primary" type="button">
+                  New game
+                </button>
+              </div>
+            </section>
+
             {/* Accuracy Summary Panel */}
             <StatsView>
               <span className="stat-tile">
@@ -98,57 +90,51 @@ export default async function HomePage() {
             </StatsView>
 
             {/* Move Accuracy Chart Panel */}
-            <div className="panel panel-chart">
-              <div className="panel-section-heading move-chart-heading">
-                <h2>Move accuracy</h2>
+            <section className="panel panel-chart" aria-labelledby="move-chart-title">
+              <div className="panel-heading move-chart-heading">
+                <h2 id="move-chart-title">Move accuracy</h2>
                 <span className="move-chart-summary">
                   <span className="move-chart-stat">
                     <span className="move-chart-label">Game</span>
                     <strong id="game-accuracy" className="panel-metric" title="Current game accuracy">--</strong>
                   </span>
                   <span className="move-chart-stat">
-                    <span className="move-chart-label">Move</span>
-                    <strong id="move-feedback" className="panel-metric stat-value--muted" role="status" aria-atomic="true">--</strong>
+                    <span id="move-feedback-label" className="move-chart-label">Move</span>
+                    <strong id="move-feedback" className="panel-metric" data-tone="muted" role="status" aria-atomic="true">--</strong>
                   </span>
                 </span>
               </div>
               <div className="chart-container">
-                <canvas id="move-accuracy-chart" />
+                <canvas id="move-accuracy-chart" role="img" aria-label="Accuracy of each move in this game" />
               </div>
-            </div>
+            </section>
 
-            {/* Move History Panel */}
-            <div className="panel panel-history">
-              <div className="panel-section-heading">
-                <h2>Recent Moves</h2>
-                <div className="move-review-controls" aria-label="Move review controls">
-                  <button
-                    id="review-prev"
-                    className="btn btn-icon review-button"
-                    type="button"
-                    aria-label="Previous move"
-                  >
-                    <span className="review-icon review-icon-prev" aria-hidden="true" />
+            {/* Move List Panel */}
+            <section className="panel panel-history" aria-labelledby="move-list-title">
+              <div className="panel-heading">
+                <h2 id="move-list-title">Moves</h2>
+                <button id="review-exit" className="review-status" type="button" aria-label="Exit review and return to the game" hidden>
+                  Reviewing
+                  <X size={12} strokeWidth={2.5} aria-hidden="true" />
+                </button>
+                <div className="move-review-controls" role="group" aria-label="Move review controls">
+                  <button id="review-prev" className="review-button" type="button" aria-label="Previous move" disabled>
+                    <ChevronLeft size={16} aria-hidden="true" />
                   </button>
-                  <button
-                    id="review-next"
-                    className="btn btn-icon review-button"
-                    type="button"
-                    aria-label="Next move"
-                  >
-                    <span className="review-icon review-icon-next" aria-hidden="true" />
+                  <button id="review-next" className="review-button" type="button" aria-label="Next move" disabled>
+                    <ChevronRight size={16} aria-hidden="true" />
                   </button>
                 </div>
               </div>
               <div id="pgn-moves" className="pgn-moves">
-                <div id="move-list" className="meta">
-                  Game not started
+                <div id="move-list" className="move-list">
+                  <span className="pgn-empty">No moves yet</span>
                 </div>
               </div>
-            </div>
+            </section>
           </div>
         </div>
-      </div>
+      </main>
     </>
   );
 }

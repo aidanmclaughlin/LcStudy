@@ -122,19 +122,37 @@ test('current game pairs submitted accuracy with submitted thinking time', () =>
   assert.equal(buildCurrentGamePoint([101], [1000]), null);
 });
 
-test('live marker expands axes without changing the recorded frontier', () => {
+test('live marker stays on the chart without rescaling the journey or its frontier', () => {
   const journey = buildAccuracyJourney(Array(100).fill(game(80, 3)));
   const current = buildCurrentGamePoint([100], [1000]);
   const config = createJourneyChartConfig(journey, false, current);
-  assert.deepEqual(config.data.datasets.find(dataset => dataset.label === 'Current game').data, [current]);
+  const baseline = createJourneyChartConfig(journey);
+  const [marker] = config.data.datasets.find(dataset => dataset.label === 'Current game').data;
   assert.deepEqual(config.data.datasets.find(dataset => dataset.label === 'Observed frontier').data, journey.frontier);
   assert.equal(journey.frontier[0].y, 80);
-  assert.ok(config.options.scales.x.min < current.x);
-  assert.equal(config.options.scales.y.max, 100);
-  assert.equal(config.options.plugins.tooltip.callbacks.title([{ raw: current }]), 'Current game / 1 move');
+  for (const axis of ['x', 'y']) {
+    assert.equal(config.options.scales[axis].min, baseline.options.scales[axis].min);
+    assert.equal(config.options.scales[axis].max, baseline.options.scales[axis].max);
+  }
+  // Pinned to the top-left corner, pointing up and left toward the real value.
+  assert.deepEqual([marker.x, marker.y], [config.options.scales.x.min, config.options.scales.y.max]);
+  assert.deepEqual([marker.actualX, marker.actualY], [current.x, current.y]);
+  assert.equal(config.data.datasets.find(dataset => dataset.label === 'Current game').pointRotation, -45);
+  assert.equal(config.options.plugins.tooltip.callbacks.title([{ raw: marker }]), 'Current game · 1 move');
+  assert.equal(config.options.plugins.tooltip.callbacks.label({ raw: marker }), '100.0% accuracy · 1.00s per move');
+  const inside = buildCurrentGamePoint([80, 80], [3000, 3000]);
+  assert.deepEqual(createJourneyChartConfig(journey, false, inside).data.datasets[0].data, [inside]);
   const emptyHistory = createJourneyChartConfig(buildAccuracyJourney([]), true, current);
-  assert.equal(emptyHistory.data.datasets.find(dataset => dataset.label === 'Current game').data.length, 1);
+  assert.deepEqual(emptyHistory.data.datasets.find(dataset => dataset.label === 'Current game').data, [current]);
   assert.deepEqual(emptyHistory.data.datasets.find(dataset => dataset.label === 'Observed frontier').data, []);
+});
+
+test('axes end on round ticks', () => {
+  const config = createJourneyChartConfig(buildAccuracyJourney(Array.from({ length: 150 }, (_, i) => game(83 + (i % 7), 4.3 + (i % 5) * 0.7))));
+  for (const axis of ['x', 'y']) {
+    const { min, max, ticks: { stepSize } } = config.options.scales[axis];
+    for (const value of [min, max]) assert.ok(Math.abs(value / stepSize - Math.round(value / stepSize)) < 1e-9, `${axis} ${value} / ${stepSize}`);
+  }
 });
 
 test('journey colors follow time even when accuracy and pace reverse', () => {

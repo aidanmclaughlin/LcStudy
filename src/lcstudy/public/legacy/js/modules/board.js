@@ -770,24 +770,5 @@ export function initBoard() {
  * @param {boolean} reviewing - Whether in review mode
  */
 export function setReviewingIndicator(reviewing) {
-  const boardEl = getBoardElement();
-  if (!boardEl) return;
-
-  const completionOverlay = document.getElementById('completion-overlay');
-
-  if (reviewing) {
-    boardEl.classList.add('reviewing-moves');
-    if (completionOverlay?.classList.contains('is-visible')) {
-      completionOverlay.hidden = true;
-      completionOverlay.setAttribute('aria-hidden', 'true');
-      completionOverlay.setAttribute('inert', '');
-    }
-  } else {
-    boardEl.classList.remove('reviewing-moves');
-    if (completionOverlay?.classList.contains('is-visible')) {
-      completionOverlay.hidden = false;
-      completionOverlay.setAttribute('aria-hidden', 'false');
-      completionOverlay.removeAttribute('inert');
-    }
-  }
+  getBoardElement()?.classList.toggle('reviewing-moves', Boolean(reviewing));
 }

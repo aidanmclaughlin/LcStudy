@@ -12,7 +12,10 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
     const points = range === "recent" ? journey.points.slice(-100) : journey.points;
     return { ...journey, points, frontier: paretoFrontier(points.filter(point => !point.provisional)) };
   }, [journey, range]);
+  const latest = visible.points.at(-1);
+  const hasPoints = Boolean(latest || currentGame);
   useEffect(() => {
+    if (!hasPoints) return;
     let chart: Chart | undefined;
     let cancelled = false;
     setError(false);
@@ -20,9 +23,12 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
       if (!cancelled && canvas.current) chart = new ChartJS(canvas.current, createJourneyChartConfig(visible, false, currentGame));
     }).catch(() => { if (!cancelled) setError(true); });
     return () => { cancelled = true; chart?.destroy(); };
-  }, [visible, currentGame]);
-  const latest = visible.points.at(-1);
-  const hasPoints = Boolean(latest || currentGame);
+  }, [visible, currentGame, hasPoints]);
+
+  if (!hasPoints || error) {
+    return <div className="stats-empty stats-empty--chart" role="status">{error ? "Chart unavailable" : "No timed games yet"}</div>;
+  }
+
   return <div className="journey-figure">
     <div className="journey-toolbar">
       <div className="stats-chart-legend">
@@ -37,16 +43,15 @@ export function JourneyChart({ journey, currentGame = null }: { journey: Accurac
       </div>
     </div>
     <div className="journey-canvas">
-      <canvas ref={canvas} role="img" aria-label="Accuracy versus thinking seconds per move; journey runs from older blue to newer gold, with direction arrows, observed Pareto frontier, and current game" hidden={!hasPoints || error} />
-      {(!hasPoints || error) && <div className="stats-empty" role="status">{error ? "Chart unavailable" : "No timed game history yet"}</div>}
+      <canvas ref={canvas} role="img" aria-label="Accuracy versus thinking seconds per move; journey runs from older blue to newer gold, with direction arrows, observed Pareto frontier, and current game" />
     </div>
     <div className="journey-caption">
-      <span>{latest ? `Games ${latest.startGame}-${latest.game}${latest.provisional ? ` / ${latest.games} of ${journey.windowSize} / provisional` : ""}` : `${journey.windowSize}-game windows`}</span>
-      <span>{latest ? `${latest.y.toFixed(1)}% / ${latest.x.toFixed(2)}s per move` : "--"}</span>
+      <span>{latest ? `Games ${latest.startGame}–${latest.game}${latest.provisional ? ` · ${latest.games} of ${journey.windowSize} · provisional` : ""}` : `${journey.windowSize}-game windows`}</span>
+      <span>{latest ? `${latest.y.toFixed(1)}% · ${latest.x.toFixed(2)}s per move` : "--"}</span>
     </div>
     {currentGame && <div className="journey-caption journey-current">
-      <span>Current game / {currentGame.moves} {currentGame.moves === 1 ? "move" : "moves"}</span>
-      <span>{currentGame.y.toFixed(1)}% / {currentGame.x.toFixed(2)}s per move</span>
+      <span>Current game · {currentGame.moves} {currentGame.moves === 1 ? "move" : "moves"}</span>
+      <span>{currentGame.y.toFixed(1)}% · {currentGame.x.toFixed(2)}s per move</span>
     </div>}
   </div>;
 }

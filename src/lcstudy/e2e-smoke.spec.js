@@ -715,7 +715,7 @@ test.describe('desktop checkmate', () => {
     await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
     await expect(page.locator('#completion-overlay')).toBeVisible();
     await expect(page.locator('#completion-new')).toBeVisible();
-    await expect(page.locator('.completion-signout')).toBeVisible();
+    await expect(page.locator('#completion-new')).toBeFocused();
     await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
     await expect.poll(() => completeCalls).toBe(1);
     await page.waitForTimeout(3200);
@@ -731,7 +731,8 @@ test.describe('desktop checkmate', () => {
 
     await page.locator('#completion-review').click();
     await page.waitForTimeout(300);
-    await expect(page.locator('#completion-overlay')).toBeHidden();
+    // The game-over panel sits beside the board, so it stays available while reviewing.
+    await expect(page.locator('#completion-overlay')).toBeVisible();
     await expect(page.locator('#board')).toHaveClass(/reviewing-moves/);
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
@@ -742,7 +743,7 @@ test.describe('desktop checkmate', () => {
     await page.waitForTimeout(300);
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
-    await expect(page.locator('#completion-overlay')).toBeHidden();
+    await expect(page.locator('#completion-overlay')).toBeVisible();
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(300);
     await expect(page.locator('#board')).not.toHaveClass(/reviewing-moves/);

@@ -10,7 +10,7 @@ import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
 import { useState, type ReactNode } from "react";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { JourneyChart } from "./journey-chart";
-import type { CurrentGamePoint, RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
+import { niceScale, type CurrentGamePoint, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
 
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 100;
@@ -37,7 +37,7 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
     <main className="stats-page">
       <header className="stats-header">
         <h1>Stats</h1>
-        <span className="stats-header-count">{formatInteger(overview.totalGames)} games</span>
+        <span className="stats-header-count">{formatInteger(overview.totalGames)} {overview.totalGames === 1 ? "game" : "games"}</span>
         {!embedded && <a className="stats-back" href="/"><ArrowLeft size={16} aria-hidden="true" />Game</a>}
       </header>
 
@@ -85,12 +85,12 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
                 </dl>
               </section>
               <section className="stats-section">
-                <SectionHeading title={`Road to ${TARGET_ACCURACY}%`} meta="10-game target / estimate" />
+                <SectionHeading title={`Road to ${TARGET_ACCURACY}%`} meta="10-game average · estimate" />
                 {progress.forecast ? <div className="forecast-layout">
                   <div><strong className="stats-feature-value">{formatNullableHours(progress.forecast.remainingHours)}</strong><span className="stats-feature-label">estimated remaining</span></div>
                   <dl className="stats-definition-list">
                     <Definition label="Games left" value={formatInteger(progress.forecast.remainingGames)} />
-                    <Definition label="80% range / games" value={`${formatInteger(progress.forecast.remainingGamesLow)}-${formatInteger(progress.forecast.remainingGamesHigh)}`} />
+                    <Definition label="80% range / games" value={`${formatInteger(progress.forecast.remainingGamesLow)}–${formatInteger(progress.forecast.remainingGamesHigh)}`} />
                   </dl>
                 </div> : <EmptyState label="No scored games yet" />}
               </section>
@@ -109,24 +109,24 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
             </div>
           </section>
           <Details title="Opening lines">
-            <Breakdown title="Accuracy by line" rows={skill.openings} />
+            <Breakdown title="Accuracy by line" rows={skill.openings} split />
           </Details>
           <Details title="Data coverage">
-            <SectionHeading title="Sample" meta={`Lifetime / ${formatInteger(overview.totalGames)} games / ${formatInteger(overview.totalMoves)} moves`} />
+            <SectionHeading title="Sample" meta={`Lifetime · ${formatInteger(overview.totalGames)} games · ${formatInteger(overview.totalMoves)} moves`} />
             <div className="coverage-grid">
               <CoverageMetric label="Lichess openings" value={`${formatInteger(coverage.lichessGames)} games`} percent={coverage.lichessShare} />
-              <CoverageMetric label="Color" value={`${coverage.whiteGames} W / ${coverage.blackGames} B`} percent={coverage.colorCoverage} />
-              <CoverageMetric label="Difficulty" value={`${coverage.difficultyGames} games`} percent={progress.difficultyCoverage} />
-              <CoverageMetric label="Openings" value={`${coverage.openingLines} lines`} percent={coverage.openingCoverage} />
+              <CoverageMetric label="Color" value={`${formatInteger(coverage.whiteGames)} White · ${formatInteger(coverage.blackGames)} Black`} percent={coverage.colorCoverage} />
+              <CoverageMetric label="Difficulty" value={`${formatInteger(coverage.difficultyGames)} games`} percent={progress.difficultyCoverage} />
+              <CoverageMetric label="Openings" value={`${formatInteger(coverage.openingLines)} lines`} percent={coverage.openingCoverage} />
             </div>
           </Details>
         </>}
 
         {tab === "timing" && <section className="stats-band">
-          <SectionHeading title="Thinking time" meta={`${recentSample} / ${formatInteger(timing.timedGames)} timed`} />
+          <SectionHeading title="Thinking time" meta={`${recentSample} · ${formatInteger(timing.timedGames)} timed`} />
           <div className="stats-inline-metrics">
             <InlineMetric label="Median move" value={formatDuration(timing.medianMoveMs)} />
-            <InlineMetric label="Middle 50%" value={`${formatDuration(timing.moveP25Ms)}-${formatDuration(timing.moveP75Ms)}`} />
+            <InlineMetric label="Middle 50%" value={timing.moveP25Ms === null ? "--" : `${formatDuration(timing.moveP25Ms)}–${formatDuration(timing.moveP75Ms)}`} />
             <InlineMetric label="Late-game accuracy change" value={timing.fatigueDelta === null ? "--" : formatSignedPoints(timing.fatigueDelta)} />
             <InlineMetric label="Time association / 2x" value={formatSignedPoints(timing.tempoEffect)} />
           </div>
@@ -158,36 +158,35 @@ function Metric({
 }
 
 function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
-  if (points.length === 0) return <EmptyState label="Available after 100 games with current scoring" />;
+  if (points.length === 0) return <EmptyState label="Available after 100 games with current scoring" chart />;
 
   const values = points.map(point => point.accuracy);
   const low = Math.min(...values), high = Math.max(...values);
-  const padding = Math.max(0.5, (high - low) * 0.1);
-  const minimum = Math.max(0, low - padding), maximum = Math.min(100, high + padding);
+  const padding = Math.max(0.25, (high - low) * 0.06);
+  const scale = niceScale(low - padding, high + padding, { targetTicks: 4, floor: 0, ceiling: 100 });
+  const tickDigits = scale.step >= 1 ? 0 : 1;
   const firstGame = points[0].game, lastGame = points.at(-1)!.game;
   const x = (index: number) => (
     points.length === 1 ? CHART_WIDTH / 2 : (points[index].game - firstGame) * CHART_WIDTH / (lastGame - firstGame)
   );
   const y = (value: number) => (
-    (maximum - value) * CHART_HEIGHT / (maximum - minimum || 1)
+    (scale.max - value) * CHART_HEIGHT / (scale.max - scale.min || 1)
   );
-  const linePath = points
-    .map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(2)},${y(point.accuracy).toFixed(2)}`)
-    .join(" ") + (points.length === 1 ? "h0.01" : "");
-  const yTicks = Array.from({ length: 4 }, (_, index) => (
-    minimum + (maximum - minimum) * index / 3
-  ));
+  const coordinates = points.map((point, index) => `${x(index).toFixed(2)},${y(point.accuracy).toFixed(2)}`);
+  const linePath = `M${coordinates.join(" L")}${points.length === 1 ? "h0.01" : ""}`;
+  const areaPath = `${linePath} L${x(points.length - 1).toFixed(2)},${CHART_HEIGHT} L${x(0).toFixed(2)},${CHART_HEIGHT} Z`;
   const xTicks = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
-  const yAxisTicks = yTicks.map(tick => ({
+  const yAxisTicks = scale.ticks.map(tick => ({
     key: String(tick),
-    label: formatPercent(tick),
+    label: formatPercent(tick, tickDigits),
     position: y(tick)
   }));
   const xAxisTicks = xTicks.map((index) => ({
     key: String(index),
-    label: `Game ${points[index].game}`,
+    label: `Game ${formatInteger(points[index].game)}`,
     position: x(index)
   }));
+  const last = points.length - 1;
 
   return (
     <ChartFrame
@@ -198,8 +197,16 @@ function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
       description="Average accuracy of the most recent 100 games scored under the current search-based grading system, with each game weighted equally. Earlier policy-based scores are excluded."
       yTicks={yAxisTicks}
       xTicks={xAxisTicks}
+      overlay={<span className="stats-chart-dot" style={{ left: `${x(last) / CHART_WIDTH * 100}%`, top: `${y(points[last].accuracy)}%` }} />}
     >
-        <path className="stats-accuracy-chart-line" d={linePath} style={points.length === 1 ? { strokeWidth: 6 } : undefined} />
+      <defs>
+        <linearGradient id="stats-accuracy-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="#a78bfa" stopOpacity="0.22" />
+          <stop offset="1" stopColor="#a78bfa" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {points.length > 1 && <path className="stats-accuracy-chart-area" d={areaPath} />}
+      <path className="stats-accuracy-chart-line" d={linePath} style={points.length === 1 ? { strokeWidth: 6 } : undefined} />
     </ChartFrame>
   );
 }
@@ -215,7 +222,7 @@ function SectionHeading({ title, meta }: { title: string; meta?: string }) {
 
 function Details({ title, children }: { title: string; children: ReactNode }) {
   return <details className="stats-details">
-    <summary>{title}<ChevronDown size={16} aria-hidden="true" /></summary>
+    <summary>{title}<ChevronDown size={18} aria-hidden="true" /></summary>
     <div className="stats-details-body">{children}</div>
   </details>;
 }
@@ -228,6 +235,7 @@ function ChartFrame({
   description,
   yTicks,
   xTicks,
+  overlay,
   children
 }: {
   className?: string;
@@ -237,6 +245,7 @@ function ChartFrame({
   description: string;
   yTicks: ChartTick[];
   xTicks: ChartTick[];
+  overlay?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -276,6 +285,7 @@ function ChartFrame({
             ))}
             {children}
           </svg>
+          {overlay}
         </div>
         <div className="stats-chart-x-axis" aria-hidden="true">
           {xTicks.map((tick, index) => (
@@ -297,18 +307,15 @@ function ChartFrame({
 
 function Definition({
   label,
-  value,
-  detail
+  value
 }: {
   label: string;
   value: string;
-  detail?: string;
 }) {
   return (
     <div>
       <dt>{label}</dt>
       <dd>{value}</dd>
-      {detail && <span>{detail}</span>}
     </div>
   );
 }
@@ -316,11 +323,13 @@ function Definition({
 function Breakdown({
   title,
   rows,
-  suffix = ""
+  suffix = "",
+  split = false
 }: {
   title: string;
   rows: GroupStat[];
   suffix?: string;
+  split?: boolean;
 }) {
   return (
     <div className="stats-breakdown">
@@ -328,12 +337,12 @@ function Breakdown({
       {rows.length === 0 ? (
         <EmptyState label="No recorded data" />
       ) : (
-        <div className="stats-breakdown-rows">
+        <div className={`stats-breakdown-rows${split ? " stats-breakdown-rows--split" : ""}`}>
           {rows.map((row) => (
             <div className="stats-breakdown-row" key={row.label}>
               <div className="stats-breakdown-label">
-                <span title={row.label}>{row.label}{suffix}</span>
-                <small>{formatInteger(row.games)}g / {formatInteger(row.moves)}m</small>
+                <span title={`${row.label}${suffix}`}>{row.label}{suffix}</span>
+                <small>{formatInteger(row.games)} {row.games === 1 ? "game" : "games"} · {formatInteger(row.moves)} moves</small>
               </div>
               <div className="stats-breakdown-track" aria-hidden="true">
                 <span style={{ width: `${Math.max(2, row.accuracy)}%` }} />
@@ -350,18 +359,15 @@ function Breakdown({
 
 function InlineMetric({
   label,
-  value,
-  detail
+  value
 }: {
   label: string;
   value: string;
-  detail?: string;
 }) {
   return (
     <div className="stats-inline-metric">
       <span>{label}</span>
       <strong>{value}</strong>
-      {detail && <small>{detail}</small>}
     </div>
   );
 }
@@ -370,16 +376,18 @@ function PaceTable({ rows }: { rows: PaceStat[] }) {
   return (
     <div className="stats-data-table">
       <h3>Speed-accuracy</h3>
-      <div className="stats-table-header">
-        <span>Pace</span><span>Games</span><span>Adjusted</span>
-      </div>
-      {rows.map((row) => (
-        <div className="stats-table-row" key={row.label}>
-          <strong>{row.label}</strong>
-          <span>{formatInteger(row.games)}</span>
-          <span>{formatPercent(row.accuracy)}</span>
+      {rows.length === 0 ? <EmptyState label="No timed games yet" /> : <>
+        <div className="stats-table-header">
+          <span>Pace</span><span>Games</span><span>Adjusted</span>
         </div>
-      ))}
+        {rows.map((row) => (
+          <div className="stats-table-row" key={row.label}>
+            <strong>{row.label}</strong>
+            <span>{formatInteger(row.games)}</span>
+            <span>{formatPercent(row.accuracy)}</span>
+          </div>
+        ))}
+      </>}
     </div>
   );
 }
@@ -389,21 +397,25 @@ function LearningRateTable({
 }: {
   rows: ProgressDashboardStats["timing"]["learningRates"];
 }) {
+  // Budgets nobody has played only echo the prior, so they are left out.
+  const played = rows.filter(row => row.games > 0);
   return (
     <div className="stats-data-table">
       <h3>Learning per hour</h3>
-      <div className="stats-table-header">
-        <span>Budget</span><span>Games</span><span>Points / hour</span>
-      </div>
-      {rows.map((row) => (
-        <div className="stats-table-row" key={row.minutes}>
-          <strong>{row.minutes}m</strong>
-          <span>{formatInteger(row.games)}</span>
-          <span title={`80% range ${row.rateLow.toFixed(2)} to ${row.rateHigh.toFixed(2)}`}>
-            {row.rateMean.toFixed(2)}
-          </span>
+      {played.length === 0 ? <EmptyState label="No timed games yet" /> : <>
+        <div className="stats-table-header">
+          <span>Budget</span><span>Games</span><span>Points / hour</span>
         </div>
-      ))}
+        {played.map((row) => (
+          <div className="stats-table-row" key={row.minutes}>
+            <strong>{row.minutes} min</strong>
+            <span>{formatInteger(row.games)}</span>
+            <span title={`80% range ${row.rateLow.toFixed(2)} to ${row.rateHigh.toFixed(2)}`}>
+              {row.rateMean.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </>}
     </div>
   );
 }
@@ -432,8 +444,8 @@ function CoverageMetric({
   );
 }
 
-function EmptyState({ label }: { label: string }) {
-  return <div className="stats-empty">{label}</div>;
+function EmptyState({ label, chart = false }: { label: string; chart?: boolean }) {
+  return <div className={`stats-empty${chart ? " stats-empty--chart" : ""}`}>{label}</div>;
 }
 
 function formatPercent(value: number, digits = 1): string {
