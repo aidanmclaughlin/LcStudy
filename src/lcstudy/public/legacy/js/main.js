@@ -51,6 +51,12 @@ import {
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 let activeGameLoadId = 0;
 
+/** This tab's deploy, from its per-deploy module path (see next.config.js) */
+const PAGE_VERSION = new URL(import.meta.url).pathname.match(/^\/legacy-v\/([^/]+)\//)?.[1] ?? null;
+
+/** Resolves true when a newer deploy is live; checked whenever the tab comes back into view */
+let newerDeployCheck = null;
+
 /** In-flight request for the next game, started while the current one is played */
 let prefetchedSessionPromise = null;
 
@@ -99,6 +105,12 @@ function saveAbandonedGameIfNeeded() {
 async function startNewGame() {
   // Missed moves from the finished game have to be replayed first.
   if (hasPendingReplay()) return;
+
+  // A deploy that went live while this tab sat in the background loads with the next game.
+  if (newerDeployCheck && await newerDeployCheck) {
+    window.location.reload();
+    return;
+  }
 
   const loadId = ++activeGameLoadId;
   setBoardInputEnabled(false);
@@ -236,6 +248,18 @@ async function startNewGame() {
 }
 
 /**
+ * Ask which deploy is live; true when it isn't the one this tab is running.
+ * @returns {Promise<boolean>}
+ */
+function checkForNewerDeploy() {
+  newerDeployCheck = fetch('/api/v1/version', { credentials: 'same-origin', cache: 'no-store' })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => Boolean(PAGE_VERSION && data?.version && data.version !== PAGE_VERSION))
+    .catch(() => false);
+  return newerDeployCheck;
+}
+
+/**
  * Reopen a finished game whose missed moves were never replayed (the page was
  * reloaded or closed) instead of starting a new one.
  * @returns {boolean} Whether a game was reopened
@@ -330,6 +354,11 @@ document.getElementById('completion-review')?.addEventListener('click', () => {
 // Persist abandoned games when the tab goes away (keepalive request).
 window.addEventListener('pagehide', () => {
   saveAbandonedGameIfNeeded();
+});
+
+// Coming back to the tab is when a deploy may have landed in the meantime.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkForNewerDeploy();
 });
 
 // =============================================================================

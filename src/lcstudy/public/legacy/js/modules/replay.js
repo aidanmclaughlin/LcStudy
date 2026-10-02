@@ -57,8 +57,8 @@ import { scheduleChartsUpdate } from './charts.js';
 const STORAGE_KEY = 'lcstudy_pending_replay';
 const STORAGE_VERSION = 2;
 
-/** Pause on a correct move before the next position appears */
-const NEXT_POSITION_DELAY_MS = 650;
+/** Pause on a correct move, long enough to see its 100% flash, before the next position */
+const NEXT_POSITION_DELAY_MS = 900;
 
 /** This game's moves that weren't Leela's: {ply, fen, highlights, best, played, accuracy, analysis} */
 let candidates = [];
@@ -186,9 +186,9 @@ export function submitReplayMove(moveUci) {
   setLiveFen(fenAfter);
   setLastMoveHighlight(true, { from, to });
   clearMoveHint();
-  clearAccuracyBursts();
   updateBoardAfterMove({ from, to, moveResult });
   flashBoard('success');
+  showAccuracyBurst(100);
   celebrateSuccess(to);
   hapticSuccess();
   renderPrompt(`Correct: ${mistake.best.san}.`);

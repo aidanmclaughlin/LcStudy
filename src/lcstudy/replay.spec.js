@@ -162,6 +162,7 @@ test('moves under your 25th percentile must be replayed until found, even across
   expect(await pieceAt(page, 'b2')).toBe('wP');
   await play(page, 'e2e4');
   await expect(detail).toHaveText('Correct: e4.');
+  await expect(page.locator('.accuracy-burst')).toHaveText('100%');
   expect(await pieceAt(page, 'e4')).toBe('wP');
 
   // Each miss comes back as it looked when played, with only the earlier moves listed.
@@ -268,6 +269,40 @@ test('game modules load from a per-deploy path that /legacy/js imports share', a
   // The import map hands absolute /legacy/js imports the game's own module instances.
   await playTurn(page, 'e2e4', 0, WHITE_GAME.length);
   expect(await page.evaluate(async () => (await import('/legacy/js/modules/state.js')).getMoveAccuracies())).toEqual([100]);
+});
+
+test('New game loads a newer deploy that went live while the tab was in the background', async ({ page, context }) => {
+  const moves = buildMoves(WHITE_GAME);
+  await setup(page, context, { game_id: 'replay-white', fen: START, flip: false, moves, ply: 0 });
+  const pageVersion = await page.evaluate(() => performance.getEntriesByType('resource')
+    .map(entry => new URL(entry.name).pathname.match(/^\/legacy-v\/([^/]+)\/js\/main\.js$/)?.[1])
+    .find(Boolean));
+  let liveVersion = pageVersion;
+  await page.route('**/api/v1/version', route => route.fulfill({ json: { version: liveVersion } }));
+
+  const finishGameAndReturnToTab = async () => {
+    for (const [ply, uci] of [[0, 'e2e4'], [2, 'g1f3'], [4, 'f1c4'], [6, 'd2d3'], [8, 'e1g1'], [10, 'b1c3'], [12, 'c1e3']]) {
+      await playTurn(page, uci, ply, moves.length);
+    }
+    await expect(page.locator('#completion-new')).toBeVisible();
+    await page.evaluate(() => {
+      window.__sameDocument = true;
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  };
+
+  // Same deploy: New game stays in the page.
+  await finishGameAndReturnToTab();
+  await page.locator('#completion-new').click();
+  await expect(page.locator('#completion-overlay')).toBeHidden();
+  expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
+
+  // A newer deploy: New game reloads into it.
+  liveVersion = `${pageVersion}-next`;
+  await finishGameAndReturnToTab();
+  await Promise.all([page.waitForEvent('load'), page.locator('#completion-new').click()]);
+  await expect(page.locator('#board')).toHaveAttribute('aria-busy', 'false');
+  expect(await page.evaluate(() => window.__sameDocument)).toBeUndefined();
 });
 
 test('an unusable stored replay is discarded and a new game starts', async ({ page, context }) => {
