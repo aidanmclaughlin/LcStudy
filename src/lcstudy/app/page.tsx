@@ -17,6 +17,12 @@ import { ArrowUp, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getAuthSession } from "@/lib/auth";
 import { StatsView } from "@/components/stats-view";
 
+/** This build's path for public/legacy/js (see next.config.js). */
+const LEGACY_JS = `/legacy-v/${process.env.LEGACY_ASSET_VERSION}/js/`;
+
+/** Absolute imports of /legacy/js/... resolve to the same modules the game loaded. */
+const LEGACY_IMPORT_MAP = JSON.stringify({ imports: { "/legacy/js/": LEGACY_JS } });
+
 export default async function HomePage() {
   const session = await getAuthSession();
 
@@ -26,7 +32,8 @@ export default async function HomePage() {
 
   return (
     <>
-      <Script src="/legacy/js/main.js" strategy="afterInteractive" type="module" />
+      <script type="importmap" dangerouslySetInnerHTML={{ __html: LEGACY_IMPORT_MAP }} />
+      <Script src={`${LEGACY_JS}main.js`} strategy="afterInteractive" type="module" />
 
       <main className="layout-root">
         <div className="layout">
