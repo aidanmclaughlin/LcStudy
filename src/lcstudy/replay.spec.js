@@ -229,6 +229,21 @@ test('black: a miss on the first move is replayed after Maia\'s opening move', a
   expect(await boardPlacement(page)).toEqual(placement(fenAfter(sans, 8)));
 });
 
+test('game modules load from a per-deploy path that /legacy/js imports share', async ({ page, context }) => {
+  await setup(page, context, { game_id: 'replay-white', fen: START, flip: false, moves: buildMoves(WHITE_GAME), ply: 0 });
+
+  // A fixed URL let Safari pair a cached old main.js with newer modules.
+  const scripts = await page.evaluate(() => performance.getEntriesByType('resource')
+    .map(entry => new URL(entry.name).pathname)
+    .filter(pathname => pathname.endsWith('.js') && pathname.includes('/js/') && !pathname.startsWith('/_next/')));
+  expect(scripts.some(pathname => /^\/legacy-v\/[^/]+\/js\/main\.js$/.test(pathname))).toBe(true);
+  expect(scripts.filter(pathname => pathname.startsWith('/legacy/js/'))).toEqual([]);
+
+  // The import map hands absolute /legacy/js imports the game's own module instances.
+  await playTurn(page, 'e2e4', 0, WHITE_GAME.length);
+  expect(await page.evaluate(async () => (await import('/legacy/js/modules/state.js')).getMoveAccuracies())).toEqual([100]);
+});
+
 test('an unusable stored replay is discarded and a new game starts', async ({ page, context }) => {
   await page.addInitScript(([key, start]) => localStorage.setItem(key, JSON.stringify({
     version: 1, replayed: 0, flip: false, accuracies: [0], pgnMoves: [], moveHistory: [],
