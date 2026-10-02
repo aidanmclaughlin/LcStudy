@@ -138,20 +138,6 @@
   100% { opacity: 0; }
 }
 
-/* Replaying a missed move: Leela's move stays marked until it is played. */
-.square.move-hint.move-hint-held::after {
-  animation: moveHintIn 140ms ease-out both;
-}
-
-@keyframes moveHintIn {
-  from { opacity: 0; }
-}
-
-/* Earlier positions under review never show the current hint. */
-#board.reviewing-moves .square.move-hint::after {
-  display: none;
-}
-
 /* Pieces */
 .piece {
   position: relative;

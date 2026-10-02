@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildAccuracyJourney, buildRollingAccuracy, buildCurrentScoringAccuracy, SEARCH_GRADING_STARTED_AT, recentPerformance, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
+import { buildAccuracyJourney, buildRollingAccuracy, buildCurrentScoringAccuracy, SEARCH_GRADING_STARTED_AT, recentMovePercentile, recentPerformance, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
 
 const game = (accuracy = 80, seconds = 3, totalMoves = 20) => ({ accuracy, totalMoves, thinkTimeMs: seconds * totalMoves * 1000 });
 
@@ -26,6 +26,37 @@ test('undated and unscored games cannot contaminate current-scoring windows', ()
     { accuracy: 85, playedAt: SEARCH_GRADING_STARTED_AT }
   ];
   assert.deepEqual(buildCurrentScoringAccuracy(history), [{ game: 102, accuracy: 85 }]);
+});
+
+test('replay bar is a move percentile over this game and the latest current-scale games', () => {
+  const at = SEARCH_GRADING_STARTED_AT;
+  const before = new Date(Date.parse(at) - 1).toISOString();
+  assert.equal(recentMovePercentile([], [0, 100, 100, 100]), 75);
+  assert.equal(recentMovePercentile([], []), null);
+  // Old-scale games never count; 41 moves put the 25th percentile on rank 10.
+  const history = [
+    ...Array.from({ length: 5 }, () => ({ playedAt: before, moves: Array(20).fill(5) })),
+    ...Array.from({ length: 10 }, () => ({ playedAt: at, moves: [40, 60, 80, 100] }))
+  ];
+  assert.equal(recentMovePercentile(history, [50]), 50);
+  assert.equal(recentMovePercentile(history, [50], 0), 40);
+  assert.equal(history.length, 15);
+});
+
+test('replay bar window counts this game and skips games without usable moves', () => {
+  const at = SEARCH_GRADING_STARTED_AT;
+  const recent = [{ playedAt: at, moves: [0] }, { playedAt: at, moves: [100] }, { playedAt: at, moves: [100] }];
+  assert.equal(recentMovePercentile(recent, [100], 25, 3), 100);
+  assert.equal(recentMovePercentile(recent, [100], 25, 4), 75);
+  const messy = [
+    { playedAt: undefined, moves: [0] },
+    { playedAt: 'invalid', moves: [0] },
+    { playedAt: at, moves: [null, 101, -1, 80] },
+    { playedAt: at, moves: [] },
+    { playedAt: at, moves: null }
+  ];
+  assert.equal(recentMovePercentile(messy, []), 80);
+  assert.equal(recentMovePercentile(messy, [], 25, 2), 80);
 });
 
 test('100-game accuracy waits for full windows and drops the oldest game', () => {

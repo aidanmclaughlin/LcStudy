@@ -70,6 +70,15 @@ export function hideCompletionOverlay() {
 }
 
 /**
+ * Shake strength for a move that wasn't Leela's: the worse it scored, the harder.
+ * @param {number} accuracy - Move accuracy percentage
+ * @returns {number} 0.12..1
+ */
+export function inaccuracyIntensity(accuracy) {
+  return Math.max(0.12, Math.min(1, (100 - Number(accuracy || 0)) / 100));
+}
+
+/**
  * Flash the board with a colored outline effect.
  * @param {'success' | 'wrong' | 'illegal'} result - Type of feedback to show
  * @param {number} intensity - 0..1 intensity for wrong feedback

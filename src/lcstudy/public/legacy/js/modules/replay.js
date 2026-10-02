@@ -1,10 +1,11 @@
 /**
  * Replay of missed moves once a game ends.
  *
- * Every move scored below REPLAY_ACCURACY_THRESHOLD is remembered with the
- * position it was played from. When the game ends, New game stays locked
- * until each of those positions has been replayed with Leela's move. A wrong
- * move marks Leela's move on the board, and it still has to be played.
+ * Every move that wasn't Leela's is remembered with the position it was played
+ * from. When the game ends, the ones below your REPLAY_PERCENTILE of recent
+ * move accuracy (so the bar rises as you improve) lock New game until each has
+ * been replayed with Leela's move. A wrong try shows only that move's score;
+ * keep trying until you find it.
  *
  * A pending replay is kept in localStorage, so a reload or a closed tab
  * reopens it instead of skipping it.
@@ -12,7 +13,9 @@
  * @module replay
  */
 
+import { REPLAY_PERCENTILE, REPLAY_WINDOW_GAMES } from './constants.js';
 import {
+  getGameHistory,
   getLastMoveHighlights,
   getLiveFen,
   getMoveAccuracies,
@@ -34,29 +37,39 @@ import {
   clearSelection,
   finishActiveAnimations,
   setFlip,
-  showMoveHint,
   updateBoardAfterMove,
   updateBoardFromFen
 } from './board.js';
-import { celebrateSuccess, clearAccuracyBursts, flashBoard, showCompletionOverlay } from './effects.js';
-import { hapticError, hapticSuccess } from './haptics.js';
+import {
+  celebrateSuccess,
+  clearAccuracyBursts,
+  flashBoard,
+  inaccuracyIntensity,
+  showAccuracyBurst,
+  showCompletionOverlay
+} from './effects.js';
+import { hapticError, hapticInaccuracy, hapticSuccess } from './haptics.js';
 import { navigateToMove } from './history.js';
+import { recentMovePercentile } from './journey.mjs';
 import { updatePgnDisplay } from './pgn.js';
 import { scheduleChartsUpdate } from './charts.js';
 
 const STORAGE_KEY = 'lcstudy_pending_replay';
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
 
 /** Pause on a correct move before the next position appears */
 const NEXT_POSITION_DELAY_MS = 650;
 
-/** Missed moves of the current game: {ply, fen, highlights, best, played, accuracy} */
+/** This game's moves that weren't Leela's: {ply, fen, highlights, best, played, accuracy, analysis} */
+let candidates = [];
+
+/** The candidates below the replay bar, in the order they were played */
 let mistakes = [];
 
 /** How many of them have been replayed with Leela's move */
 let replayed = 0;
 
-/** Set when the game ends: {title, fen, highlights} of the game-over position */
+/** Set when the game ends: {title, threshold, fen, highlights} of the game-over position */
 let gameOver = null;
 
 /** Chess.js instance for the position being replayed; null when none is on the board */
@@ -69,6 +82,7 @@ let advancing = false;
  * Forget the previous game's misses when a new game starts.
  */
 export function resetReplay() {
+  candidates = [];
   mistakes = [];
   replayed = 0;
   gameOver = null;
@@ -77,11 +91,11 @@ export function resetReplay() {
 }
 
 /**
- * Remember a move scored below the replay threshold.
- * @param {{ply: number, fen: string, highlights: Object, best: {uci: string, san: string}, played: string, accuracy: number}} mistake
+ * Remember a move that wasn't Leela's; the game's end decides whether it is replayed.
+ * @param {{ply: number, fen: string, highlights: Object, best: {uci: string, san: string}, played: string, accuracy: number, analysis: {uci: string, accuracy: number}[]}} miss
  */
-export function recordMistake(mistake) {
-  if (mistake?.fen && mistake.best?.uci) mistakes.push(mistake);
+export function recordMiss(miss) {
+  if (miss?.fen && miss.best?.uci) candidates.push(miss);
 }
 
 /** Whether the finished game still has missed moves to replay. */
@@ -95,13 +109,19 @@ export function isReplayActive() {
 }
 
 /**
- * Lock New game behind the replay when the game ended with misses. Call
+ * Pick the misses below the replay bar and lock New game behind them. Call
  * before the game-over panel opens so it focuses the right action.
  * @param {string} title - Game-over panel title ("Checkmate" or "Game over")
  */
 export function prepareReplay(title) {
-  gameOver = { title, fen: getLiveFen(), highlights: getLastMoveHighlights() };
-  renderGameOverActions();
+  const history = getGameHistory().map((game) => ({ playedAt: game.date, moves: game.accuracy_history }));
+  const threshold = recentMovePercentile(history, getMoveAccuracies(), REPLAY_PERCENTILE, REPLAY_WINDOW_GAMES);
+
+  mistakes = threshold === null ? [] : candidates
+    .filter((miss) => miss.accuracy < threshold)
+    .map((miss) => ({ ...miss, analysis: miss.analysis.map(({ uci, accuracy }) => ({ uci, accuracy })) }));
+  gameOver = { title, threshold, fen: getLiveFen(), highlights: getLastMoveHighlights() };
+  renderGameOver();
   storeReplay();
 }
 
@@ -114,7 +134,7 @@ export function startReplay() {
   try {
     finishActiveAnimations();
     clearAccuracyBursts();
-    setPanelReplaying(true);
+    setActionsHidden(true);
     showMistake();
   } catch (error) {
     abandonReplay(error);
@@ -123,7 +143,7 @@ export function startReplay() {
 
 /**
  * Handle a move played during the replay. Only Leela's move continues; any
- * other legal move shakes the board and marks Leela's move until it is played.
+ * other legal move shakes the board and shows its score, never the answer.
  * @param {string} moveUci - UCI move string (e.g. 'e2e4')
  */
 export function submitReplayMove(moveUci) {
@@ -136,22 +156,23 @@ export function submitReplayMove(moveUci) {
   // A bare pawn push promotes to Leela's piece, as in the game.
   if (expected.length === 5 && normalized.length === 4) normalized += expected[4];
 
-  const legal = replayEngine.moves({ verbose: true }).some((move) => {
+  const attempt = replayEngine.moves({ verbose: true }).find((move) => {
     const uci = `${move.from}${move.to}${move.promotion || ''}`;
     return uci === normalized || (normalized.length === 4 && uci.startsWith(normalized));
   });
 
-  if (!legal) {
+  if (!attempt) {
     flashBoard('illegal', 0.15);
     hapticError();
     return;
   }
 
   if (normalized !== expected) {
-    flashBoard('wrong', 0.5);
-    hapticError();
-    showMoveHint(expected.slice(0, 2), expected.slice(2, 4), true);
-    renderPrompt(`Leela played ${mistake.best.san}. Play it to continue.`);
+    const accuracy = attemptAccuracy(mistake.analysis, normalized);
+    flashBoard('wrong', inaccuracyIntensity(accuracy));
+    hapticInaccuracy(accuracy);
+    showAccuracyBurst(accuracy);
+    renderPrompt(`${attempt.san} scores ${accuracy.toFixed(1)}%. Try again.`);
     return;
   }
 
@@ -165,6 +186,7 @@ export function submitReplayMove(moveUci) {
   setLiveFen(fenAfter);
   setLastMoveHighlight(true, { from, to });
   clearMoveHint();
+  clearAccuracyBursts();
   updateBoardAfterMove({ from, to, moveResult });
   flashBoard('success');
   celebrateSuccess(to);
@@ -205,7 +227,7 @@ export function restorePendingReplay() {
       setFlip(saved.flip);
       showFinalPosition();
       scheduleChartsUpdate();
-      renderGameOverActions();
+      renderGameOver();
       showCompletionOverlay(gameOver.title);
       return true;
     } catch (error) {
@@ -245,8 +267,7 @@ function showMistake() {
 function finishReplay() {
   replayEngine = null;
   storeReplay();
-  setPanelReplaying(false);
-  renderGameOverActions();
+  renderGameOver();
   showCompletionOverlay(gameOver.title);
 
   navigateToMove(-1);
@@ -278,14 +299,30 @@ function normalizeHighlights(highlights) {
   return { user: highlights?.user || null, opponent: highlights?.opponent || null };
 }
 
+/**
+ * Score of a move that isn't Leela's, from the position's analysis; moves the
+ * analysis doesn't list score 0, as in the game.
+ * @param {{uci: string, accuracy: number}[]} analysis - Scored moves for the position
+ * @param {string} uci - The move tried
+ * @returns {number}
+ */
+function attemptAccuracy(analysis, uci) {
+  const exact = analysis.find((entry) => entry.uci === uci);
+  if (exact) return exact.accuracy;
+
+  const promotions = uci.length === 4 ? analysis.filter((entry) => entry.uci.startsWith(uci)) : [];
+  return promotions.length === 1 ? promotions[0].accuracy : 0;
+}
+
 // =============================================================================
 // Game-over panel
 // =============================================================================
 
 /**
- * Show Replay while misses are pending, New game once they are done.
+ * The replay bar, then Replay while misses are pending or New game once they
+ * are done.
  */
-function renderGameOverActions() {
+function renderGameOver() {
   const pending = mistakes.length - replayed;
   const replayButton = document.getElementById('completion-replay');
   const newGameButton = document.getElementById('completion-new');
@@ -295,18 +332,34 @@ function renderGameOverActions() {
     replayButton.textContent = `Replay ${pending} ${pending === 1 ? 'move' : 'moves'}`;
   }
   if (newGameButton) newGameButton.hidden = pending > 0;
+  setActionsHidden(false);
+  setDetail(barSummary(pending));
 }
 
 /**
- * Swap the game-over actions for the replay prompt, or back.
- * @param {boolean} replaying - Whether a missed move is on the board
+ * Where this game's bar sits, so its rise with your play stays visible.
+ * @param {number} pending - Misses still to replay
+ * @returns {string}
  */
-function setPanelReplaying(replaying) {
-  const detail = document.getElementById('completion-detail');
-  const actions = document.querySelector('#completion-overlay .completion-actions');
+function barSummary(pending) {
+  const threshold = gameOver?.threshold;
+  if (!Number.isFinite(threshold)) return '';
 
-  if (detail) detail.hidden = !replaying;
-  if (actions) actions.hidden = replaying;
+  const bar = `${threshold.toFixed(1)}% (your ${REPLAY_PERCENTILE}th percentile)`;
+  if (pending > 0) return `Moves under ${bar} get replayed.`;
+  return mistakes.length > 0 ? `Replayed every move under ${bar}.` : `No moves under ${bar}.`;
+}
+
+function setActionsHidden(hidden) {
+  const actions = document.querySelector('#completion-overlay .completion-actions');
+  if (actions) actions.hidden = hidden;
+}
+
+function setDetail(text) {
+  const detail = document.getElementById('completion-detail');
+  if (!detail) return;
+  detail.textContent = text;
+  detail.hidden = !text;
 }
 
 /**
@@ -320,7 +373,7 @@ function renderPrompt(detail) {
 
   setText('completion-title', `Replay ${replayed + 1} of ${mistakes.length}`);
   setText('completion-summary', `Move ${mistake.fen.split(' ')[5]}`);
-  setText('completion-detail', detail);
+  setDetail(detail);
 }
 
 function setText(id, text) {
@@ -380,6 +433,7 @@ function readStoredReplay() {
   const { mistakes: stored, replayed: done, gameOver: end, flip, accuracies, pgnMoves, moveHistory } = saved;
   const valid = Array.isArray(stored) && Number.isInteger(done) && done >= 0 && done < stored.length
     && typeof end?.title === 'string' && isFen(end.fen)
+    && (end.threshold === null || Number.isFinite(end.threshold))
     && typeof flip === 'boolean'
     && Array.isArray(accuracies) && accuracies.every(Number.isFinite)
     && Array.isArray(pgnMoves) && Array.isArray(moveHistory) && pgnMoves.length === moveHistory.length
@@ -388,6 +442,8 @@ function readStoredReplay() {
       Number.isInteger(mistake?.ply) && mistake.ply >= 0 && mistake.ply <= moveHistory.length
       && typeof mistake.played === 'string' && Number.isFinite(mistake.accuracy)
       && typeof mistake.best?.san === 'string' && isLegalMove(mistake.fen, mistake.best.uci)
+      && Array.isArray(mistake.analysis)
+      && mistake.analysis.every((entry) => typeof entry?.uci === 'string' && Number.isFinite(entry.accuracy))
     ));
 
   return valid ? saved : null;

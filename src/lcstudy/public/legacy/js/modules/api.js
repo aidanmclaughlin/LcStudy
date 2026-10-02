@@ -100,6 +100,7 @@ export function saveCompletedGame(result) {
   // Update local history immediately.
   const gameHistory = getGameHistory();
   gameHistory.push({
+    date: new Date().toISOString(),
     average_accuracy: averageAccuracy,
     total_moves: totalMoves,
     accuracy_history: accuracyHistory,

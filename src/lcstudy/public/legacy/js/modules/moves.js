@@ -3,7 +3,6 @@
  * @module moves
  */
 
-import { REPLAY_ACCURACY_THRESHOLD } from './constants.js';
 import {
   getSessionId,
   getSessionCache,
@@ -21,13 +20,13 @@ import {
   setLastMoveHighlight
 } from './state.js';
 import { animateMove, finishActiveAnimations, showMoveHint, updateBoardAfterMove } from './board.js';
-import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, showAccuracyBurst, showCompletionOverlay, updateMoveFeedback } from './effects.js';
+import { flashBoard, celebrateSuccess, celebrateCheckmate, clearAccuracyBursts, inaccuracyIntensity, showAccuracyBurst, showCompletionOverlay, updateMoveFeedback } from './effects.js';
 import { scheduleChartsUpdate } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
 import { hapticMove, hapticSuccess, hapticError, hapticInaccuracy } from './haptics.js';
 import { promptBegin, promptSubmit, endGameClock } from './timeclock.js';
-import { prepareReplay, recordMistake } from './replay.js';
+import { prepareReplay, recordMiss } from './replay.js';
 
 /** Whether the completed game has already been saved for the current session */
 let completedMateSaved = false;
@@ -232,10 +231,6 @@ function isLegalSubmittedMove(moveUci) {
   return findLegalMove(moveUci) !== null;
 }
 
-function inaccuracyIntensity(accuracy) {
-  return Math.max(0.12, Math.min(1, (100 - Number(accuracy || 0)) / 100));
-}
-
 /**
  * Apply a move to the board and update state.
  * @param {Object} moveDef - Move definition {uci, san}
@@ -327,15 +322,16 @@ export async function handleMaiaReply(round) {
 export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestMove) {
   let moveResult = null;
 
-  if (!isBestMove && moveEvaluation.accuracy < REPLAY_ACCURACY_THRESHOLD) {
-    // Captured before the position changes: it is replayed after the game.
-    recordMistake({
+  if (!isBestMove) {
+    // Captured before the position changes; the game's end decides which misses get replayed.
+    recordMiss({
       ply: expectedInfo.index,
       fen: getChessEngine()?.fen(),
       highlights: getLastMoveHighlights(),
       best: { uci: expectedInfo.move.uci, san: expectedInfo.move.san || expectedInfo.move.uci },
       played: findLegalMove(moveEvaluation.uci)?.san || moveEvaluation.san,
-      accuracy: moveEvaluation.accuracy
+      accuracy: moveEvaluation.accuracy,
+      analysis: expectedInfo.move.analysis || []
     });
   }
 
