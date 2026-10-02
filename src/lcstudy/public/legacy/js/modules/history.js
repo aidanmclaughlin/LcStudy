@@ -8,6 +8,7 @@
 
 import {
   getMoveHistory,
+  getVisibleMoveCount,
   getCurrentMoveIndex,
   setCurrentMoveIndex,
   getIsReviewingMoves,
@@ -27,8 +28,9 @@ import { setClockPaused, isStatsOpen } from './timeclock.js';
 export function navigateToMove(targetIndex) {
   if (isStatsOpen()) return;
   const moveHistory = getMoveHistory();
-  if (moveHistory.length === 0) return;
-  const maxIndex = moveHistory.length - 1;
+  const moveCount = getVisibleMoveCount();
+  if (moveCount === 0) return;
+  const maxIndex = moveCount - 1;
   const currentIndex = getCurrentMoveIndex();
 
   if (targetIndex === -2) {
@@ -111,7 +113,7 @@ export function initMoveReviewButtons() {
   document.getElementById('move-list')?.addEventListener('click', (event) => {
     const ply = Number(event.target?.closest?.('[data-ply]')?.dataset.ply);
     if (!Number.isInteger(ply)) return;
-    navigateToMove(ply === getMoveHistory().length - 1 ? -1 : ply);
+    navigateToMove(ply === getVisibleMoveCount() - 1 ? -1 : ply);
   });
 
   updatePgnDisplay();

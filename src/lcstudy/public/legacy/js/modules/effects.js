@@ -23,13 +23,13 @@ function accuracyTone(accuracy) {
   return { color: '#ef4444', glow: 'rgba(239, 68, 68, 0.62)' };
 }
 
-export function showCompletionOverlay(kicker = 'Checkmate') {
+export function showCompletionOverlay(result = 'Checkmate') {
   const overlay = document.getElementById('completion-overlay');
   if (!overlay) return;
 
-  const kickerEl = overlay.querySelector('.completion-kicker');
-  if (kickerEl) kickerEl.textContent = kicker;
-  overlay.dataset.result = kicker === 'Checkmate' ? 'mate' : 'over';
+  const titleEl = document.getElementById('completion-title');
+  if (titleEl) titleEl.textContent = result;
+  overlay.dataset.result = result === 'Checkmate' ? 'mate' : 'over';
 
   const summaryEl = document.getElementById('completion-summary');
   if (summaryEl) {
@@ -39,7 +39,7 @@ export function showCompletionOverlay(kicker = 'Checkmate') {
       : null;
     summaryEl.textContent = average === null
       ? ''
-      : `${average.toFixed(1)}% accuracy · ${accuracies.length} ${accuracies.length === 1 ? 'move' : 'moves'}`;
+      : `${average.toFixed(1)}% · ${accuracies.length} ${accuracies.length === 1 ? 'move' : 'moves'}`;
   }
 
   overlay.hidden = false;
@@ -47,9 +47,9 @@ export function showCompletionOverlay(kicker = 'Checkmate') {
   overlay.setAttribute('aria-hidden', 'false');
   requestAnimationFrame(() => {
     overlay.classList.add('is-visible');
-    // Enter or Space starts the next game straight away.
+    // Enter or Space takes the next step straight away: replay misses, or a new game.
     if (!document.getElementById('stats-dialog')?.open) {
-      document.getElementById('completion-new')?.focus({ preventScroll: true });
+      overlay.querySelector('.completion-actions .btn-primary:not([hidden])')?.focus({ preventScroll: true });
     }
   });
 }
@@ -304,11 +304,9 @@ export function updateMoveFeedback(result = null) {
   const feedbackElement = document.getElementById('move-feedback');
   if (!feedbackElement) return;
 
-  const labelElement = document.getElementById('move-feedback-label');
-  const show = (text, tone, label = 'Move') => {
+  const show = (text, tone) => {
     feedbackElement.textContent = text;
     feedbackElement.dataset.tone = tone;
-    if (labelElement) labelElement.textContent = label;
   };
 
   if (!result) return show('--', 'muted');
@@ -316,7 +314,7 @@ export function updateMoveFeedback(result = null) {
   if (result.error) return show('Retry', 'bad');
   if (result.illegal) return show('Illegal move', 'muted');
   if (result.bestMoveSan || result.bestMoveUci) {
-    return show(result.bestMoveSan || result.bestMoveUci, 'best', 'Best');
+    return show(`Best ${result.bestMoveSan || result.bestMoveUci}`, 'best');
   }
 
   const accuracy = Number(result.accuracy || 0);

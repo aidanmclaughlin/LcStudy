@@ -3,24 +3,24 @@
  */
 
 #board {
-  --board-ring: 0 0 0 1px rgba(148, 163, 184, 0.16);
+  --board-ring: 0 0 0 1px var(--border-subtle);
   position: relative;
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   grid-template-rows: repeat(8, 1fr);
   overflow: hidden;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   /* Checkerboard shown before the squares render, so the first paint is never an empty box. */
   background: repeating-conic-gradient(var(--board-dark) 0 25%, var(--board-light) 0 50%) 0 0 / 25% 25%;
-  box-shadow: var(--board-ring), var(--shadow-board);
+  box-shadow: var(--board-ring);
   touch-action: none;
   contain: layout paint;
   transition: box-shadow 180ms ease;
 }
 
-/* Review mode: an outer ring that never changes the board's size. */
+/* Review mode: an outer ring (never a border) so the board never changes size. */
 #board.reviewing-moves {
-  --board-ring: 0 0 0 3px var(--color-review);
+  --board-ring: 0 0 0 3px var(--color-brand-light);
 }
 
 #board.is-loading,
@@ -122,13 +122,13 @@
   inset: 0;
   z-index: 4;
   pointer-events: none;
-  background: rgba(250, 204, 21, 0.3);
-  box-shadow: inset 0 0 0 4px var(--sq-hint);
+  background: rgba(34, 197, 94, 0.3);
+  box-shadow: inset 0 0 0 4px var(--sq-correct);
   animation: moveHintPulse 760ms ease-out forwards;
 }
 
 .square.move-hint-from::after {
-  background: rgba(250, 204, 21, 0.14);
+  background: rgba(34, 197, 94, 0.14);
 }
 
 @keyframes moveHintPulse {
@@ -136,6 +136,20 @@
   18% { opacity: 1; }
   70% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* Replaying a missed move: Leela's move stays marked until it is played. */
+.square.move-hint.move-hint-held::after {
+  animation: moveHintIn 140ms ease-out both;
+}
+
+@keyframes moveHintIn {
+  from { opacity: 0; }
+}
+
+/* Earlier positions under review never show the current hint. */
+#board.reviewing-moves .square.move-hint::after {
+  display: none;
 }
 
 /* Pieces */
@@ -204,7 +218,7 @@
   inset: 0;
   z-index: 3;
   pointer-events: none;
-  box-shadow: inset 0 0 0 4px rgba(250, 204, 21, 0.95);
+  box-shadow: inset 0 0 0 4px var(--sq-correct);
   animation: hitPulse 380ms ease-out forwards;
 }
 

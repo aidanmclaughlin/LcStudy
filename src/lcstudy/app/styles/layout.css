@@ -1,18 +1,17 @@
 /**
- * Game page layout: board + sidebar.
+ * Game page layout: board + sidebar, separated by the same gutter as the panels.
  *
  * Landscape screens size the board to the viewport so play never scrolls, with
- * the sidebar matching its height. Portrait screens stack the sidebar below.
+ * the sidebar exactly as tall as the board. Portrait screens stack the sidebar.
  */
 
 .layout-root {
-  --page-pad: clamp(12px, 2.5vmin, 32px);
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: var(--page-pad);
+  padding: var(--gutter);
 }
 
 .layout {
@@ -20,7 +19,7 @@
   max-width: 720px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--gutter);
 }
 
 .board-column {
@@ -42,7 +41,20 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--gutter);
+  container-type: inline-size;
+}
+
+/* A narrow sidebar (small laptops, landscape phones) tightens its panels. */
+@container (max-width: 330px) {
+  .panel {
+    --pad: 12px;
+  }
+
+  .panel .label {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
 }
 
 @media (orientation: landscape) and (min-width: 600px) {
@@ -51,23 +63,21 @@
   }
 
   .layout {
-    --sidebar-width: clamp(288px, 25vw, 360px);
-    --layout-gap: clamp(16px, 2.2vw, 32px);
+    --sidebar-width: clamp(300px, 25vw, 344px);
     --board-size: min(
-      100vh - 2 * var(--page-pad),
-      100vw - 2 * var(--page-pad) - var(--sidebar-width) - var(--layout-gap),
+      100vh - 2 * var(--gutter),
+      100vw - 3 * var(--gutter) - var(--sidebar-width),
       880px
     );
     --board-size: min(
-      100dvh - 2 * var(--page-pad),
-      100vw - 2 * var(--page-pad) - var(--sidebar-width) - var(--layout-gap),
+      100dvh - 2 * var(--gutter),
+      100vw - 3 * var(--gutter) - var(--sidebar-width),
       880px
     );
     width: auto;
     max-width: none;
     display: grid;
     grid-template-columns: var(--board-size) var(--sidebar-width);
-    gap: var(--layout-gap);
   }
 
   .sidebar {

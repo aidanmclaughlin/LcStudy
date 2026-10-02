@@ -39,7 +39,8 @@ export default async function HomePage() {
 
           {/* Sidebar Panels */}
           <div className="sidebar">
-            {/* Game-over panel: beside the board so the final position stays visible */}
+            {/* Game-over panel: beside the board so the final position stays visible.
+                Moves under 40% are replayed here before New game appears. */}
             <section
               id="completion-overlay"
               className="panel completion-panel"
@@ -48,14 +49,17 @@ export default async function HomePage() {
               aria-hidden="true"
               hidden
             >
-              <div className="completion-copy">
-                <span className="completion-kicker">Checkmate</span>
-                <h2 id="completion-title" className="completion-title">Game complete</h2>
-                <p id="completion-summary" className="completion-summary" />
+              <div className="panel-heading">
+                <h2 id="completion-title" className="label completion-title">Game over</h2>
+                <span id="completion-summary" className="panel-value" />
               </div>
+              <p id="completion-detail" className="completion-detail" hidden />
               <div className="completion-actions">
                 <button id="completion-review" className="btn btn-secondary" type="button">
                   Review
+                </button>
+                <button id="completion-replay" className="btn btn-primary" type="button" hidden>
+                  Replay moves
                 </button>
                 <button id="completion-new" className="btn btn-primary" type="button">
                   New game
@@ -66,10 +70,10 @@ export default async function HomePage() {
             {/* Accuracy Summary Panel */}
             <StatsView>
               <span className="stat-tile">
-                <span className="stat-label">100-game accuracy</span>
+                <span className="label stat-label">100-game accuracy</span>
                 <span id="avg-accuracy" className="stat-value">--</span>
                 <span className="stat-current">
-                  <span className="stat-current-label">Game</span>
+                  <span className="label stat-current-label">Game</span>
                   <span className="stat-value-row">
                     <span id="current-accuracy" className="stat-current-value">--</span>
                     <span id="accuracy-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
@@ -77,10 +81,10 @@ export default async function HomePage() {
                 </span>
               </span>
               <span className="stat-tile">
-                <span className="stat-label">100-game pace</span>
+                <span className="label stat-label">100-game pace</span>
                 <span id="avg-move-time" className="stat-value">--</span>
                 <span className="stat-current">
-                  <span className="stat-current-label">Game</span>
+                  <span className="label stat-current-label">Game</span>
                   <span className="stat-value-row">
                     <span id="current-move-time" className="stat-current-value">--</span>
                     <span id="pace-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
@@ -89,20 +93,11 @@ export default async function HomePage() {
               </span>
             </StatsView>
 
-            {/* Move Accuracy Chart Panel */}
+            {/* Move Accuracy Chart Panel: the header value is the last move's score */}
             <section className="panel panel-chart" aria-labelledby="move-chart-title">
               <div className="panel-heading move-chart-heading">
-                <h2 id="move-chart-title">Move accuracy</h2>
-                <span className="move-chart-summary">
-                  <span className="move-chart-stat">
-                    <span className="move-chart-label">Game</span>
-                    <strong id="game-accuracy" className="panel-metric" title="Current game accuracy">--</strong>
-                  </span>
-                  <span className="move-chart-stat">
-                    <span id="move-feedback-label" className="move-chart-label">Move</span>
-                    <strong id="move-feedback" className="panel-metric" data-tone="muted" role="status" aria-atomic="true">--</strong>
-                  </span>
-                </span>
+                <h2 id="move-chart-title" className="label">Move accuracy</h2>
+                <strong id="move-feedback" className="panel-value" data-tone="muted" role="status" aria-atomic="true">--</strong>
               </div>
               <div className="chart-container">
                 <canvas id="move-accuracy-chart" role="img" aria-label="Accuracy of each move in this game" />
@@ -112,17 +107,17 @@ export default async function HomePage() {
             {/* Move List Panel */}
             <section className="panel panel-history" aria-labelledby="move-list-title">
               <div className="panel-heading">
-                <h2 id="move-list-title">Moves</h2>
+                <h2 id="move-list-title" className="label">Moves</h2>
                 <button id="review-exit" className="review-status" type="button" aria-label="Exit review and return to the game" hidden>
                   Reviewing
                   <X size={12} strokeWidth={2.5} aria-hidden="true" />
                 </button>
                 <div className="move-review-controls" role="group" aria-label="Move review controls">
                   <button id="review-prev" className="review-button" type="button" aria-label="Previous move" disabled>
-                    <ChevronLeft size={16} aria-hidden="true" />
+                    <ChevronLeft size={14} aria-hidden="true" />
                   </button>
                   <button id="review-next" className="review-button" type="button" aria-label="Next move" disabled>
-                    <ChevronRight size={16} aria-hidden="true" />
+                    <ChevronRight size={14} aria-hidden="true" />
                   </button>
                 </div>
               </div>

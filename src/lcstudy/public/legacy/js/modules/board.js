@@ -55,8 +55,11 @@ const LAST_MOVE_CLASSES = [
 const MOVE_HINT_CLASSES = [
   'move-hint',
   'move-hint-from',
-  'move-hint-to'
+  'move-hint-to',
+  'move-hint-held'
 ];
+const MOVE_HINT_MS = 760;
+let moveHintTimer = 0;
 
 /**
  * Set the callback for move submission.
@@ -369,13 +372,26 @@ export function applyLastMoveHighlights() {
 }
 
 /**
- * Briefly show the move Leela wanted before it is auto-played.
+ * Remove Leela's move hint from the board.
  */
-export function showMoveHint(fromSquare, toSquare) {
+export function clearMoveHint() {
+  window.clearTimeout(moveHintTimer);
+  moveHintTimer = 0;
   activeHintSquares.forEach((square) => {
     squareEls.get(square)?.classList.remove(...MOVE_HINT_CLASSES);
   });
   activeHintSquares.clear();
+}
+
+/**
+ * Show the move Leela wanted: briefly before it is auto-played, or held
+ * until cleared while a missed move is replayed.
+ * @param {string} fromSquare - Source square
+ * @param {string} toSquare - Destination square
+ * @param {boolean} [hold=false] - Keep the hint until clearMoveHint()
+ */
+export function showMoveHint(fromSquare, toSquare, hold = false) {
+  clearMoveHint();
 
   const fromEl = squareEls.get(fromSquare);
   const toEl = squareEls.get(toSquare);
@@ -390,12 +406,12 @@ export function showMoveHint(fromSquare, toSquare) {
     activeHintSquares.add(toSquare);
   }
 
-  window.setTimeout(() => {
-    fromEl?.classList.remove(...MOVE_HINT_CLASSES);
-    toEl?.classList.remove(...MOVE_HINT_CLASSES);
-    activeHintSquares.delete(fromSquare);
-    activeHintSquares.delete(toSquare);
-  }, 760);
+  if (hold) {
+    fromEl?.classList.add('move-hint-held');
+    toEl?.classList.add('move-hint-held');
+  } else {
+    moveHintTimer = window.setTimeout(clearMoveHint, MOVE_HINT_MS);
+  }
 }
 
 function getPlayerPieceOnSquare(squareEl) {

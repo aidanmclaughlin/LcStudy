@@ -94,9 +94,10 @@ export function buildCurrentGamePoint(accuracies, moveTimesMs) {
   };
 }
 
+/** Older windows fade toward the card; the newest is the accent violet. */
 export function journeyColor(progress) {
   const t = Math.max(0, Math.min(1, progress));
-  const older = [101, 127, 153], newer = [244, 190, 101];
+  const older = [74, 68, 120], newer = [167, 139, 250];
   return `rgb(${older.map((channel, index) => Math.round(channel + (newer[index] - channel) * t)).join(', ')})`;
 }
 
@@ -171,9 +172,11 @@ export function pinToScale(point, x, y) {
   return { ...point, x: px, y: py, actualX: point.x, actualY: point.y, rotation: Math.atan2(dx, dy) * 180 / Math.PI };
 }
 
-const CHART_TEXT = '#94a3b8';
+const CHART_TEXT = '#8b98ad';
 const CHART_GRID = 'rgba(148, 163, 184, 0.1)';
-const CHART_BG = '#0b1220';
+const CHART_BG = '#111a2c';
+const FRONTIER = 'rgba(203, 213, 225, 0.6)';
+export const CURRENT_GAME_COLOR = '#ffffff';
 
 export function createJourneyChartConfig(journey, compact = false, currentGame = null) {
   const { points, frontier } = journey;
@@ -196,6 +199,38 @@ export function createJourneyChartConfig(journey, compact = false, currentGame =
   return {
     type: 'scatter',
     plugins: [{
+      id: 'current-game-marker',
+      afterDatasetsDraw(chart) {
+        const index = chart.data.datasets.findIndex(dataset => dataset.label === 'Current game');
+        const point = chart.data.datasets[index]?.data?.[0];
+        const element = index >= 0 ? chart.getDatasetMeta(index).data[0] : null;
+        if (!point || !element) return;
+        const size = compact ? 7 : 9;
+        const { ctx } = chart;
+        ctx.save();
+        ctx.translate(element.x, element.y);
+        ctx.beginPath();
+        if (point.rotation === undefined) {
+          ctx.moveTo(0, -size);
+          ctx.lineTo(size * 0.87, size * 0.5);
+          ctx.lineTo(-size * 0.87, size * 0.5);
+        } else {
+          ctx.rotate(point.rotation * Math.PI / 180);
+          ctx.moveTo(0, -size * 1.1);
+          ctx.lineTo(size * 0.62, size * 0.7);
+          ctx.lineTo(0, size * 0.3);
+          ctx.lineTo(-size * 0.62, size * 0.7);
+        }
+        ctx.closePath();
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = CHART_BG;
+        ctx.stroke();
+        ctx.fillStyle = CURRENT_GAME_COLOR;
+        ctx.fill();
+        ctx.restore();
+      }
+    }, {
       id: 'journey-direction',
       afterDatasetDraw(chart, { index, meta }) {
         const dataset = chart.data.datasets[index];
@@ -220,13 +255,13 @@ export function createJourneyChartConfig(journey, compact = false, currentGame =
       }
     }],
     data: { datasets: [
-      { label: 'Current game', data: live ? [live] : [], pointStyle: 'triangle',
-        pointRadius: compact ? 6 : 8, pointHoverRadius: 10, pointRotation: live?.rotation ?? 0,
-        backgroundColor: '#eba5ac', borderColor: CHART_BG, borderWidth: 2 },
+      // Drawn by the current-game-marker plugin; the invisible point keeps hover and tooltips.
+      { label: 'Current game', data: live ? [live] : [], pointRadius: compact ? 6 : 8, pointHoverRadius: 10,
+        backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 },
       { label: 'Latest', data: latest ? [latest] : [], pointRadius: compact ? 4 : 6,
-        pointHoverRadius: 8, backgroundColor: '#f4be65', borderColor: CHART_BG, borderWidth: 2 },
+        pointHoverRadius: 8, backgroundColor: journeyColor(1), borderColor: CHART_BG, borderWidth: 2 },
       { label: 'Observed frontier', data: frontier, showLine: true, stepped: 'after',
-        borderColor: '#60cdb1', backgroundColor: '#60cdb1', borderWidth: 1.5,
+        borderColor: FRONTIER, backgroundColor: FRONTIER, borderWidth: 1.5,
         borderDash: [4, 4], pointStyle: 'rectRot', pointRadius: compact ? 2 : 3, pointHoverRadius: 6 },
       { label: 'Journey', data: points, showLine: true, borderColor: journeyColor(0),
         backgroundColor: journeyColor(0), borderWidth: compact ? 1.5 : 2, tension: 0,
@@ -247,8 +282,8 @@ export function createJourneyChartConfig(journey, compact = false, currentGame =
       plugins: {
         legend: { display: false },
         tooltip: {
-          displayColors: false, backgroundColor: 'rgba(15, 23, 42, 0.96)', borderColor: 'rgba(148, 163, 184, 0.24)',
-          borderWidth: 1, cornerRadius: 8, padding: 10, titleColor: '#f8fafc', bodyColor: '#cbd5e1',
+          displayColors: false, backgroundColor: '#0d1526', borderColor: 'rgba(148, 163, 184, 0.24)',
+          borderWidth: 1, cornerRadius: 8, padding: 10, titleColor: '#f1f5f9', bodyColor: '#cbd5e1',
           titleFont: { weight: '600' }, caretSize: 5,
           callbacks: {
             title: items => {

@@ -346,7 +346,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await expect(page.locator('input[switch][data-lcstudy-haptic-switch]')).toHaveCount(1);
   await expect(page.locator('input[switch][data-lcstudy-direct-haptic]')).toHaveCount(64);
   const metricText = await page.locator('#avg-accuracy').textContent();
-  const gameMetricText = await page.locator('#game-accuracy').textContent();
+  const gameMetricText = await page.locator('#current-accuracy').textContent();
   const feedbackText = await page.locator('#move-feedback').textContent();
   const historyText = await page.locator('#move-list').textContent();
   if (!metricText || !gameMetricText?.includes('%') || !feedbackText?.includes('%')) {
@@ -549,6 +549,7 @@ test.describe('progress dashboard', () => {
       const mobileLayout = await page.evaluate(() => {
         const charts = [...document.querySelectorAll('.stats-chart-wrap')].map((wrapper) => {
           const wrapperBox = wrapper.getBoundingClientRect();
+          const cardBox = wrapper.closest('.stats-card').getBoundingClientRect();
           const plotBox = wrapper.querySelector('.stats-chart-plot').getBoundingClientRect();
           const svgBox = wrapper.querySelector('svg').getBoundingClientRect();
           return {
@@ -556,25 +557,29 @@ test.describe('progress dashboard', () => {
             svgHeight: svgBox.height,
             wrapperWidth: wrapperBox.width,
             wrapperX: wrapperBox.x,
+            cardInnerX: cardBox.x + 1,
+            cardInnerWidth: cardBox.width - 2,
           };
         });
         const firstMetric = document.querySelector('.stats-metric').getBoundingClientRect();
-        const pageBox = document.querySelector('.stats-page').getBoundingClientRect();
+        const kpis = document.querySelector('.stats-kpis').getBoundingClientRect();
         const backBox = document.querySelector('.stats-back').getBoundingClientRect();
         return {
           backHeight: backBox.height,
           charts,
           firstMetricWidth: firstMetric.width,
-          pageWidth: pageBox.width,
+          kpiInnerWidth: kpis.width - 2,
           viewportWidth: innerWidth,
         };
       });
       expect(mobileLayout.charts).toHaveLength(1);
       expect(mobileLayout.backHeight).toBeGreaterThanOrEqual(38);
-      expect(Math.abs(mobileLayout.firstMetricWidth - (mobileLayout.pageWidth - 32) / 3)).toBeLessThan(1);
+      // Three equal tiles separated by 1px hairlines.
+      expect(Math.abs(mobileLayout.firstMetricWidth - (mobileLayout.kpiInnerWidth - 2) / 3)).toBeLessThan(1);
       for (const chart of mobileLayout.charts) {
-        expect(chart.wrapperX).toBeCloseTo(4, 0);
-        expect(chart.wrapperWidth).toBeCloseTo(mobileLayout.viewportWidth - 8, 0);
+        // On phones the chart spans the full inner width of its card.
+        expect(chart.wrapperX).toBeCloseTo(chart.cardInnerX, 0);
+        expect(chart.wrapperWidth).toBeCloseTo(chart.cardInnerWidth, 0);
         expect(chart.plotHeight).toBeGreaterThanOrEqual(220);
         expect(Math.abs(chart.svgHeight - chart.plotHeight)).toBeLessThan(1);
       }
@@ -585,10 +590,11 @@ test.describe('progress dashboard', () => {
       expect(await page.locator('.stats-chart-wrap').evaluateAll((charts) => (
         charts.every((chart) => {
           const box = chart.getBoundingClientRect();
+          const card = chart.closest('.stats-card').getBoundingClientRect();
           const plot = chart.querySelector('.stats-chart-plot').getBoundingClientRect();
           const svg = chart.querySelector('svg').getBoundingClientRect();
-          return Math.abs(box.x - 4) < 1
-            && Math.abs(box.width - (innerWidth - 8)) < 1
+          return Math.abs(box.x - (card.x + 1)) < 1
+            && Math.abs(box.width - (card.width - 2)) < 1
             && plot.height >= 220
             && Math.abs(svg.height - plot.height) < 1;
         })

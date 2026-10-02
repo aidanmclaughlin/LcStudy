@@ -5,6 +5,7 @@
 
 import {
   getPgnMoves,
+  getVisibleMoveCount,
   getIsReviewingMoves,
   getCurrentMoveIndex
 } from './state.js';
@@ -20,7 +21,8 @@ export function updatePgnDisplay() {
 
   if (!pgnElement || !pgnContainer) return;
 
-  const pgnMoves = getPgnMoves();
+  // While a missed move is replayed, only the moves before it are listed.
+  const pgnMoves = getPgnMoves().slice(0, getVisibleMoveCount());
   const currentIndex = getIsReviewingMoves() ? getCurrentMoveIndex() : -1;
   updateReviewControls(pgnMoves.length, currentIndex);
 
@@ -34,9 +36,10 @@ export function updatePgnDisplay() {
     `<span class="pgn-move${ply === currentIndex ? ' is-current' : ''}" data-ply="${ply}">${escapeHtml(pgnMoves[ply])}</span>`
   );
 
+  // One row per move pair so numbers, White, and Black line up in columns.
   let html = '';
   for (let ply = 0; ply < pgnMoves.length; ply += 2) {
-    html += `<span class="pgn-pair"><span class="pgn-num">${ply / 2 + 1}.</span>${token(ply)}${ply + 1 < pgnMoves.length ? token(ply + 1) : ''}</span>`;
+    html += `<div class="pgn-row"><span class="pgn-num">${ply / 2 + 1}</span>${token(ply)}${ply + 1 < pgnMoves.length ? token(ply + 1) : ''}</div>`;
   }
   pgnElement.innerHTML = html;
 

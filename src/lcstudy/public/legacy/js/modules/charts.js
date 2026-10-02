@@ -74,7 +74,7 @@ function initMoveAccuracyChart() {
       maintainAspectRatio: false,
       animation: { duration: 180 },
       layout: {
-        padding: { left: 0, right: 2, top: 8, bottom: 0 }
+        padding: { left: 0, right: 0, top: 2, bottom: 0 }
       },
       plugins: {
         legend: { display: false },
@@ -92,11 +92,9 @@ function initMoveAccuracyChart() {
           ...CHART_SCALE_OPTIONS,
           min: 0,
           max: 100,
-          ticks: {
-            ...CHART_SCALE_OPTIONS.ticks,
-            stepSize: 50,
-            callback: value => `${value}%`
-          }
+          // Gridlines at 0, 50, and 100% only; no axis labels, so the bars
+          // start on the same edge as the panel title.
+          ticks: { display: false, stepSize: 50 }
         },
         x: { display: false }
       }
@@ -219,7 +217,6 @@ export function updateStatistics() {
     'Mean accuracy of your latest 100 scored games');
   updateMetric('avg-move-time', baseline.secondsPerMove, 2, 's',
     'Thinking seconds per move, averaged equally across your latest 100 scored games');
-  updateMetric('game-accuracy', gameAccuracy, 1, '%', 'Current game accuracy');
   updateMetric('current-accuracy', gameAccuracy, 1, '%', 'Current game accuracy');
   updateMetric('current-move-time', current?.x ?? null, 2, 's', 'Mean thinking seconds per move in this game');
   updateComparison('accuracy-comparison', gameAccuracy, baseline.accuracy, false, 1);

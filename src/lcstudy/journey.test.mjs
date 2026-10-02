@@ -137,7 +137,8 @@ test('live marker stays on the chart without rescaling the journey or its fronti
   // Pinned to the top-left corner, pointing up and left toward the real value.
   assert.deepEqual([marker.x, marker.y], [config.options.scales.x.min, config.options.scales.y.max]);
   assert.deepEqual([marker.actualX, marker.actualY], [current.x, current.y]);
-  assert.equal(config.data.datasets.find(dataset => dataset.label === 'Current game').pointRotation, -45);
+  assert.equal(marker.rotation, -45);
+  assert.deepEqual(config.plugins.map(plugin => plugin.id), ['current-game-marker', 'journey-direction']);
   assert.equal(config.options.plugins.tooltip.callbacks.title([{ raw: marker }]), 'Current game · 1 move');
   assert.equal(config.options.plugins.tooltip.callbacks.label({ raw: marker }), '100.0% accuracy · 1.00s per move');
   const inside = buildCurrentGamePoint([80, 80], [3000, 3000]);
@@ -156,8 +157,8 @@ test('axes end on round ticks', () => {
 });
 
 test('journey colors follow time even when accuracy and pace reverse', () => {
-  assert.equal(journeyColor(-1), 'rgb(101, 127, 153)');
-  assert.equal(journeyColor(2), 'rgb(244, 190, 101)');
+  assert.equal(journeyColor(-1), 'rgb(74, 68, 120)');
+  assert.equal(journeyColor(2), 'rgb(167, 139, 250)');
   const points = [{ x: 1, y: 90, game: 25 }, { x: 3, y: 80, game: 26 }, { x: 2, y: 95, game: 27 }];
   const config = createJourneyChartConfig({ points, frontier: [] });
   const { borderColor } = config.data.datasets.find(dataset => dataset.label === 'Journey').segment;
@@ -185,7 +186,7 @@ test('direction arrows follow screen-space chronology and avoid gaps or overlapp
 });
 
 test('direction plugin reads updated chart data instead of its initial empty history', () => {
-  const plugin = createJourneyChartConfig(buildAccuracyJourney([])).plugins[0];
+  const plugin = createJourneyChartConfig(buildAccuracyJourney([])).plugins.find(({ id }) => id === 'journey-direction');
   const strokes = [];
   const ctx = { save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() { strokes.push(this.strokeStyle); } };
   const data = [{ game: 1 }, { game: 2 }];

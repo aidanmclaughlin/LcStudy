@@ -1,5 +1,5 @@
 /**
- * Resets and global defaults.
+ * Resets, global defaults, and the shared label style.
  */
 
 @tailwind base;
@@ -20,10 +20,11 @@ body {
   margin: 0;
   overflow-x: hidden;
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--text-secondary);
   background: var(--app-background);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -35,6 +36,25 @@ button {
 :focus-visible {
   outline: 2px solid var(--color-brand-light);
   outline-offset: 2px;
+}
+
+/* The one label style: panel titles, metric names, table headers. */
+.label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .label {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
 }
 
 .sr-only {

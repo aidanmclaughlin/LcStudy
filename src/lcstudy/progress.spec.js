@@ -78,12 +78,12 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   await expect(page.locator('.stats-trigger .stat-tile')).toHaveCount(2);
   await expect(page.locator('.stats-trigger #move-feedback')).toHaveCount(0);
   await expect(page.locator('#move-chart-count')).toHaveCount(0);
-  await expect(page.locator('.move-chart-summary .move-chart-label')).toHaveText(['Game', 'Move']);
+  // Game accuracy lives in the summary only; the chart header shows the last move.
+  await expect(page.locator('#game-accuracy')).toHaveCount(0);
   const accuracy100 = history.slice(-100).reduce((sum, game) => sum + game.average_accuracy, 0) / 100;
   const pace100 = history.slice(-100).reduce((sum, game) => sum + game.think_time_ms / game.total_moves / 1000, 0) / 100;
   await expect(page.locator('#avg-accuracy')).toHaveText(`${accuracy100.toFixed(1)}%`);
   await expect(page.locator('#avg-move-time')).toHaveText(`${pace100.toFixed(2)}s`);
-  await expect(page.locator('.panel-chart #game-accuracy')).toHaveText('--');
   await expect(page.locator('.panel-chart #move-feedback')).toHaveText('--');
   await expect(page.locator('#current-accuracy')).toHaveText('--');
   await expect(page.locator('#current-move-time')).toHaveText('--');
@@ -109,7 +109,6 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
   expect(before.scores).toHaveLength(5);
   await expect.poll(async () => (await currentGamePoint(page))?.moves).toBe(5);
   const livePoint = await currentGamePoint(page);
-  await expect(page.locator('.panel-chart #game-accuracy')).toHaveText('100.0%');
   await expect(page.locator('#current-accuracy')).toHaveText('100.0%');
   await expect(page.locator('#current-move-time')).toHaveText(`${livePoint.x.toFixed(2)}s`);
   await expect(page.locator('.panel-chart #move-feedback')).toHaveText('100.0%');
@@ -137,7 +136,7 @@ test('Stats preserves a played game and excludes time spent away', async ({ page
     const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
     let top = Infinity, bottom = -Infinity;
     for (let i = 0; i < pixels.length; i += 4) {
-      if (pixels[i] === 235 && pixels[i + 1] === 165 && pixels[i + 2] === 172 && pixels[i + 3] === 255) {
+      if (pixels[i] === 255 && pixels[i + 1] === 255 && pixels[i + 2] === 255 && pixels[i + 3] === 255) {
         const y = Math.floor(i / 4 / canvas.width);
         top = Math.min(top, y); bottom = Math.max(bottom, y);
       }
@@ -221,7 +220,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   await expect(page.locator('.stats-metric').filter({ hasText: '100-game accuracy' }).locator('strong')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
   await expect(page.locator('.stats-metric').filter({ hasText: '100-game pace' }).locator('strong')).toHaveText(`${latestPace.toFixed(2)}s`);
   await expect(page.locator('.journey-caption')).toContainText('Games 61–160');
-  await expect(page.locator('.stats-accuracy-band .stats-section-heading > span')).toHaveText(`${latestAccuracy.toFixed(1)}%`);
+  await expect(page.locator('.stats-accuracy-band .stats-card-meta')).toHaveText('Games 120–160');
   const backStyles = await page.getByRole('button', { name: 'Resume game' }).evaluate(button => {
     const style = getComputedStyle(button), box = button.getBoundingClientRect();
     return { background: style.backgroundImage, shadow: style.boxShadow, height: box.height, width: box.width };
@@ -230,16 +229,16 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   expect(backStyles.shadow).toBe('none');
   expect(backStyles.height).toBeGreaterThanOrEqual(44);
   expect(backStyles.width).toBeLessThan(130);
-  await expect(page.getByRole('heading', { name: 'Current form', exact: true })).not.toBeVisible();
+  // No collapsible sections: every card is always visible.
+  await expect(page.locator('details')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Current form', exact: true })).toBeVisible();
   for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.getByRole('tab', { name: 'Overview' }).click();
-    await page.locator('summary').filter({ hasText: 'Learning & target' }).click();
     await expect(page.getByRole('heading', { name: 'Current form', exact: true })).toBeVisible();
-    await expect(page.getByText('Best 100-game accuracy', { exact: true })).toBeVisible();
-    await expect(page.getByText('Difficulty-adjusted / 100', { exact: true })).toBeVisible();
-    await expect(page.getByText('10-game average · estimate', { exact: true })).toBeVisible();
-    await page.locator('summary').filter({ hasText: 'Learning & target' }).click();
+    await expect(page.getByText('Best 100 games', { exact: true })).toBeVisible();
+    await expect(page.getByText('Difficulty-adjusted', { exact: true })).toBeVisible();
+    await expect(page.getByText('10-game average', { exact: true })).toBeVisible();
     const chart = await page.locator('.journey-canvas').boundingBox();
     expect(chart.width).toBeGreaterThan(width <= 600 ? width - 36 : 600);
     expect(chart.height).toBeGreaterThanOrEqual(300);
@@ -249,18 +248,16 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
     await page.getByRole('button', { name: 'Recent 100', exact: true }).click();
     for (const tab of ['Overview', 'Breakdowns', 'Timing']) {
       await page.getByRole('tab', { name: tab, exact: true }).click();
-      if (tab !== 'Overview') await expect(page.locator('.stats-band > .stats-section-heading > span')).toContainText('Last 100 scored games');
+      if (tab !== 'Overview') await expect(page.locator('.stats-caption')).toContainText('Last 100 scored games');
       if (tab === 'Overview') await expect.poll(async () => page.locator('.journey-canvas canvas').evaluate(canvas =>
         canvas.width > 0 && canvas.height > 0 && canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.some(value => value > 0)
       )).toBe(true);
       expect(await page.locator('#stats-dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       expect(await page.locator('.stats-page').evaluate(el => getComputedStyle(el).caretColor)).toBe('rgba(0, 0, 0, 0)');
       if (tab === 'Breakdowns') {
-        await page.locator('summary').filter({ hasText: 'Opening lines' }).click();
-        await expect(page.getByRole('heading', { name: 'Accuracy by line' })).toBeVisible();
-        await page.locator('summary').filter({ hasText: 'Data coverage' }).click();
-        await expect(page.getByRole('heading', { name: 'Sample', exact: true })).toBeVisible();
-        expect(await page.locator('#stats-dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+        await expect(page.getByRole('heading', { name: 'Opening lines', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Data coverage', exact: true })).toBeVisible();
+        expect(await page.locator('.stats-breakdown-row').evaluateAll(rows => rows.every(row => row.scrollWidth <= row.clientWidth))).toBe(true);
       }
       await page.locator('#stats-dialog').evaluate(el => { el.scrollTop = 0; });
       if (width === 390 || width === 1440) await page.screenshot({ path: testInfo.outputPath(`${width}-${tab}.png`) });
@@ -291,7 +288,7 @@ test('rolling accuracy renders empty, single-point, and constant histories', asy
       expect(await page.locator('.stats-accuracy-chart-line').evaluate(path => path.getTotalLength())).toBeGreaterThan(0);
       const labels = await page.locator('.stats-accuracy-chart-wrap .stats-chart-y-axis').innerText();
       expect(labels).not.toMatch(/NaN|Infinity/);
-      await expect(page.locator('.stats-accuracy-band .stats-section-heading > span')).toHaveText(`${scores[0].toFixed(1)}%`);
+      await expect(page.locator('.stats-accuracy-band .stats-card-meta')).toHaveText(scores.length === 100 ? 'Game 100' : `Games 100–${scores.length}`);
     }
     await page.getByRole('button', { name: 'Resume game' }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -325,7 +322,6 @@ test('live comparison arrows distinguish accuracy and pace, ties, and missing ti
   await expect(page.locator('#pace-comparison')).toHaveAttribute('data-tone', 'worse');
   await expect(page.locator('#pace-comparison')).toHaveAttribute('data-direction', 'up');
   await expect(page.locator('#pace-comparison')).toHaveAttribute('title', /slower than your 100-game average/);
-  await expect(page.locator('#game-accuracy')).toHaveText('70.0%');
   await expect(page.locator('#current-accuracy')).toHaveText('70.0%');
   expect(await page.locator('#current-move-time').innerText()).toMatch(/^\d+\.\d{2}s$/);
   await page.setViewportSize({ width: 320, height: 844 });
@@ -345,7 +341,6 @@ test('live comparison arrows distinguish accuracy and pace, ties, and missing ti
     (await import('/legacy/js/modules/timeclock.js')).startGameClock();
     (await import('/legacy/js/modules/charts.js')).updateStatistics();
   });
-  await expect(page.locator('#game-accuracy')).toHaveText('--');
   await expect(page.locator('#current-accuracy')).toHaveText('--');
   await expect(page.locator('#current-move-time')).toHaveText('--');
   await expect(page.locator('#move-feedback')).toHaveText('--');
@@ -363,7 +358,6 @@ test('paired metrics stay compact and separate the game from move feedback', asy
     effects.updateMoveFeedback({ accuracy: 80 });
   });
   await expect(page.locator('#current-accuracy')).toHaveText('60.0%');
-  await expect(page.locator('#game-accuracy')).toHaveText('60.0%');
   await expect(page.locator('#move-feedback')).toHaveText('80.0%');
   await expect(page.locator('#current-move-time')).toHaveText('--');
   await expect(page.locator('#pace-comparison')).toHaveAttribute('aria-hidden', 'true');
@@ -400,10 +394,10 @@ test('paired metrics stay compact and separate the game from move feedback', asy
       await page.evaluate(async feedback => (await import('/legacy/js/modules/effects.js')).updateMoveFeedback(feedback), feedback);
       const next = await page.locator('.move-chart-heading').boundingBox();
       expect(next.height).toBe(heading.height);
-      expect(await page.locator('.move-chart-stat').evaluateAll(stats => stats.every(stat => stat.scrollWidth <= stat.clientWidth && stat.scrollHeight <= stat.clientHeight))).toBe(true);
+      expect(await page.locator('#move-feedback').evaluate(value => value.scrollWidth <= value.clientWidth && value.scrollHeight <= value.clientHeight)).toBe(true);
       const title = await page.locator('.move-chart-heading h2').boundingBox();
-      const metrics = await page.locator('.move-chart-summary').boundingBox();
-      expect(title.x + title.width).toBeLessThanOrEqual(metrics.x);
+      const value = await page.locator('#move-feedback').boundingBox();
+      expect(title.x + title.width).toBeLessThanOrEqual(value.x);
     }
     await page.locator('.stats-trigger').screenshot({ path: testInfo.outputPath(`${width}-paired-summary.png`) });
     await page.locator('.panel-chart').screenshot({ path: testInfo.outputPath(`${width}-move-header.png`) });

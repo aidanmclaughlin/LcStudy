@@ -18,3 +18,4 @@ export interface NiceScale { min: number; max: number; step: number; ticks: numb
 export function niceStep(span: number, targetTicks?: number): number;
 export function niceScale(low: number, high: number, options?: { targetTicks?: number; floor?: number; ceiling?: number; minSpan?: number }): NiceScale;
 export function pinToScale<T extends { x: number; y: number }>(point: T, x: { min: number; max: number }, y: { min: number; max: number }): T & { actualX?: number; actualY?: number; rotation?: number };
+export const CURRENT_GAME_COLOR: string;

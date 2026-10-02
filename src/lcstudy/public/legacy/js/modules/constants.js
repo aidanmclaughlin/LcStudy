@@ -47,6 +47,9 @@ export const ACCURACY_COLORS = {
   bad: '#ef4444'
 };
 
+/** Moves scored below this accuracy must be replayed before the next game */
+export const REPLAY_ACCURACY_THRESHOLD = 40;
+
 /** Chart.js common scale options */
 export const CHART_SCALE_OPTIONS = {
   grid: {

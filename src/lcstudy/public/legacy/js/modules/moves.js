@@ -3,6 +3,7 @@
  * @module moves
  */
 
+import { REPLAY_ACCURACY_THRESHOLD } from './constants.js';
 import {
   getSessionId,
   getSessionCache,
@@ -16,6 +17,7 @@ import {
   incrementMoveCounter,
   pushPgnMove,
   pushMoveHistory,
+  getLastMoveHighlights,
   setLastMoveHighlight
 } from './state.js';
 import { animateMove, finishActiveAnimations, showMoveHint, updateBoardAfterMove } from './board.js';
@@ -25,6 +27,7 @@ import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
 import { hapticMove, hapticSuccess, hapticError, hapticInaccuracy } from './haptics.js';
 import { promptBegin, promptSubmit, endGameClock } from './timeclock.js';
+import { prepareReplay, recordMistake } from './replay.js';
 
 /** Whether the completed game has already been saved for the current session */
 let completedMateSaved = false;
@@ -209,15 +212,24 @@ function buildMissedMoveEvaluation(moveUci) {
   };
 }
 
-function isLegalSubmittedMove(moveUci) {
+/**
+ * Find the legal move a submitted UCI string refers to in the live position.
+ * @param {string} moveUci - Submitted move
+ * @returns {Object|null} Chess.js verbose move
+ */
+function findLegalMove(moveUci) {
   const chessEngine = getChessEngine();
-  if (!chessEngine) return false;
+  if (!chessEngine) return null;
 
   const normalized = moveUci.toLowerCase();
-  return chessEngine.moves({ verbose: true }).some((move) => {
+  return chessEngine.moves({ verbose: true }).find((move) => {
     const legalUci = `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
     return legalUci === normalized || (normalized.length === 4 && legalUci.startsWith(normalized));
-  });
+  }) || null;
+}
+
+function isLegalSubmittedMove(moveUci) {
+  return findLegalMove(moveUci) !== null;
 }
 
 function inaccuracyIntensity(accuracy) {
@@ -315,6 +327,18 @@ export async function handleMaiaReply(round) {
 export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestMove) {
   let moveResult = null;
 
+  if (!isBestMove && moveEvaluation.accuracy < REPLAY_ACCURACY_THRESHOLD) {
+    // Captured before the position changes: it is replayed after the game.
+    recordMistake({
+      ply: expectedInfo.index,
+      fen: getChessEngine()?.fen(),
+      highlights: getLastMoveHighlights(),
+      best: { uci: expectedInfo.move.uci, san: expectedInfo.move.san || expectedInfo.move.uci },
+      played: findLegalMove(moveEvaluation.uci)?.san || moveEvaluation.san,
+      accuracy: moveEvaluation.accuracy
+    });
+  }
+
   if (isBestMove) {
     // The user just made this exact move; commit it instantly rather than
     // replaying an animation of their own input.
@@ -392,8 +416,10 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     completedMateSaved = true;
     endGameClock();
 
-    const chessEngine = getChessEngine();
-    if (chessEngine?.isCheckmate?.()) {
+    const checkmate = Boolean(getChessEngine()?.isCheckmate?.());
+    // Missed moves lock New game until they are replayed.
+    prepareReplay(checkmate ? 'Checkmate' : 'Game over');
+    if (checkmate) {
       celebrateCheckmate(moveResult.to);
     } else {
       showCompletionOverlay('Game over');

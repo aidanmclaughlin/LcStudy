@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import type { ProgressDashboardStats } from "@/lib/progress-stats";
 import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
 import { SignOutButton } from "./auth-controls";
@@ -84,7 +84,7 @@ export function StatsView({ children }: { children: ReactNode }) {
     <button ref={trigger} type="button" className="panel panel-stats stats-trigger" onClick={show}
       aria-label="Accuracy summary, open statistics" aria-haspopup="dialog" aria-controls="stats-dialog" aria-expanded={open}
       title="View progress statistics">
-      {children}<ChevronRight className="stats-trigger-chevron" size={16} aria-hidden="true" />
+      {children}
     </button>
     <dialog ref={dialog} id="stats-dialog" className="stats-dialog" aria-label="Progress statistics" onCancel={event => { event.preventDefault(); close(); }}>
       {open && <>
