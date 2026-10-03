@@ -35,10 +35,6 @@ export interface UserGameRow {
   averageAccuracy: number | null;
   accuracyHistory: number[];
   maiaLevel: number | null;
-  durationMs: number | null;
-  thinkTimeMs: number | null;
-  moveTimesMs: number[];
-  suggestedThinkMs: number | null;
 }
 
 /** User history enriched with immutable game metadata for progress analysis */
@@ -63,10 +59,6 @@ export interface UserGameDbRow {
   average_accuracy: string | number | null;
   accuracy_history: unknown;
   maia_level: number | null;
-  duration_ms: number | null;
-  think_time_ms: number | null;
-  move_times_ms: unknown;
-  suggested_think_ms: number | null;
 }
 
 /** Raw joined row used by the progress dashboard */
@@ -87,10 +79,6 @@ export interface RecordGameResultParams {
   averageAccuracy: number | null;
   accuracyHistory: number[];
   maiaLevel: number | null;
-  durationMs: number | null;
-  thinkTimeMs?: number | null;
-  moveTimesMs?: number[] | null;
-  suggestedThinkMs?: number | null;
 }
 
 // =============================================================================

@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import type { ProgressDashboardStats } from "@/lib/progress-stats";
-import type { CurrentGamePoint } from "../public/legacy/js/modules/journey.mjs";
 import { SignOutButton } from "./auth-controls";
 
 const Dashboard = dynamic(() => import("./stats-dashboard").then(module => module.StatsDashboard), {
@@ -20,13 +19,6 @@ export function StatsView({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [currentGame, setCurrentGame] = useState<CurrentGamePoint | null>(null);
-
-  useEffect(() => {
-    const update = (event: Event) => setCurrentGame((event as CustomEvent<CurrentGamePoint | null>).detail);
-    window.addEventListener("lcstudy:current-game", update);
-    return () => window.removeEventListener("lcstudy:current-game", update);
-  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -34,7 +26,6 @@ export function StatsView({ children }: { children: ReactNode }) {
       if (visible && !dialog.current?.open) dialog.current?.showModal();
       if (!visible && dialog.current?.open) dialog.current.close();
       setOpen(visible);
-      window.dispatchEvent(new CustomEvent("lcstudy:stats-visibility", { detail: { open: visible } }));
       if (!visible) trigger.current?.focus({ preventScroll: true });
     };
     window.addEventListener("popstate", sync);
@@ -43,7 +34,6 @@ export function StatsView({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener("popstate", sync);
       window.removeEventListener("hashchange", sync);
-      window.dispatchEvent(new CustomEvent("lcstudy:stats-visibility", { detail: { open: false } }));
     };
   }, []);
 
@@ -69,7 +59,6 @@ export function StatsView({ children }: { children: ReactNode }) {
     history.pushState({ ...history.state, lcstudyStats: true }, "", "#stats");
     dialog.current?.showModal();
     setOpen(true);
-    window.dispatchEvent(new CustomEvent("lcstudy:stats-visibility", { detail: { open: true } }));
   }
 
   function close() {
@@ -97,7 +86,7 @@ export function StatsView({ children }: { children: ReactNode }) {
           </div>
         </div>
         {error ? <div className="stats-load-state" role="alert"><p>{error}</p><button type="button" className="btn btn-secondary" onClick={() => setRevision(value => value + 1)}><RefreshCw size={15} aria-hidden="true" />Retry</button></div>
-          : stats ? <Dashboard stats={stats} embedded currentGame={currentGame} /> : <div className="stats-load-state" role="status">Loading progress…</div>}
+          : stats ? <Dashboard stats={stats} embedded /> : <div className="stats-load-state" role="status">Loading progress…</div>}
       </>}
     </dialog>
   </>;

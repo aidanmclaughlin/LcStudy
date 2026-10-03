@@ -12,7 +12,9 @@ import {
   setLiveFen,
   getCorrectStreak,
   setCorrectStreak,
+  getMoveAccuracies,
   pushMoveScore,
+  pushTryScore,
   incrementMoveCounter,
   pushPgnMove,
   pushMoveHistory,
@@ -24,7 +26,6 @@ import { scheduleChartsUpdate } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
 import { hapticMove, hapticSuccess, hapticError, hapticInaccuracy } from './haptics.js';
-import { promptBegin, promptSubmit, endGameClock } from './timeclock.js';
 
 /** Whether the completed game has already been saved for the current session */
 let completedMateSaved = false;
@@ -33,7 +34,7 @@ let movePlaybackInProgress = false;
 /** Latest move submitted while playback was busy; replayed on release */
 let pendingSubmission = null;
 
-/** Ply whose first try was scored; later tries at it only show their score */
+/** Ply whose first try has been recorded; later tries at it are retries */
 let scoredPly = null;
 
 const AUTO_PLAY_DELAY_MS = 120;
@@ -311,8 +312,9 @@ export async function handleMaiaReply(round) {
 
 /**
  * Score one try at the current prompt. Until Leela's move (or one scoring as
- * well) is found, the position stays and each try only shows its own score;
- * only the first try at a move is scored and timed.
+ * well) is found, the position stays and each try shows its own score. Every
+ * try counts toward the game's accuracy; the first try at each move is also
+ * kept as that move's first-try score.
  * @param {Object} expectedInfo - Expected move info
  * @param {Object} moveEvaluation - LC0 evaluation for the submitted move
  * @param {boolean} isBestMove - Whether the submitted move matched Leela's move
@@ -323,12 +325,12 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
 
   if (scoredPly !== expectedInfo.index) {
     scoredPly = expectedInfo.index;
-    promptSubmit();
     pushMoveScore(accuracy);
     incrementMoveCounter();
-    scheduleChartsUpdate();
   }
+  pushTryScore(getMoveAccuracies().length - 1, accuracy);
   updateMoveFeedback({ accuracy });
+  scheduleChartsUpdate();
 
   if (!isBestMove && accuracy < TOP_MOVE_ACCURACY) {
     // Try again: the answer is never revealed.
@@ -390,7 +392,6 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   const updatedCache = getSessionCache();
   if (updatedCache.currentIndex >= updatedCache.moves.length && !completedMateSaved) {
     completedMateSaved = true;
-    endGameClock();
 
     const chessEngine = getChessEngine();
     if (chessEngine?.isCheckmate?.()) {
@@ -402,18 +403,6 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
   }
 
   return true;
-}
-
-/**
- * Begin timing the next prompt if the game still has moves to play. Retries
- * at a move whose first try was scored are never timed.
- */
-function beginNextPromptIfAny() {
-  const sessionCache = getSessionCache();
-  if (sessionCache.moves.length > 0 && sessionCache.currentIndex < sessionCache.moves.length
-    && sessionCache.currentIndex !== scoredPly) {
-    promptBegin();
-  }
 }
 
 /**
@@ -491,7 +480,6 @@ export async function submitMove(moveUci) {
     await completeExpectedMove(expectedInfo, moveEvaluation, isBestMove);
   } finally {
     movePlaybackInProgress = false;
-    beginNextPromptIfAny();
 
     const queued = pendingSubmission;
     pendingSubmission = null;

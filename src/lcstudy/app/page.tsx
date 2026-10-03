@@ -7,7 +7,7 @@
  *
  * Layout:
  * - Board column: Chessboard (rendered by board.js)
- * - Sidebar: Game-over panel, accuracy summary with Stats access, per-move chart, move list
+ * - Sidebar: Game-over panel, accuracy summary with Stats access, per-try chart, move list
  */
 
 import Script from "next/script";
@@ -69,7 +69,7 @@ export default async function HomePage() {
               </div>
             </section>
 
-            {/* Accuracy Summary Panel */}
+            {/* Accuracy Summary Panel: accuracy across every try, over 100 games and this one */}
             <StatsView>
               <span className="stat-tile">
                 <span className="label stat-label">100-game accuracy</span>
@@ -82,27 +82,16 @@ export default async function HomePage() {
                   </span>
                 </span>
               </span>
-              <span className="stat-tile">
-                <span className="label stat-label">100-game pace</span>
-                <span id="avg-move-time" className="stat-value">--</span>
-                <span className="stat-current">
-                  <span className="label stat-current-label">Game</span>
-                  <span className="stat-value-row">
-                    <span id="current-move-time" className="stat-current-value">--</span>
-                    <span id="pace-comparison" className="metric-comparison" role="img" aria-hidden="true"><ArrowUp size={12} aria-hidden="true" /></span>
-                  </span>
-                </span>
-              </span>
             </StatsView>
 
-            {/* Move Accuracy Chart Panel: the header value is the last move's score */}
+            {/* Move Accuracy Chart Panel: one bar per try; the header value is the last try's score */}
             <section className="panel panel-chart" aria-labelledby="move-chart-title">
               <div className="panel-heading move-chart-heading">
                 <h2 id="move-chart-title" className="label">Move accuracy</h2>
                 <strong id="move-feedback" className="panel-value" data-tone="muted" role="status" aria-atomic="true">--</strong>
               </div>
               <div className="chart-container">
-                <canvas id="move-accuracy-chart" role="img" aria-label="Accuracy of each move in this game" />
+                <canvas id="move-accuracy-chart" role="img" aria-label="Accuracy of every try in this game" />
               </div>
             </section>
 

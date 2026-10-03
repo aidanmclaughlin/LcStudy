@@ -2,15 +2,13 @@
 
 import type {
   GroupStat,
-  PaceStat,
   ProgressDashboardStats
 } from "@/lib/progress-stats";
 import { TARGET_ACCURACY } from "@/lib/progress-stats";
 import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
-import { JourneyChart } from "./journey-chart";
-import { niceScale, type CurrentGamePoint, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
+import { niceScale, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
 
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 100;
@@ -24,18 +22,20 @@ interface ChartTick {
 interface StatsDashboardProps {
   stats: ProgressDashboardStats;
   embedded?: boolean;
-  currentGame?: CurrentGamePoint | null;
 }
 
 /**
  * Every block is the same card: a label header (with optional meta on the
  * right) above its content. Each number appears once per tab.
+ *
+ * Accuracy means accuracy across every try in a game; the first try at each
+ * move is shown separately, the way move-matching accuracy is usually reported.
  */
-export function StatsDashboard({ stats, embedded = false, currentGame = null }: StatsDashboardProps) {
-  const { elo, overview, progress, consistency, timing, skill, coverage, journey } = stats;
+export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps) {
+  const { elo, overview, progress, consistency, skill, coverage } = stats;
   const [tab, setTab] = useState("overview");
   const recentSample = `Last ${formatInteger(overview.recentGames)} scored games`;
-  const tabs = [["overview", "Overview"], ["breakdowns", "Breakdowns"], ["timing", "Timing"]];
+  const tabs = [["overview", "Overview"], ["breakdowns", "Breakdowns"]];
   const forecast = progress.forecast;
 
   return (
@@ -47,9 +47,10 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
       </header>
 
       <section className="stats-kpis" aria-label="Progress summary">
-        <Metric label="100-game accuracy" value={overview.recent100 === null ? "--" : formatPercent(overview.recent100)} />
-        <Metric label="100-game pace" value={overview.recentSecondsPerMove === null ? "--" : formatSeconds(overview.recentSecondsPerMove)}
-          title="Mean thinking seconds per move over the last 100 scored games, with each game weighted equally" />
+        <Metric label="100-game accuracy" value={overview.recent100 === null ? "--" : formatPercent(overview.recent100)}
+          title="Accuracy across every try, over the last 100 scored games with each game weighted equally" />
+        <Metric label="First-try accuracy" value={overview.recentFirstTry === null ? "--" : formatPercent(overview.recentFirstTry)}
+          title="Accuracy of your first try at each move over the same 100 games, the way move-matching accuracy is usually reported" />
         <Metric label="Maia Elo" value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
           title={elo.current ? `Maia-2 rapid equivalent over the last ${elo.current.games} eligible games; 80% range ${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}. Not an official rating.` : "No eligible positions"} />
       </section>
@@ -69,9 +70,6 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
 
       <div role="tabpanel" className="stats-panel" id={`stats-panel-${tab}`} aria-labelledby={`stats-tab-${tab}`}>
         {tab === "overview" && <>
-          <Card title="Accuracy & pace" meta={`${journey.windowSize}-game averages`} className="stats-journey-band">
-            <JourneyChart journey={journey} currentGame={currentGame} />
-          </Card>
           <Card title="100-game accuracy" className="stats-accuracy-band"
             meta={gameSpan(progress.accuracy100)}>
             <RollingAccuracyChart points={progress.accuracy100} />
@@ -86,18 +84,16 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
               </dl>
             </Card>
             <Card title={`Road to ${TARGET_ACCURACY}%`} meta="10-game average">
-              {forecast ? <dl className="stats-definition-list forecast-layout">
-                <Definition label="Time left" value={formatNullableHours(forecast.remainingHours)} />
+              {forecast ? <dl className="stats-definition-list">
                 <Definition label="Games left" value={formatInteger(forecast.remainingGames)} />
                 <Definition label="80% range" value={`${formatInteger(forecast.remainingGamesLow)}–${formatInteger(forecast.remainingGamesHigh)}`} />
-                <Definition label="Typical game" value={formatDuration(forecast.typicalGameMs)} />
               </dl> : <EmptyState label="No scored games yet" />}
             </Card>
           </div>
         </>}
 
         {tab === "breakdowns" && <>
-          <p className="stats-caption">{recentSample}</p>
+          <p className="stats-caption">First tries · {recentSample}</p>
           <div className="stats-grid">
             <Card title="Game phase"><Breakdown rows={skill.phases} /></Card>
             <Card title="Position difficulty"><Breakdown rows={skill.difficulties} /></Card>
@@ -117,21 +113,6 @@ export function StatsDashboard({ stats, embedded = false, currentGame = null }: 
           </Card>
         </>}
 
-        {tab === "timing" && <>
-          <p className="stats-caption">{recentSample} · {formatInteger(timing.timedGames)} timed</p>
-          <section className="stats-kpis stats-kpis--4" aria-label="Thinking time">
-            <Metric label="Median move" value={formatDuration(timing.medianMoveMs)} />
-            <Metric label="Middle 50%" value={timing.moveP25Ms === null || timing.moveP75Ms === null ? "--" : formatDurationRange(timing.moveP25Ms, timing.moveP75Ms)} />
-            <Metric label="Late-game change" value={timing.fatigueDelta === null ? "--" : formatSignedPoints(timing.fatigueDelta)}
-              title="Accuracy late in games compared with early in games" />
-            <Metric label="2× think time" value={formatSignedPoints(timing.tempoEffect)}
-              title="Accuracy change associated with doubling thinking time per move" />
-          </section>
-          <div className="stats-grid">
-            <Card title="Speed and accuracy"><PaceTable rows={timing.pace} /></Card>
-            <Card title="Learning per hour"><LearningRateTable rows={timing.learningRates} /></Card>
-          </div>
-        </>}
       </div>
     </main>
   );
@@ -203,7 +184,7 @@ function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
       titleId="accuracy-chart-title"
       descriptionId="accuracy-chart-description"
       title="100-game rolling accuracy over games"
-      description="Average accuracy of the most recent 100 games scored under the current search-based grading system, with each game weighted equally. Earlier policy-based scores are excluded."
+      description="Average accuracy across every try in the most recent 100 games scored under the current search-based grading system, with each game weighted equally. Earlier policy-based scores are excluded."
       yTicks={yAxisTicks}
       xTicks={xAxisTicks}
       overlay={<span className="stats-chart-dot" style={{ left: `${x(last) / CHART_WIDTH * 100}%`, top: `${y(points[last].accuracy)}%` }} />}
@@ -373,60 +354,12 @@ function BarRow({ label, value, detail, extra, fill }: { label: string; value: s
   );
 }
 
-function PaceTable({ rows }: { rows: PaceStat[] }) {
-  if (rows.length === 0) return <EmptyState label="No timed games yet" />;
-  return (
-    <div className="stats-table">
-      <div className="stats-table-row stats-table-head">
-        <span className="label">Pace</span><span className="label">Games</span><span className="label">Adjusted</span>
-      </div>
-      {rows.map((row) => (
-        <div className="stats-table-row" key={row.label}>
-          <span>{formatSeconds(row.medianMoveMs / 1000)}</span>
-          <span>{formatInteger(row.games)}</span>
-          <span>{formatPercent(row.accuracy)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LearningRateTable({
-  rows
-}: {
-  rows: ProgressDashboardStats["timing"]["learningRates"];
-}) {
-  // Budgets nobody has played only echo the prior, so they are left out.
-  const played = rows.filter(row => row.games > 0);
-  if (played.length === 0) return <EmptyState label="No timed games yet" />;
-  return (
-    <div className="stats-table">
-      <div className="stats-table-row stats-table-head">
-        <span className="label">Budget</span><span className="label">Games</span><span className="label">Pts / hour</span>
-      </div>
-      {played.map((row) => (
-        <div className="stats-table-row" key={row.minutes}>
-          <span>{row.minutes} min</span>
-          <span>{formatInteger(row.games)}</span>
-          <span title={`80% range ${row.rateLow.toFixed(2)} to ${row.rateHigh.toFixed(2)}`}>
-            {row.rateMean.toFixed(2)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function EmptyState({ label }: { label: string }) {
   return <div className="stats-empty">{label}</div>;
 }
 
 function formatPercent(value: number, digits = 1): string {
   return `${Number.isFinite(value) ? value.toFixed(digits) : "0.0"}%`;
-}
-
-function formatSeconds(seconds: number): string {
-  return Number.isFinite(seconds) ? `${seconds.toFixed(2)}s` : "--";
 }
 
 /** Server labels use hyphens for numeric ranges ("1100-1299"); show an en dash. */
@@ -461,29 +394,6 @@ function formatEloRange(
 
 function formatInteger(value: number): string {
   return Math.round(Number.isFinite(value) ? value : 0).toLocaleString();
-}
-
-function formatHours(hours: number): string {
-  if (!Number.isFinite(hours)) return "--";
-  return hours >= 100 ? `${Math.round(hours).toLocaleString()}h` : `${hours.toFixed(1)}h`;
-}
-
-function formatNullableHours(hours: number | null): string {
-  return hours === null ? "--" : formatHours(hours);
-}
-
-/** Seconds to two decimals (matching pace), minutes and hours to one. */
-function formatDuration(milliseconds: number | null): string {
-  if (milliseconds === null || !Number.isFinite(milliseconds) || milliseconds <= 0) return "--";
-  const seconds = milliseconds / 1000;
-  if (seconds >= 3600) return `${(seconds / 3600).toFixed(1)}h`;
-  if (seconds >= 60) return `${(seconds / 60).toFixed(1)}m`;
-  return formatSeconds(seconds);
-}
-
-function formatDurationRange(low: number, high: number): string {
-  const [from, to] = [formatDuration(low), formatDuration(high)];
-  return from.endsWith("s") && to.endsWith("s") ? `${from.slice(0, -1)}–${to}` : `${from}–${to}`;
 }
 
 function formatPoints(value: number): string {

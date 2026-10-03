@@ -27,9 +27,6 @@ export async function GET() {
     total_moves: item.totalMoves,
     accuracy_history: item.accuracyHistory,
     maia_level: item.maiaLevel ?? 1500,
-    duration_ms: item.durationMs,
-    think_time_ms: item.thinkTimeMs,
-    suggested_think_ms: item.suggestedThinkMs,
     result: item.solved ? "finished" : "incomplete"
   }));
 

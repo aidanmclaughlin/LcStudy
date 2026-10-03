@@ -38,7 +38,6 @@ import {
   markGameSaved
 } from './modules/moves.js';
 import { initKeyboardNavigation, initMoveReviewButtons, navigateToMove } from './modules/history.js';
-import { startGameClock, endGameClock, promptBegin } from './modules/timeclock.js';
 
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 let activeGameLoadId = 0;
@@ -87,7 +86,6 @@ function saveAbandonedGameIfNeeded() {
   if (getMoveAccuracies().length < 5) return;
 
   markGameSaved();
-  endGameClock();
   saveCompletedGame('incomplete');
 }
 
@@ -223,10 +221,6 @@ async function startNewGame() {
   updatePgnDisplay();
   updateMoveFeedback();
   setBoardInputEnabled(true);
-
-  // Start the (invisible) think clock on the first prompt
-  startGameClock();
-  promptBegin();
 
   // Warm the next game while this one is played
   prefetchNextSession(sessionCache.gameId);

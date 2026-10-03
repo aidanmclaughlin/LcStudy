@@ -17,7 +17,11 @@ import {
 import { updateBoardFromFen, clearSelection, setReviewingIndicator } from './board.js';
 import { updateCharts } from './charts.js';
 import { updatePgnDisplay } from './pgn.js';
-import { setClockPaused, isStatsOpen } from './timeclock.js';
+
+/** Stats covers the board; review waits until it closes. */
+function isStatsOpen() {
+  return Boolean(document.getElementById('stats-dialog')?.open);
+}
 
 /**
  * Navigate to a specific position in move history.
@@ -43,7 +47,6 @@ export function navigateToMove(targetIndex) {
 
   setCurrentMoveIndex(targetIndex);
   setIsReviewingMoves(targetIndex !== -1);
-  setClockPaused('review', targetIndex !== -1);
   updateBoardFromFen(targetIndex === -1 ? getLiveFen() : moveHistory[targetIndex].fen);
   updateNavigationUI();
   clearSelection();

@@ -1,9 +1,14 @@
-/** Statistical model for the progress dashboard. */
+/**
+ * Statistical model for the progress dashboard.
+ *
+ * A game's accuracy (averageAccuracy) is its accuracy across every try, the
+ * main metric. accuracyHistory holds the first try at each move, which feeds
+ * the first-try headline, the per-move breakdowns, and Maia Elo.
+ */
 
-import { fitCoach } from "@/lib/coach";
 import type { UserGameStatsRow } from "@/lib/db";
 import { computeMaiaElo, type MaiaEloStats } from "@/lib/maia-elo";
-import { buildAccuracyJourney, buildCurrentScoringAccuracy, recentPerformance, type AccuracyJourney, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
+import { buildCurrentScoringAccuracy, recentAccuracy, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
 
 const RECENT_WINDOW = 100;
 const TARGET_WINDOW = 10;
@@ -34,22 +39,6 @@ export interface GroupStat {
   games: number;
 }
 
-export interface PaceStat {
-  label: string;
-  medianMoveMs: number;
-  accuracy: number;
-  games: number;
-}
-
-export interface LearningRateStat {
-  minutes: number;
-  games: number;
-  hours: number;
-  rateMean: number;
-  rateLow: number;
-  rateHigh: number;
-}
-
 export interface AccuracyForecast {
   targetGame: number;
   targetGameLow: number;
@@ -57,14 +46,9 @@ export interface AccuracyForecast {
   remainingGames: number;
   remainingGamesLow: number;
   remainingGamesHigh: number;
-  typicalGameMs: number | null;
-  remainingHours: number | null;
-  remainingHoursLow: number | null;
-  remainingHoursHigh: number | null;
 }
 
 export interface ProgressDashboardStats {
-  journey: AccuracyJourney;
   elo: MaiaEloStats;
   overview: {
     totalGames: number;
@@ -72,12 +56,11 @@ export interface ProgressDashboardStats {
     allTimeAccuracy: number;
     recentGames: number;
     recent100: number | null;
-    recentSecondsPerMove: number | null;
+    recentFirstTry: number | null;
     recent100Low: number;
     recent100High: number;
     best100: number | null;
     exactRate: number;
-    activeHours: number;
   };
   progress: {
     series: ProgressSeriesPoint[];
@@ -95,17 +78,6 @@ export interface ProgressDashboardStats {
     recoveryRate: number;
     recoverySamples: number;
   };
-  timing: {
-    timedGames: number;
-    medianMoveMs: number | null;
-    moveP25Ms: number | null;
-    moveP75Ms: number | null;
-    fatigueDelta: number | null;
-    fatigueGames: number;
-    pace: PaceStat[];
-    learningRates: LearningRateStat[];
-    tempoEffect: number;
-  };
   skill: {
     phases: GroupStat[];
     colors: GroupStat[];
@@ -120,7 +92,6 @@ export interface ProgressDashboardStats {
     blackGames: number;
     colorCoverage: number;
     difficultyGames: number;
-    timedGames: number;
     openingLines: number;
     openingCoverage: number;
   };
@@ -183,15 +154,10 @@ export function computeProgressDashboard(
   const recentHistory = recentGames.map(game => game.row);
   const recent = accuracies.slice(-RECENT_WINDOW);
   const recentInterval = meanInterval(recent);
-  const baseline = recentPerformance(validGames.map(game => ({
-    accuracy: game.accuracy, totalMoves: game.row.totalMoves, thinkTimeMs: game.row.thinkTimeMs
-  })), RECENT_WINDOW);
+  const recent100 = recentAccuracy(validGames.map((game) => ({ accuracy: game.accuracy })), RECENT_WINDOW);
+  const recentFirstTry = recentAccuracy(validGames.map((game) => ({ accuracy: firstTryAccuracy(game) })), RECENT_WINDOW);
   const moveScores = history.flatMap((game) => validMoveScores(game.accuracyHistory));
   const totalMoves = history.reduce((sum, game) => sum + Math.max(0, game.totalMoves), 0);
-  const activePracticeMs = history.reduce((sum, game) => {
-    const value = positiveNumber(game.thinkTimeMs) ?? positiveNumber(game.durationMs);
-    return sum + (value ?? 0);
-  }, 0);
   const trend = linearTrend(adjusted.slice(-RECENT_WINDOW));
   const observations = buildMoveObservations(recentGames);
   const globalMoveMean = mean(observations.map((move) => move.accuracy));
@@ -246,31 +212,23 @@ export function computeProgressDashboard(
     groupPriorMoves
   );
   const recovery = recoverySummary(recentHistory);
-  const fatigue = fatigueSummary(recentHistory);
-  const timing = timingSummary(recentGames);
   const colorGames = validGames.filter((game) => game.row.leelaColor !== null);
   const openingGames = validGames.filter((game) => game.row.openingLine.length > 0);
   const lichessGames = validGames.filter((game) => isLichessGame(game.row)).length;
 
   return {
     elo,
-    journey: buildAccuracyJourney(history.map(game => ({
-      accuracy: game.averageAccuracy,
-      totalMoves: game.totalMoves,
-      thinkTimeMs: game.thinkTimeMs
-    })), RECENT_WINDOW, Infinity),
     overview: {
       totalGames: history.length,
       totalMoves,
       allTimeAccuracy: weightedGameAccuracy(history),
       recentGames: recentGames.length,
-      recent100: baseline.accuracy,
-      recentSecondsPerMove: baseline.secondsPerMove,
+      recent100,
+      recentFirstTry,
       recent100Low: recentInterval.low,
       recent100High: recentInterval.high,
       best100: bestRollingAverage(accuracies, RECENT_WINDOW),
-      exactRate: rate(moveScores.map(isExact)) * 100,
-      activeHours: activePracticeMs / 3_600_000
+      exactRate: rate(moveScores.map(isExact)) * 100
     },
     progress: {
       series,
@@ -282,18 +240,13 @@ export function computeProgressDashboard(
       trendLow: trend.low * 100,
       trendHigh: trend.high * 100,
       difficultyCoverage: history.length > 0 ? knownDifficulties.length / history.length : 0,
-      forecast: buildForecast(accuracies, history)
+      forecast: buildForecast(accuracies)
     },
     consistency: {
       recentFloor: quantile(recent, 0.1),
       recentDeviation: standardDeviation(recent),
       recoveryRate: recovery.rate,
       recoverySamples: recovery.samples
-    },
-    timing: {
-      ...timing,
-      fatigueDelta: fatigue.delta,
-      fatigueGames: fatigue.games
     },
     skill: {
       phases,
@@ -309,8 +262,6 @@ export function computeProgressDashboard(
       blackGames: colorGames.filter((game) => game.row.leelaColor === "b").length,
       colorCoverage: validGames.length > 0 ? colorGames.length / validGames.length : 0,
       difficultyGames: knownDifficulties.length,
-      timedGames: validGames.filter(game => game.row.totalMoves > 0 &&
-        (positiveNumber(game.row.thinkTimeMs) ?? positiveNumber(game.row.durationMs)) !== null).length,
       openingLines: new Set(openingGames.map((game) => openingKey(game.row))).size,
       openingCoverage: validGames.length > 0 ? openingGames.length / validGames.length : 0
     }
@@ -476,87 +427,6 @@ function openingKey(row: UserGameStatsRow): string {
   return row.openingLine.slice(0, 2).join(" ");
 }
 
-function timingSummary(validGames: ValidGame[]): ProgressDashboardStats["timing"] {
-  const timed = validGames.flatMap((game) => {
-    const thinkMs = positiveNumber(game.row.thinkTimeMs) ?? positiveNumber(game.row.durationMs);
-    if (thinkMs === null || game.row.totalMoves <= 0) return [];
-    return [{
-      game,
-      thinkMs,
-      perMoveMs: thinkMs / game.row.totalMoves
-    }];
-  });
-  const recordedMoveTimes = validGames.flatMap((game) => (
-    game.row.moveTimesMs.map(positiveNumber).filter((value): value is number => value !== null)
-  ));
-  const fallbackMoveTimes = timed.map((entry) => entry.perMoveMs);
-  const moveTimes = recordedMoveTimes.length > 0 ? recordedMoveTimes : fallbackMoveTimes;
-  const sorted = [...timed].sort((a, b) => a.perMoveMs - b.perMoveMs);
-  const globalAdjusted = mean(timed.map((entry) => entry.game.adjustedAccuracy));
-  const pace: PaceStat[] = [];
-
-  for (let quartile = 0; quartile < 4; quartile++) {
-    const start = Math.floor((quartile * sorted.length) / 4);
-    const end = Math.floor(((quartile + 1) * sorted.length) / 4);
-    const members = sorted.slice(start, end);
-    if (members.length === 0) continue;
-    const priorGames = 6;
-    const adjustedMean = (
-      sum(members.map((entry) => entry.game.adjustedAccuracy)) + globalAdjusted * priorGames
-    ) / (members.length + priorGames);
-    const medianMoveMs = median(members.map((entry) => entry.perMoveMs));
-
-    pace.push({
-      label: `${formatSeconds(medianMoveMs)} / move`,
-      medianMoveMs,
-      accuracy: adjustedMean,
-      games: members.length
-    });
-  }
-
-  const coach = fitCoach(validGames.map((game) => ({
-    thinkMs: positiveNumber(game.row.thinkTimeMs) ?? positiveNumber(game.row.durationMs) ?? 0,
-    moves: game.row.totalMoves,
-    accuracy: game.accuracy,
-    ease: finiteNumber(game.row.difficulty)
-  })));
-
-  return {
-    timedGames: timed.length,
-    medianMoveMs: moveTimes.length > 0 ? median(moveTimes) : null,
-    moveP25Ms: moveTimes.length > 0 ? quantile(moveTimes, 0.25) : null,
-    moveP75Ms: moveTimes.length > 0 ? quantile(moveTimes, 0.75) : null,
-    fatigueDelta: null,
-    fatigueGames: 0,
-    pace,
-    learningRates: coach.bins.map((bin) => ({
-      minutes: bin.minutes,
-      games: bin.games,
-      hours: bin.hours,
-      rateMean: bin.rateMean,
-      rateLow: bin.rateMean - INTERVAL_Z_80 * bin.rateSd,
-      rateHigh: bin.rateMean + INTERVAL_Z_80 * bin.rateSd
-    })),
-    tempoEffect: coach.beta
-  };
-}
-
-function fatigueSummary(history: UserGameStatsRow[]): { delta: number | null; games: number } {
-  const deltas: number[] = [];
-
-  for (const game of history) {
-    const scores = validMoveScores(game.accuracyHistory);
-    if (scores.length < 6) continue;
-    const third = Math.max(2, Math.floor(scores.length / 3));
-    deltas.push(mean(scores.slice(-third)) - mean(scores.slice(0, third)));
-  }
-
-  return {
-    delta: deltas.length > 0 ? mean(deltas) : null,
-    games: deltas.length
-  };
-}
-
 function recoverySummary(history: UserGameStatsRow[]): { rate: number; samples: number } {
   let samples = 0;
   let recoveries = 0;
@@ -573,10 +443,7 @@ function recoverySummary(history: UserGameStatsRow[]): { rate: number; samples: 
   return { rate: samples > 0 ? recoveries / samples : 0, samples };
 }
 
-function buildForecast(
-  accuracies: number[],
-  history: UserGameStatsRow[]
-): AccuracyForecast | null {
+function buildForecast(accuracies: number[]): AccuracyForecast | null {
   if (accuracies.length === 0) return null;
   const completedGames = accuracies.length;
   const minimumFuture = minimumFutureGamesForTarget(accuracies);
@@ -605,22 +472,14 @@ function buildForecast(
   );
   const targetGameLow = Math.round(weightedQuantile(weightedTargets, 0.1));
   const targetGameHigh = Math.round(weightedQuantile(weightedTargets, 0.9));
-  const typicalGameMs = typicalDurationMs(history);
-  const remainingGames = Math.max(0, targetGame - completedGames);
-  const remainingGamesLow = Math.max(0, targetGameLow - completedGames);
-  const remainingGamesHigh = Math.max(0, targetGameHigh - completedGames);
 
   return {
     targetGame,
     targetGameLow,
     targetGameHigh,
-    remainingGames,
-    remainingGamesLow,
-    remainingGamesHigh,
-    typicalGameMs,
-    remainingHours: typicalGameMs === null ? null : remainingGames * typicalGameMs / 3_600_000,
-    remainingHoursLow: typicalGameMs === null ? null : remainingGamesLow * typicalGameMs / 3_600_000,
-    remainingHoursHigh: typicalGameMs === null ? null : remainingGamesHigh * typicalGameMs / 3_600_000
+    remainingGames: Math.max(0, targetGame - completedGames),
+    remainingGamesLow: Math.max(0, targetGameLow - completedGames),
+    remainingGamesHigh: Math.max(0, targetGameHigh - completedGames)
   };
 }
 
@@ -689,13 +548,6 @@ function minimumFutureGamesForTarget(accuracies: number[]): number {
   return TARGET_WINDOW;
 }
 
-function typicalDurationMs(history: UserGameStatsRow[]): number | null {
-  const durations = history
-    .map((game) => positiveNumber(game.durationMs) ?? positiveNumber(game.thinkTimeMs))
-    .filter((value): value is number => value !== null);
-  return durations.length > 0 ? median(durations) : null;
-}
-
 function linearTrend(values: number[]): { slope: number; low: number; high: number } {
   if (values.length < 3) return { slope: 0, low: 0, high: 0 };
   const xMean = (values.length + 1) / 2;
@@ -759,6 +611,12 @@ function weightedGameAccuracy(history: UserGameStatsRow[]): number {
   return moves > 0 ? weighted / moves : 0;
 }
 
+/** A game's accuracy on the first try at each move; games without per-move scores had one try per move. */
+function firstTryAccuracy(game: ValidGame): number {
+  const scores = validMoveScores(game.row.accuracyHistory);
+  return scores.length > 0 ? mean(scores) : game.accuracy;
+}
+
 function isLichessGame(row: UserGameStatsRow): boolean {
   return row.gameId.startsWith("lichess_maia2_")
     || row.openingSource?.toLowerCase().includes("lichess") === true;
@@ -780,11 +638,6 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function positiveNumber(value: unknown): number | null {
-  const numeric = finiteNumber(value);
-  return numeric !== null && numeric > 0 ? numeric : null;
-}
-
 function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
@@ -795,10 +648,6 @@ function mean(values: number[]): number {
 
 function rate(values: boolean[]): number {
   return values.length > 0 ? values.filter(Boolean).length / values.length : 0;
-}
-
-function median(values: number[]): number {
-  return quantile(values, 0.5);
 }
 
 function quantile(values: number[], probability: number): number {
@@ -838,11 +687,4 @@ function standardDeviation(values: number[]): number {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
-}
-
-function formatSeconds(milliseconds: number): string {
-  const seconds = milliseconds / 1000;
-  if (seconds >= 60) return `${(seconds / 60).toFixed(1)}m`;
-  if (seconds >= 10) return `${Math.round(seconds)}s`;
-  return `${seconds.toFixed(1)}s`;
 }

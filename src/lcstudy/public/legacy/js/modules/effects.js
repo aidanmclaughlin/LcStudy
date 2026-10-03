@@ -5,7 +5,7 @@
 
 import { CONFETTI_COLORS, CELEBRATION_COLORS } from './constants.js';
 import { playSuccessChime } from './audio.js';
-import { getMoveAccuracies } from './state.js';
+import { getGameAccuracy, getMoveAccuracies } from './state.js';
 
 const BOARD_FLASH_CLASSES = ['board-flash-green', 'board-shake', 'board-flash-gray'];
 let boardFlashFrame = 0;
@@ -31,15 +31,14 @@ export function showCompletionOverlay(result = 'Checkmate') {
   if (titleEl) titleEl.textContent = result;
   overlay.dataset.result = result === 'Checkmate' ? 'mate' : 'over';
 
+  // The game's accuracy across every try, and how many moves it covered.
   const summaryEl = document.getElementById('completion-summary');
   if (summaryEl) {
-    const accuracies = getMoveAccuracies();
-    const average = accuracies.length
-      ? accuracies.reduce((sum, value) => sum + value, 0) / accuracies.length
-      : null;
-    summaryEl.textContent = average === null
+    const accuracy = getGameAccuracy();
+    const moves = getMoveAccuracies().length;
+    summaryEl.textContent = accuracy === null
       ? ''
-      : `${average.toFixed(1)}% · ${accuracies.length} ${accuracies.length === 1 ? 'move' : 'moves'}`;
+      : `${accuracy.toFixed(1)}% · ${moves} ${moves === 1 ? 'move' : 'moves'}`;
   }
 
   overlay.hidden = false;

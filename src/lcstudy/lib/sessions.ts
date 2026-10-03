@@ -50,13 +50,13 @@ export interface FinalizeSessionInput {
   sessionId: string;
   userId: string;
   totalMoves?: number;
+  /** Tries across all moves, retries included */
+  attempts?: number;
+  /** Accuracy across every try */
   averageAccuracy?: number | null;
+  /** First try at each move */
   accuracyHistory: number[];
   maiaLevel?: number | null;
-  durationMs?: number | null;
-  thinkTimeMs?: number | null;
-  moveTimesMs?: number[] | null;
-  suggestedThinkMs?: number | null;
   result?: string;
 }
 
@@ -157,8 +157,11 @@ export async function finalizeSession(input: FinalizeSessionInput): Promise<void
     throw new Error("Session not found");
   }
 
-  // Calculate statistics
+  // Calculate statistics. Every move takes at least one try.
   const movesCount = input.totalMoves ?? accuracyHistory.length;
+  const attempts = Number.isInteger(input.attempts) && (input.attempts as number) >= movesCount
+    ? input.attempts as number
+    : movesCount;
   const averageAccuracy = input.averageAccuracy ??
     (accuracyHistory.length > 0
       ? accuracyHistory.reduce((sum, value) => sum + value, 0) / accuracyHistory.length
@@ -168,18 +171,14 @@ export async function finalizeSession(input: FinalizeSessionInput): Promise<void
   await recordGameResult({
     userId: session.userId,
     gameId: session.gameId,
-    attempts: movesCount,
+    attempts,
     solved: (input.result ?? "finished") === "finished",
     accuracy: averageAccuracy,
     totalMoves: movesCount,
-    averageRetries: null,
+    averageRetries: movesCount > 0 ? (attempts - movesCount) / movesCount : null,
     averageAccuracy,
     accuracyHistory,
-    maiaLevel: input.maiaLevel ?? session.maiaLevel,
-    durationMs: input.durationMs ?? null,
-    thinkTimeMs: input.thinkTimeMs ?? null,
-    moveTimesMs: input.moveTimesMs ?? null,
-    suggestedThinkMs: input.suggestedThinkMs ?? null
+    maiaLevel: input.maiaLevel ?? session.maiaLevel
   });
 
   // Clean up the session

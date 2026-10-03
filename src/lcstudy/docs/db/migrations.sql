@@ -59,6 +59,7 @@ ALTER TABLE user_games ADD COLUMN IF NOT EXISTS duration_ms INTEGER;
 
 -- Think-time coach: active deliberation time (excludes tab-hidden pauses),
 -- per-move breakdown, and the budget the coach suggested for the game.
+-- No longer written since 2026-10-02 (time is not tracked); kept for older games.
 ALTER TABLE user_games ADD COLUMN IF NOT EXISTS think_time_ms INTEGER;
 ALTER TABLE user_games ADD COLUMN IF NOT EXISTS move_times_ms JSONB;
 ALTER TABLE user_games ADD COLUMN IF NOT EXISTS suggested_think_ms INTEGER;

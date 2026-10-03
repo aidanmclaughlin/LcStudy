@@ -7,11 +7,11 @@ import {
   getSessionId,
   getSessionCache,
   getMoveAccuracies,
-  getGameDurationMs,
+  getTryScores,
+  getGameAccuracy,
   getGameHistory,
   setGameHistory
 } from './state.js';
-import { getMoveTimesMs, getThinkTimeMs } from './timeclock.js';
 import { scheduleChartsUpdate } from './charts.js';
 
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
@@ -40,6 +40,10 @@ export async function loadGameHistory() {
  * Save a completed game to the server.
  * Fire-and-forget with keepalive so the request survives tab closes; the
  * local history is updated immediately either way.
+ *
+ * average_accuracy is the game's accuracy across every try (the main metric);
+ * accuracy_history keeps the first try at each move, the way move-matching
+ * accuracy is usually reported.
  * @param {'finished' | 'incomplete'} result - Game result
  */
 export function saveCompletedGame(result) {
@@ -53,32 +57,25 @@ export function saveCompletedGame(result) {
   const sessionCache = getSessionCache();
   const maiaLevel = sessionCache.maiaLevel || window.currentMaiaLevel || 1500;
   const totalMoves = moveAccuracies.length;
+  const attempts = getTryScores().length;
   const accuracyHistory = [...moveAccuracies];
-  const averageAccuracy = totalMoves > 0
-    ? accuracyHistory.reduce((sum, value) => sum + value, 0) / totalMoves
-    : 0;
-  const durationMs = getGameDurationMs();
-  const thinkTimeMs = getThinkTimeMs();
-  const moveTimesMs = getMoveTimesMs();
+  const averageAccuracy = getGameAccuracy();
 
   if (DEBUG_LOGS) {
     console.debug('saveCompletedGame payload', {
       sessionId,
       totalMoves,
-      averageAccuracy,
-      durationMs,
-      thinkTimeMs
+      attempts,
+      averageAccuracy
     });
   }
 
   const payload = {
     total_moves: totalMoves,
+    attempts,
     average_accuracy: averageAccuracy,
     accuracy_history: accuracyHistory,
     maia_level: maiaLevel,
-    duration_ms: durationMs,
-    think_time_ms: thinkTimeMs,
-    move_times_ms: moveTimesMs,
     result: result
   };
 
@@ -105,8 +102,6 @@ export function saveCompletedGame(result) {
     total_moves: totalMoves,
     accuracy_history: accuracyHistory,
     maia_level: maiaLevel,
-    duration_ms: durationMs,
-    think_time_ms: thinkTimeMs,
     result: result
   });
   setGameHistory(gameHistory);

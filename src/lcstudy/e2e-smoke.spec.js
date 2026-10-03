@@ -38,8 +38,6 @@ function buildProgressHistory() {
       total_moves: 20,
       accuracy_history: Array(20).fill(accuracy),
       maia_level: 1500,
-      duration_ms: 120000 + index * 1500,
-      think_time_ms: 60000 + index * 500,
       result: 'finished',
     };
   });
@@ -447,9 +445,6 @@ test.describe('progress dashboard', () => {
           Math.max(0, Math.min(100, accuracy + Math.sin(moveIndex * 0.9) * 8))
         )),
         maiaLevel: 1100 + (index % 6) * 200,
-        durationMs: 140000 + index * 1200,
-        thinkTimeMs: 90000 + index * 900,
-        moveTimesMs: Array.from({ length: totalMoves }, () => 5000 + index * 40),
       };
     });
     const gameIds = fixtureRows.map((row) => row.id);
@@ -465,16 +460,13 @@ test.describe('progress dashboard', () => {
       await sql.query(
         `INSERT INTO user_games (
            user_id, game_id, attempts, solved, accuracy, played_at,
-           total_moves, average_accuracy, accuracy_history, maia_level,
-           duration_ms, think_time_ms, move_times_ms
+           total_moves, average_accuracy, accuracy_history, maia_level
          )
          SELECT $1::uuid, id, total_moves, true, accuracy, played_at,
-                total_moves, accuracy, accuracy_history, maia_level,
-                duration_ms, think_time_ms, move_times_ms
+                total_moves, accuracy, accuracy_history, maia_level
          FROM jsonb_to_recordset($2::jsonb) AS fixture(
            id text, played_at timestamptz, accuracy numeric, total_moves integer,
-           accuracy_history jsonb, maia_level integer, duration_ms integer,
-           think_time_ms integer, move_times_ms jsonb
+           accuracy_history jsonb, maia_level integer
          )`,
         [user.id, JSON.stringify(fixtureRows.map((row) => ({
           id: row.id,
@@ -483,9 +475,6 @@ test.describe('progress dashboard', () => {
           total_moves: row.totalMoves,
           accuracy_history: row.accuracyHistory,
           maia_level: row.maiaLevel,
-          duration_ms: row.durationMs,
-          think_time_ms: row.thinkTimeMs,
-          move_times_ms: row.moveTimesMs,
         })))]
       );
 
@@ -497,8 +486,8 @@ test.describe('progress dashboard', () => {
       await page.goto('/stats', { waitUntil: 'networkidle' });
       await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { name: '100-game accuracy', exact: true })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Accuracy & pace', exact: true })).toBeVisible();
-      await expect(page.locator('.journey-canvas canvas')).toBeVisible();
+      await expect(page.locator('.stats-metric').filter({ hasText: 'First-try accuracy' })).toHaveCount(1);
+      await expect(page.getByRole('tab', { name: 'Timing', exact: true })).toHaveCount(0);
       const eloMetric = page.locator('.stats-metric').filter({ hasText: 'Maia Elo' });
       await expect(eloMetric.locator('strong')).toHaveText('1,300');
       await expect(eloMetric).toHaveAttribute('title', /80% range 1,190 to 1,410/);
@@ -508,8 +497,6 @@ test.describe('progress dashboard', () => {
       await expect(page.locator('.stats-accuracy-band .stats-chart-label').filter({ hasText: 'Game 120' })).toHaveCount(1);
       await page.getByRole('tab', { name: 'Breakdowns' }).click();
       await expect(page.locator('.stats-breakdown-row')).not.toHaveCount(0);
-      await page.getByRole('tab', { name: 'Timing', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Thinking time', exact: true })).toBeVisible();
       await page.getByRole('tab', { name: 'Overview' }).click();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight)).toBe(true);
@@ -742,12 +729,13 @@ test.describe('desktop checkmate', () => {
     await expect.poll(() => completeCalls).toBe(1);
     await page.waitForTimeout(3200);
     expect(sessionNewCalls).toBe(2);
+    // Accuracy across both tries; the first try kept per move; no timing.
     expect(completePayloads[0]?.accuracy_history).toEqual([legalWrong.accuracy]);
-    expect(completePayloads[0]?.duration_ms).toBeGreaterThan(0);
-    expect(completePayloads[0]?.think_time_ms).toBeGreaterThan(0);
-    expect(completePayloads[0]?.move_times_ms).toHaveLength(1);
-    // The think-budget coach UI was removed; the client no longer sends a suggestion.
-    expect(completePayloads[0]?.suggested_think_ms).toBeUndefined();
+    expect(completePayloads[0]?.attempts).toBe(2);
+    expect(completePayloads[0]?.average_accuracy).toBeCloseTo((legalWrong.accuracy + 100) / 2, 9);
+    for (const key of ['duration_ms', 'think_time_ms', 'move_times_ms', 'suggested_think_ms']) {
+      expect(completePayloads[0]).not.toHaveProperty(key);
+    }
     expect(await pieceAt(page, expectedFrom)).toBeNull();
     expect(await pieceAt(page, expectedTo)).toBe(expectedPieceCode);
 

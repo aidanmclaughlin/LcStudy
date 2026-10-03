@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildAccuracyJourney, buildRollingAccuracy, buildCurrentScoringAccuracy, SEARCH_GRADING_STARTED_AT, recentPerformance, buildCurrentGamePoint, journeyColor, journeyArrows, paretoFrontier, createJourneyChartConfig } from './public/legacy/js/modules/journey.mjs';
-
-const game = (accuracy = 80, seconds = 3, totalMoves = 20) => ({ accuracy, totalMoves, thinkTimeMs: seconds * totalMoves * 1000 });
+import { buildRollingAccuracy, buildCurrentScoringAccuracy, SEARCH_GRADING_STARTED_AT, recentAccuracy, niceScale } from './public/legacy/js/modules/journey.mjs';
 
 test('current-scoring chart never mixes grading eras or renumbers games', () => {
   const cutoff = Date.parse(SEARCH_GRADING_STARTED_AT);
@@ -49,185 +47,25 @@ test('rolling accuracy skips invalid scores without losing historical game numbe
   assert.throws(() => buildRollingAccuracy([80], 0), RangeError);
 });
 
-test('both axes use the same 100 games with equal game weights', () => {
-  const history = Array.from({ length: 100 }, (_, index) => game(index, index + 1, index + 1));
-  const { points } = buildAccuracyJourney(history);
-  assert.equal(points.length, 1);
-  assert.deepEqual(points[0], { x: 50.5, y: 49.5, game: 100, startGame: 1, games: 100, provisional: false });
+test('the home 100-game accuracy matches the chart and skips unscored games', () => {
+  const history = Array.from({ length: 140 }, (_, i) => ({ accuracy: i / 2 }));
+  const baseline = recentAccuracy(history);
+  assert.equal(baseline, buildRollingAccuracy(history.map(game => game.accuracy)).at(-1).accuracy);
+  assert.equal(recentAccuracy([...history, { accuracy: null }, { accuracy: 101 }]), baseline);
+  assert.equal(recentAccuracy(history.slice(0, 99)), null);
+  assert.equal(recentAccuracy([]), null);
 });
 
-test('home baselines match the 100-game chart and equally weight game pace', () => {
-  const history = Array.from({ length: 140 }, (_, i) => game(i / 2, i + 1, i + 1));
-  const baseline = recentPerformance(history);
-  assert.equal(baseline.accuracy, buildRollingAccuracy(history.map(game => game.accuracy)).at(-1).accuracy);
-  assert.equal(baseline.secondsPerMove, 90.5);
-  assert.deepEqual(recentPerformance([...history, game(null)]), baseline);
-  assert.deepEqual(recentPerformance(history.slice(0, 99)), { accuracy: null, secondsPerMove: null });
-  history.at(-1).thinkTimeMs = null;
-  const missingTiming = recentPerformance(history);
-  assert.equal(missingTiming.accuracy, baseline.accuracy);
-  assert.equal(missingTiming.secondsPerMove, null);
-});
-
-test('rolling context is calculated before truncating to the last 100 windows', () => {
-  const { points } = buildAccuracyJourney(Array.from({ length: 200 }, (_, i) => game(i / 2, 1 + i)));
-  assert.equal(points.length, 100);
-  assert.equal(points[0].game, 101);
-  assert.equal(points[0].startGame, 2);
-  assert.equal(points[0].y, 25.25);
-  assert.equal(points.at(-1).game, 200);
-});
-
-test('missing timing breaks a window instead of treating it as fast or substituting duration', () => {
-  const history = [...Array(100).fill(game()), { ...game(), thinkTimeMs: null, durationMs: 1000 }, ...Array(100).fill(game(90, 2))];
-  const result = buildAccuracyJourney(history);
-  assert.deepEqual(result.points.map(point => point.game), [100, 201]);
-  assert.equal(result.timedGames, 200);
-  assert.equal(result.points[1].startGame, 102);
-});
-
-test('warmup is provisional and cannot define the 100-game frontier', () => {
-  const result = buildAccuracyJourney([game(100, 0.1)]);
-  assert.equal(result.points[0].provisional, true);
-  assert.deepEqual(result.frontier, []);
-  assert.deepEqual(buildAccuracyJourney([]).points, []);
-});
-
-test('Pareto frontier rejects slower or less accurate points and keeps newest ties', () => {
-  const input = [[1, 70], [2, 80], [3, 75], [2, 79], [4, 95], [5, 95], [2, 80]]
-    .map(([x, y], index) => ({ x, y, game: index + 1 }));
-  assert.deepEqual(paretoFrontier(input).map(point => point.game), [1, 7, 5]);
-  assert.equal(input.length, 7);
-});
-
-test('constant and extreme accuracy values still have usable axes', () => {
-  for (const accuracy of [0, 80, 100]) {
-    const config = createJourneyChartConfig(buildAccuracyJourney(Array(100).fill(game(accuracy, 2))));
-    assert.ok(config.options.scales.y.max > config.options.scales.y.min);
-    assert.ok(config.options.scales.x.max > config.options.scales.x.min);
-    assert.ok(config.options.scales.y.min >= 0);
-    assert.ok(config.options.scales.y.max <= 100);
-  }
-});
-
-test('current game pairs submitted accuracy with submitted thinking time', () => {
-  assert.deepEqual(buildCurrentGamePoint([100, 0, 80], [1000, 2000, 6000]), {
-    x: 3, y: 60, moves: 3, currentGame: true
-  });
-  assert.equal(buildCurrentGamePoint([], []), null);
-  assert.equal(buildCurrentGamePoint([80], []), null);
-  assert.equal(buildCurrentGamePoint([80], [0]), null);
-  assert.equal(buildCurrentGamePoint([NaN], [1000]), null);
-  assert.equal(buildCurrentGamePoint([80], [-1]), null);
-  assert.equal(buildCurrentGamePoint([101], [1000]), null);
-});
-
-test('live marker stays on the chart without rescaling the journey or its frontier', () => {
-  const journey = buildAccuracyJourney(Array(100).fill(game(80, 3)));
-  const current = buildCurrentGamePoint([100], [1000]);
-  const config = createJourneyChartConfig(journey, false, current);
-  const baseline = createJourneyChartConfig(journey);
-  const [marker] = config.data.datasets.find(dataset => dataset.label === 'Current game').data;
-  assert.deepEqual(config.data.datasets.find(dataset => dataset.label === 'Observed frontier').data, journey.frontier);
-  assert.equal(journey.frontier[0].y, 80);
-  for (const axis of ['x', 'y']) {
-    assert.equal(config.options.scales[axis].min, baseline.options.scales[axis].min);
-    assert.equal(config.options.scales[axis].max, baseline.options.scales[axis].max);
-  }
-  // Pinned to the top-left corner, pointing up and left toward the real value.
-  assert.deepEqual([marker.x, marker.y], [config.options.scales.x.min, config.options.scales.y.max]);
-  assert.deepEqual([marker.actualX, marker.actualY], [current.x, current.y]);
-  assert.equal(marker.rotation, -45);
-  assert.deepEqual(config.plugins.map(plugin => plugin.id), ['current-game-marker', 'journey-direction']);
-  assert.equal(config.options.plugins.tooltip.callbacks.title([{ raw: marker }]), 'Current game · 1 move');
-  assert.equal(config.options.plugins.tooltip.callbacks.label({ raw: marker }), '100.0% accuracy · 1.00s per move');
-  const inside = buildCurrentGamePoint([80, 80], [3000, 3000]);
-  assert.deepEqual(createJourneyChartConfig(journey, false, inside).data.datasets[0].data, [inside]);
-  const emptyHistory = createJourneyChartConfig(buildAccuracyJourney([]), true, current);
-  assert.deepEqual(emptyHistory.data.datasets.find(dataset => dataset.label === 'Current game').data, [current]);
-  assert.deepEqual(emptyHistory.data.datasets.find(dataset => dataset.label === 'Observed frontier').data, []);
-});
-
-test('axes end on round ticks', () => {
-  const config = createJourneyChartConfig(buildAccuracyJourney(Array.from({ length: 150 }, (_, i) => game(83 + (i % 7), 4.3 + (i % 5) * 0.7))));
-  for (const axis of ['x', 'y']) {
-    const { min, max, ticks: { stepSize } } = config.options.scales[axis];
-    for (const value of [min, max]) assert.ok(Math.abs(value / stepSize - Math.round(value / stepSize)) < 1e-9, `${axis} ${value} / ${stepSize}`);
-  }
-});
-
-test('journey colors follow time even when accuracy and pace reverse', () => {
-  assert.equal(journeyColor(-1), 'rgb(74, 68, 120)');
-  assert.equal(journeyColor(2), 'rgb(167, 139, 250)');
-  const points = [{ x: 1, y: 90, game: 25 }, { x: 3, y: 80, game: 26 }, { x: 2, y: 95, game: 27 }];
-  const config = createJourneyChartConfig({ points, frontier: [] });
-  const { borderColor } = config.data.datasets.find(dataset => dataset.label === 'Journey').segment;
-  assert.equal(borderColor({ p0: { raw: points[0] }, p1: { raw: points[1] } }), journeyColor(0.25));
-  assert.equal(borderColor({ p0: { raw: points[1] }, p1: { raw: points[2] } }), journeyColor(0.75));
-});
-
-test('direction arrows follow screen-space chronology and avoid gaps or overlapping cues', () => {
-  const points = Array.from({ length: 10 }, (_, game) => ({ game }));
-  const pixels = points.map((_, index) => ({ x: 500 - index * 40, y: 500 - index * 40 }));
-  const arrows = journeyArrows(points, pixels);
-  assert.equal(arrows.length, 5);
-  assert.equal(journeyArrows(points, pixels, true).length, 3);
-  assert.ok(arrows.every(arrow => arrow.dx < 0 && arrow.dy < 0));
-  for (let i = 0; i < arrows.length; i++) {
-    assert.ok(arrows.slice(i + 1).every(other => Math.hypot(arrows[i].x - other.x, arrows[i].y - other.y) >= 28));
-  }
-  const gapPoints = [1, 2, 5, 6].map(game => ({ game }));
-  const gapPixels = [0, 40, 80, 120].map(x => ({ x, y: 0 }));
-  assert.deepEqual(journeyArrows(gapPoints, gapPixels).map(arrow => arrow.x), [20, 100]);
-  assert.deepEqual(journeyArrows(points, points.map(() => ({ x: 0, y: 0 }))), []);
-  const smoothPoints = Array.from({ length: 100 }, (_, game) => ({ game }));
-  assert.equal(journeyArrows(smoothPoints, smoothPoints.map(({ game }) => ({ x: game * 2, y: 0 }))).length, 5);
-  assert.deepEqual(journeyArrows([], []), []);
-});
-
-test('direction plugin reads updated chart data instead of its initial empty history', () => {
-  const plugin = createJourneyChartConfig(buildAccuracyJourney([])).plugins.find(({ id }) => id === 'journey-direction');
-  const strokes = [];
-  const ctx = { save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() { strokes.push(this.strokeStyle); } };
-  const data = [{ game: 1 }, { game: 2 }];
-  const chart = { ctx, data: { datasets: [{ label: 'Journey', data }] } };
-  plugin.afterDatasetDraw(chart, { index: 0, meta: { data: [{ x: 100, y: 100 }, { x: 50, y: 50 }] } });
-  assert.deepEqual(strokes, [journeyColor(0.5)]);
-  chart.data.datasets[0].label = 'Current game';
-  plugin.afterDatasetDraw(chart, { index: 0, meta: { data: [] } });
-  assert.equal(strokes.length, 1);
-});
-
-test('Stats, hidden tabs, and review pause clocks without losing the live prompt', async () => {
-  let time = 0;
-  const originalPerformance = globalThis.performance;
-  globalThis.performance = { now: () => time };
-  globalThis.document = Object.assign(new EventTarget(), { visibilityState: 'visible', getElementById: () => null });
-  globalThis.window = new EventTarget();
-  try {
-    const clock = await import('./public/legacy/js/modules/timeclock.js');
-    clock.startGameClock(); clock.promptBegin();
-    time = 1000; clock.setClockPaused('stats', true);
-    time = 2000; clock.setClockPaused('hidden', true);
-    time = 3000; clock.setClockPaused('stats', false);
-    time = 4000; clock.setClockPaused('hidden', false);
-    time = 5000;
-    assert.equal(clock.promptSubmit(), 2000);
-    assert.equal(clock.getGameDurationMs(), 2000);
-    clock.setClockPaused('stats', true);
-    clock.promptBegin(); // Opponent playback may complete while Stats is open.
-    time = 7000;
-    assert.equal(clock.getLiveThinkTimeMs(), 2000);
-    clock.setClockPaused('review', true); clock.setClockPaused('stats', false);
-    time = 8000; clock.setClockPaused('review', false);
-    time = 8500;
-    assert.equal(clock.promptSubmit(), 500);
-    clock.endGameClock();
-    time = 20000;
-    assert.equal(clock.getGameDurationMs(), 2500);
-    assert.deepEqual(clock.getMoveTimesMs(), [2000, 500]);
-  } finally {
-    globalThis.performance = originalPerformance;
-    delete globalThis.document; delete globalThis.window;
+test('axes end on round ticks within their bounds', () => {
+  // The chart pads its range by at least 0.25 points, so constant histories still span.
+  for (const [low, high] of [[83.2, 89.9], [-0.25, 0.25], [99.75, 100.25], [-5, 104]]) {
+    const scale = niceScale(low, high, { targetTicks: 4, floor: 0, ceiling: 100 });
+    assert.ok(scale.max > scale.min, `${low}-${high}`);
+    assert.ok(scale.min >= 0 && scale.max <= 100);
+    for (const value of [scale.min, scale.max]) {
+      assert.ok(Math.abs(value / scale.step - Math.round(value / scale.step)) < 1e-9, `${value} / ${scale.step}`);
+    }
+    assert.deepEqual(scale.ticks.at(0), scale.min);
+    assert.deepEqual(scale.ticks.at(-1), scale.max);
   }
 });

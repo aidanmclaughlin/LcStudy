@@ -8,7 +8,7 @@
 
 .stats-dialog,
 .stats-page {
-  /* One column, sized so the square journey chart is exactly 720px inside its card. */
+  /* One column: 720px of content inside each card. */
   --stats-column: calc(720px + 2 * var(--pad) + 2px);
 }
 
@@ -229,10 +229,6 @@
   background: var(--border-subtle);
 }
 
-.stats-kpis--4 {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .stats-metric {
   min-width: 0;
   display: flex;
@@ -259,13 +255,8 @@
   text-overflow: ellipsis;
 }
 
-.stats-kpis--4 .stats-metric strong {
-  font-size: 18px;
-  line-height: 24px;
-}
-
 /* ---------------------------------------------------------------------------
-   Segmented control (tabs and the journey range toggle)
+   Segmented control (tabs)
    --------------------------------------------------------------------------- */
 
 .segmented {
@@ -302,17 +293,6 @@
   color: var(--color-brand-light);
 }
 
-.segmented--compact {
-  border-radius: 10px;
-}
-
-.segmented--compact button {
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius-token);
-  font-size: 12px;
-}
-
 /* ---------------------------------------------------------------------------
    Definition grids (2 x 2)
    --------------------------------------------------------------------------- */
@@ -345,120 +325,6 @@
   line-height: 24px;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-/* ---------------------------------------------------------------------------
-   Journey chart (Chart.js)
-   --------------------------------------------------------------------------- */
-
-.journey-figure {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-}
-
-.journey-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.stats-chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.stats-chart-legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.stats-chart-legend i {
-  display: inline-block;
-}
-
-.stats-chart-legend .journey-time-key i {
-  width: 40px;
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, rgb(74, 68, 120), rgb(167, 139, 250));
-}
-
-.stats-chart-legend .frontier-key {
-  width: 16px;
-  border-top: 2px dashed rgba(203, 213, 225, 0.6);
-}
-
-.stats-chart-legend .current-game-key {
-  width: 10px;
-  height: 9px;
-  background: #fff;
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-}
-
-.journey-canvas {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-  aspect-ratio: 1;
-}
-
-.journey-canvas > canvas {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.journey-caption-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-}
-
-.journey-caption {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12px;
-}
-
-.journey-caption dt {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-}
-
-/* The caption markers double as the legend for the latest window and this game. */
-.journey-caption dt::before {
-  content: '';
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-brand-light);
-}
-
-.journey-current dt::before {
-  width: 10px;
-  height: 9px;
-  border-radius: 0;
-  background: #fff;
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-}
-
-.journey-caption dd {
-  margin: 0;
-  color: var(--text-primary);
 }
 
 /* ---------------------------------------------------------------------------
@@ -644,35 +510,6 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Tables
-   --------------------------------------------------------------------------- */
-
-.stats-table {
-  display: flex;
-  flex-direction: column;
-}
-
-.stats-table-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: center;
-  gap: 12px;
-  min-height: 36px;
-  border-top: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.stats-table-head {
-  min-height: 24px;
-  border-top: 0;
-}
-
-.stats-table-row span:not(:first-child) {
-  text-align: right;
-}
-
-/* ---------------------------------------------------------------------------
    Empty states
    --------------------------------------------------------------------------- */
 
@@ -696,10 +533,6 @@
     grid-template-rows: none;
     grid-auto-flow: row;
   }
-
-  .stats-kpis--4 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 600px) {
@@ -721,7 +554,6 @@
   }
 
   /* Charts use the full card width on phones. */
-  .journey-canvas,
   .stats-chart-wrap {
     width: calc(100% + 24px);
     margin-left: -12px;

@@ -1,10 +1,10 @@
 /**
  * Precompute per-game ease (predictability) into games.difficulty.
  *
- * Ease = mean over a game's Leela prompts of the policy-weighted accuracy
- * (same formula as positionEase in lib/coach.ts), computed straight from the
- * PGN analysis blobs. Run after regenerating or re-grading the corpus so
- * /api/v1/coach never parses PGNs on the request path.
+ * Ease = mean over a game's Leela prompts of the policy-weighted accuracy,
+ * computed straight from the PGN analysis blobs. Run after regenerating or
+ * re-grading the corpus so the progress stats never parse PGNs on the
+ * request path.
  *
  * Usage: node scripts/precompute-difficulty.mjs
  */

@@ -3,33 +3,21 @@
  * @module charts
  */
 
-import { buildCurrentGamePoint, recentPerformance } from './journey.mjs';
-import { getMoveTimesMs } from './timeclock.js';
+import { recentAccuracy } from './journey.mjs';
 import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS, ACCURACY_COLORS } from './constants.js';
 import { updateMoveFeedback } from './effects.js';
 import {
   getMoveAccuracyChart,
   setMoveAccuracyChart,
-  getMoveAccuracies,
+  getTryScores,
+  getGameAccuracy,
   getGameHistory,
   getMoveHistory,
   getCurrentMoveIndex,
   getIsReviewingMoves
 } from './state.js';
 
-let lastCurrentGameSignature = '';
 let lastMoveChartSignature = '';
-function publishCurrentGame(force = false) {
-  const point = buildCurrentGamePoint(getMoveAccuracies(), getMoveTimesMs());
-  const signature = JSON.stringify(point);
-  if (!force && signature === lastCurrentGameSignature) return;
-  lastCurrentGameSignature = signature;
-  window.dispatchEvent(new CustomEvent('lcstudy:current-game', { detail: point }));
-}
-
-window.addEventListener('lcstudy:stats-visibility', event => {
-  if (event.detail?.open) publishCurrentGame(true);
-});
 
 /**
  * Initialize the in-game move chart.
@@ -82,7 +70,7 @@ function initMoveAccuracyChart() {
           ...CHART_TOOLTIP_OPTIONS,
           displayColors: false,
           callbacks: {
-            title: items => `Move ${items[0].dataIndex + 1}`,
+            title: items => items[0].label,
             label: item => `${Number(item.raw).toFixed(1)}% accuracy`
           }
         }
@@ -108,7 +96,6 @@ function initMoveAccuracyChart() {
  * Update in-game progress independently of chart initialization.
  */
 export function updateCharts() {
-  publishCurrentGame();
   updateMoveAccuracyChart();
 }
 
@@ -137,20 +124,21 @@ export function scheduleChartsUpdate() {
 }
 
 /**
- * Update the accuracy per move bar chart.
+ * Update the accuracy bar chart: one bar per try, so the bars average to the
+ * game's accuracy.
  */
 function updateMoveAccuracyChart() {
   const chart = getMoveAccuracyChart();
   if (!chart) return;
 
-  const moveAccuracies = getMoveAccuracies();
+  const tries = getTryScores();
 
   const moveHistory = getMoveHistory();
   const currentMoveIndex = getCurrentMoveIndex();
   const isReviewingMoves = getIsReviewingMoves();
   const nextSignature = [
-    moveAccuracies.length,
-    moveAccuracies.at(-1) ?? '',
+    tries.length,
+    tries.at(-1)?.accuracy ?? '',
     isReviewingMoves ? currentMoveIndex : -1
   ].join('|');
 
@@ -171,15 +159,23 @@ function updateMoveAccuracyChart() {
     }
   }
 
-  // Color by accuracy band; while reviewing one of your moves, the other bars dim.
-  const colors = moveAccuracies.map((accuracy, index) => {
+  // Color by accuracy band; while reviewing one of your moves, the other moves' bars dim.
+  const colors = tries.map(({ move, accuracy }) => {
     const color = accuracy >= 90 ? ACCURACY_COLORS.good : accuracy >= 65 ? ACCURACY_COLORS.ok : ACCURACY_COLORS.bad;
-    const dimmed = isReviewingMoves && currentUserMoveIndex !== -1 && currentUserMoveIndex !== index;
+    const dimmed = isReviewingMoves && currentUserMoveIndex !== -1 && currentUserMoveIndex !== move;
     return dimmed ? `${color}4d` : color;
   });
 
-  chart.data.labels = moveAccuracies.map((_, index) => String(index + 1));
-  chart.data.datasets[0].data = moveAccuracies;
+  // Tooltip titles: "Move 3", or "Move 3 · try 2" for a move that took more than one.
+  const triesPerMove = new Map();
+  tries.forEach(({ move }) => triesPerMove.set(move, (triesPerMove.get(move) || 0) + 1));
+  const seen = new Map();
+  chart.data.labels = tries.map(({ move }) => {
+    const attempt = (seen.get(move) || 0) + 1;
+    seen.set(move, attempt);
+    return triesPerMove.get(move) > 1 ? `Move ${move + 1} · try ${attempt}` : `Move ${move + 1}`;
+  });
+  chart.data.datasets[0].data = tries.map(({ accuracy }) => accuracy);
   chart.data.datasets[0].backgroundColor = colors;
 
   chart.update('none');
@@ -199,48 +195,36 @@ export function resetMoveAccuracyChart() {
 }
 
 /**
- * Update the statistics display.
+ * Update the accuracy summary: the 100-game average and this game, both
+ * across every try.
  */
 export function updateStatistics() {
-  const moveAccuracies = getMoveAccuracies();
-  const baseline = recentPerformance(getGameHistory().map(game => ({
-    accuracy: game.average_accuracy,
-    totalMoves: game.total_moves,
-    thinkTimeMs: game.think_time_ms
-  })));
-  const gameAccuracy = moveAccuracies.length
-    ? moveAccuracies.reduce((sum, value) => sum + value, 0) / moveAccuracies.length
-    : null;
-  const current = buildCurrentGamePoint(moveAccuracies, getMoveTimesMs());
+  const baseline = recentAccuracy(getGameHistory().map(game => ({ accuracy: game.average_accuracy })));
+  const gameAccuracy = getGameAccuracy();
 
-  updateMetric('avg-accuracy', baseline.accuracy, 1, '%',
-    'Mean accuracy of your latest 100 scored games');
-  updateMetric('avg-move-time', baseline.secondsPerMove, 2, 's',
-    'Thinking seconds per move, averaged equally across your latest 100 scored games');
-  updateMetric('current-accuracy', gameAccuracy, 1, '%', 'Current game accuracy');
-  updateMetric('current-move-time', current?.x ?? null, 2, 's', 'Mean thinking seconds per move in this game');
-  updateComparison('accuracy-comparison', gameAccuracy, baseline.accuracy, false, 1);
-  updateComparison('pace-comparison', current?.x ?? null, baseline.secondsPerMove, true, 2);
+  updateMetric('avg-accuracy', baseline, 'Accuracy across every try, averaged over your latest 100 scored games');
+  updateMetric('current-accuracy', gameAccuracy, 'Accuracy across every try in this game');
+  updateComparison('accuracy-comparison', gameAccuracy, baseline);
 
-  if (moveAccuracies.length === 0) {
+  if (gameAccuracy === null) {
     const moveElement = document.getElementById('move-feedback');
     if (moveElement && moveElement.textContent !== 'Loading') updateMoveFeedback(null);
   }
 }
 
-function updateMetric(id, value, digits, unit, title) {
+function updateMetric(id, value, title) {
   const element = document.getElementById(id);
   if (!element) return;
-  const text = value === null ? '--' : `${value.toFixed(digits)}${unit}`;
+  const text = value === null ? '--' : `${value.toFixed(1)}%`;
   if (element.textContent !== text) element.textContent = text;
   element.title = title;
 }
 
-function updateComparison(id, current, baseline, lowerIsBetter, digits) {
+function updateComparison(id, current, baseline) {
   const element = document.getElementById(id);
   if (!element) return;
   const delta = current === null || baseline === null
-    ? 0 : Number(current.toFixed(digits)) - Number(baseline.toFixed(digits));
+    ? 0 : Number(current.toFixed(1)) - Number(baseline.toFixed(1));
   if (delta === 0) {
     delete element.dataset.direction;
     delete element.dataset.tone;
@@ -250,10 +234,8 @@ function updateComparison(id, current, baseline, lowerIsBetter, digits) {
     return;
   }
   element.dataset.direction = delta > 0 ? 'up' : 'down';
-  element.dataset.tone = (lowerIsBetter ? delta < 0 : delta > 0) ? 'better' : 'worse';
-  const comparison = lowerIsBetter ? (delta < 0 ? 'faster' : 'slower') : (delta > 0 ? 'higher' : 'lower');
-  const unit = lowerIsBetter ? 's per move' : ' percentage points';
-  const description = `Current game: ${current.toFixed(digits)}${lowerIsBetter ? 's per move' : '%'}, ${Math.abs(delta).toFixed(digits)}${unit} ${comparison} than your 100-game average`;
+  element.dataset.tone = delta > 0 ? 'better' : 'worse';
+  const description = `Current game: ${current.toFixed(1)}%, ${Math.abs(delta).toFixed(1)} percentage points ${delta > 0 ? 'higher' : 'lower'} than your 100-game average`;
   element.title = description;
   element.setAttribute('aria-label', description);
   element.setAttribute('aria-hidden', 'false');
