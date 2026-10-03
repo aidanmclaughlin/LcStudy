@@ -7,11 +7,12 @@ test('current-scoring chart never mixes grading eras or renumbers games', () => 
   const oldGames = Array.from({ length: 104 }, () => ({ accuracy: 30, playedAt: new Date(cutoff - 1) }));
   const newGames = Array.from({ length: 100 }, () => ({ accuracy: 80, playedAt: new Date(cutoff) }));
   assert.deepEqual(buildCurrentScoringAccuracy(oldGames), []);
-  assert.deepEqual(buildCurrentScoringAccuracy([...oldGames, ...newGames.slice(0, 99)]), []);
   const history = [...oldGames, ...newGames, { accuracy: 20, playedAt: SEARCH_GRADING_STARTED_AT }];
-  assert.deepEqual(buildCurrentScoringAccuracy(history), [
-    { game: 204, accuracy: 80 }, { game: 205, accuracy: 79.4 }
-  ]);
+  const points = buildCurrentScoringAccuracy(history);
+  assert.equal(points.length, 101);
+  assert.deepEqual(points[0], { game: 105, score: 80, accuracy: 80, games: 1 });
+  assert.deepEqual(points.at(-2), { game: 204, score: 80, accuracy: 80, games: 100 });
+  assert.deepEqual(points.at(-1), { game: 205, score: 20, accuracy: 79.4, games: 100 });
   assert.equal(history.length, 205);
   assert.equal(history[0].accuracy, 30);
 });
@@ -23,37 +24,49 @@ test('undated and unscored games cannot contaminate current-scoring windows', ()
     { accuracy: null, playedAt: SEARCH_GRADING_STARTED_AT },
     { accuracy: 85, playedAt: SEARCH_GRADING_STARTED_AT }
   ];
-  assert.deepEqual(buildCurrentScoringAccuracy(history), [{ game: 102, accuracy: 85 }]);
+  const points = buildCurrentScoringAccuracy(history);
+  assert.deepEqual(points.map(point => point.game), [...Array.from({ length: 99 }, (_, i) => i + 2), 102]);
+  assert.ok(points.every(point => point.accuracy === 85));
+  assert.deepEqual(points.at(-1), { game: 102, score: 85, accuracy: 85, games: 100 });
 });
 
-test('100-game accuracy waits for full windows and drops the oldest game', () => {
+test('the rolling average starts at the first game and drops the oldest past 100', () => {
   assert.deepEqual(buildRollingAccuracy([]), []);
-  assert.deepEqual(buildRollingAccuracy(Array(99).fill(80)), []);
-  const accuracies = Array.from({ length: 101 }, (_, i) => i);
-  assert.deepEqual(buildRollingAccuracy(accuracies), [
-    { game: 100, accuracy: 49.5 }, { game: 101, accuracy: 50.5 }
+  assert.deepEqual(buildRollingAccuracy([80, 60, 100]), [
+    { game: 1, score: 80, accuracy: 80, games: 1 },
+    { game: 2, score: 60, accuracy: 70, games: 2 },
+    { game: 3, score: 100, accuracy: 80, games: 3 }
   ]);
+  const accuracies = Array.from({ length: 101 }, (_, i) => i);
+  const points = buildRollingAccuracy(accuracies);
+  assert.equal(points.length, 101);
+  assert.deepEqual(points.at(-2), { game: 100, score: 99, accuracy: 49.5, games: 100 });
+  assert.deepEqual(points.at(-1), { game: 101, score: 100, accuracy: 50.5, games: 100 });
   assert.equal(accuracies.length, 101);
 });
 
 test('rolling accuracy skips invalid scores without losing historical game numbers', () => {
   const scores = [...Array(99).fill(80), null, NaN, Infinity, -1, 101, 100, 0];
-  assert.deepEqual(buildRollingAccuracy(scores), [
-    { game: 105, accuracy: 80.2 }, { game: 106, accuracy: 79.4 }
+  const points = buildRollingAccuracy(scores);
+  assert.deepEqual(points.map(point => point.game), [...Array.from({ length: 99 }, (_, i) => i + 1), 105, 106]);
+  assert.deepEqual(points.slice(-2), [
+    { game: 105, score: 100, accuracy: 80.2, games: 100 },
+    { game: 106, score: 0, accuracy: 79.4, games: 100 }
   ]);
   for (const value of [0, 80, 100]) {
-    assert.deepEqual(buildRollingAccuracy(Array(100).fill(value)), [{ game: 100, accuracy: value }]);
+    assert.deepEqual(buildRollingAccuracy(Array(100).fill(value)).at(-1), { game: 100, score: value, accuracy: value, games: 100 });
   }
   assert.throws(() => buildRollingAccuracy([80], 0), RangeError);
 });
 
-test('the home 100-game accuracy matches the chart and skips unscored games', () => {
+test('the headline average covers the latest games, up to 100, and matches the chart', () => {
   const history = Array.from({ length: 140 }, (_, i) => ({ accuracy: i / 2 }));
   const baseline = recentAccuracy(history);
-  assert.equal(baseline, buildRollingAccuracy(history.map(game => game.accuracy)).at(-1).accuracy);
-  assert.equal(recentAccuracy([...history, { accuracy: null }, { accuracy: 101 }]), baseline);
-  assert.equal(recentAccuracy(history.slice(0, 99)), null);
-  assert.equal(recentAccuracy([]), null);
+  assert.deepEqual(baseline, { accuracy: buildRollingAccuracy(history.map(game => game.accuracy)).at(-1).accuracy, games: 100 });
+  assert.deepEqual(recentAccuracy([...history, { accuracy: null }, { accuracy: 101 }]), baseline);
+  // Before 100 games it averages the games there are.
+  assert.deepEqual(recentAccuracy([{ accuracy: 80 }, { accuracy: null }, { accuracy: 90 }]), { accuracy: 85, games: 2 });
+  assert.deepEqual(recentAccuracy([]), { accuracy: null, games: 0 });
 });
 
 test('axes end on round ticks within their bounds', () => {

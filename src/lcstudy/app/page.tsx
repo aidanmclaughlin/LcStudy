@@ -69,10 +69,10 @@ export default async function HomePage() {
               </div>
             </section>
 
-            {/* Accuracy Summary Panel: accuracy across every try, over 100 games and this one */}
+            {/* Accuracy Summary Panel: accuracy across every try, over your latest games (up to 100) and this one */}
             <StatsView>
               <span className="stat-tile">
-                <span className="label stat-label">100-game accuracy</span>
+                <span id="avg-accuracy-label" className="label stat-label">100-game accuracy</span>
                 <span id="avg-accuracy" className="stat-value">--</span>
                 <span className="stat-current">
                   <span className="label stat-current-label">Game</span>

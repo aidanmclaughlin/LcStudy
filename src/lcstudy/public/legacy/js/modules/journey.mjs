@@ -1,37 +1,46 @@
 // Full v2 corpus deployment (a3ce615): policy-ratio and search-based grades are not comparable.
 export const SEARCH_GRADING_STARTED_AT = '2026-07-05T07:39:27Z';
 
-export function buildCurrentScoringAccuracy(history, windowSize = 100) {
+/** Rolling averages and headline accuracy cover at most this many games. */
+export const ACCURACY_WINDOW = 100;
+
+export function buildCurrentScoringAccuracy(history, windowSize = ACCURACY_WINDOW) {
   const startedAt = Date.parse(SEARCH_GRADING_STARTED_AT);
   return buildRollingAccuracy(history.map(game => (
     new Date(game.playedAt).getTime() >= startedAt ? game.accuracy : null
   )), windowSize);
 }
 
-/** Full windows of scored games, preserving game numbers when scores are missing. */
-export function buildRollingAccuracy(accuracies, windowSize = 100) {
+/**
+ * One point per scored game: its own accuracy (score) and the rolling average
+ * (accuracy) of up to `windowSize` scored games ending there, so the line
+ * starts at the first game. Game numbers are kept when scores are missing.
+ */
+export function buildRollingAccuracy(accuracies, windowSize = ACCURACY_WINDOW) {
   if (!Number.isInteger(windowSize) || windowSize < 1) throw new RangeError('Invalid accuracy window');
   const points = [], window = [];
   let sum = 0;
-  accuracies.forEach((accuracy, index) => {
-    if (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) return;
-    window.push(accuracy);
-    sum += accuracy;
+  accuracies.forEach((score, index) => {
+    if (!Number.isFinite(score) || score < 0 || score > 100) return;
+    window.push(score);
+    sum += score;
     if (window.length > windowSize) sum -= window.shift();
-    if (window.length === windowSize) points.push({ game: index + 1, accuracy: sum / windowSize });
+    points.push({ game: index + 1, score, accuracy: sum / window.length, games: window.length });
   });
   return points;
 }
 
-/** The latest scored games' accuracy, each game weighted equally; null until there are enough. */
-export function recentAccuracy(history, windowSize = 100) {
-  const games = [];
-  for (let i = history.length - 1; i >= 0 && games.length < windowSize; i--) {
+/** The average of the latest scored games (up to `windowSize`, each weighted equally) and how many it covers. */
+export function recentAccuracy(history, windowSize = ACCURACY_WINDOW) {
+  const scores = [];
+  for (let i = history.length - 1; i >= 0 && scores.length < windowSize; i--) {
     const { accuracy } = history[i];
-    if (Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 100) games.push(accuracy);
+    if (Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 100) scores.push(accuracy);
   }
-  if (games.length < windowSize) return null;
-  return games.reduce((sum, accuracy) => sum + accuracy, 0) / windowSize;
+  return {
+    accuracy: scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
+    games: scores.length
+  };
 }
 
 /** Round tick spacing (1, 2, 2.5, or 5 times a power of ten) giving about `targetTicks` intervals. */

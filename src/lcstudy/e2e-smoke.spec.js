@@ -485,7 +485,7 @@ test.describe('progress dashboard', () => {
 
       await page.goto('/stats', { waitUntil: 'networkidle' });
       await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
-      await expect(page.getByRole('heading', { name: '100-game accuracy', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Accuracy', exact: true })).toBeVisible();
       await expect(page.locator('.stats-metric').filter({ hasText: 'First-try accuracy' })).toHaveCount(1);
       await expect(page.getByRole('tab', { name: 'Timing', exact: true })).toHaveCount(0);
       const eloMetric = page.locator('.stats-metric').filter({ hasText: 'Maia Elo' });
@@ -493,8 +493,8 @@ test.describe('progress dashboard', () => {
       await expect(eloMetric).toHaveAttribute('title', /80% range 1,190 to 1,410/);
       await expect(page.locator('.stats-progress-chart')).toHaveCount(1);
       await expect(page.locator('.stats-accuracy-chart-line')).toHaveCount(1);
-      await expect(page.locator('.stats-accuracy-band .stats-chart-label').filter({ hasText: 'Game 100' })).toHaveCount(1);
-      await expect(page.locator('.stats-accuracy-band .stats-chart-label').filter({ hasText: 'Game 120' })).toHaveCount(1);
+      // Every game is plotted from the first, under the rolling average.
+      await expect(page.locator('.stats-accuracy-band .stats-chart-x-label')).toHaveText(['Game 1', 'Game 60', 'Game 120']);
       await page.getByRole('tab', { name: 'Breakdowns' }).click();
       await expect(page.locator('.stats-breakdown-row')).not.toHaveCount(0);
       await page.getByRole('tab', { name: 'Overview' }).click();

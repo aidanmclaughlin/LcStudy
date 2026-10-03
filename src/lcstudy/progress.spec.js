@@ -75,6 +75,7 @@ test('Stats preserves a played game', async ({ page, context }, testInfo) => {
   // Game accuracy lives in the summary only; the chart header shows the last try.
   await expect(page.locator('#game-accuracy')).toHaveCount(0);
   const accuracy100 = mean(history.slice(-100).map(game => game.average_accuracy));
+  await expect(page.locator('#avg-accuracy-label')).toHaveText('100-game accuracy');
   await expect(page.locator('#avg-accuracy')).toHaveText(`${accuracy100.toFixed(1)}%`);
   await expect(page.locator('.panel-chart #move-feedback')).toHaveText('--');
   await expect(page.locator('#current-accuracy')).toHaveText('--');
@@ -154,14 +155,16 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
       state.setMoveAccuracyChart(null);
       state.setGameHistory(savedHistory.slice(0, 99));
       charts.updateStatistics();
-      return document.getElementById('avg-accuracy').textContent;
+      return [document.getElementById('avg-accuracy-label').textContent, document.getElementById('avg-accuracy').textContent];
     } finally {
       state.setMoveAccuracyChart(savedChart);
       state.setGameHistory(savedHistory);
       charts.updateStatistics();
     }
   });
-  expect(progressWithoutChart).toBe('--');
+  // Before 100 games the summary averages the games there are (summed newest first, as the app does).
+  const first99 = history.slice(0, 99).reverse().reduce((sum, game) => sum + game.average_accuracy, 0) / 99;
+  expect(progressWithoutChart).toEqual(['99-game accuracy', `${first99.toFixed(1)}%`]);
   calls.fail = true;
   await page.getByRole('button', { name: 'Accuracy summary, open statistics' }).focus();
   await page.keyboard.press('Enter');
@@ -173,13 +176,17 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('.stats-page')).getPropertyValue('--text-primary') === getComputedStyle(document.documentElement).getPropertyValue('--text-primary'))).toBe(true);
   await expect(page.locator('.stats-metric .stats-metric-label')).toHaveText(['100-game accuracy', 'First-try accuracy', 'Maia Elo']);
   await expect(page.locator('.stats-metric').filter({ hasText: 'Maia Elo' })).toHaveAttribute('title', /last 100 eligible games; 80% range/);
-  await expect(page.getByRole('heading', { name: '100-game accuracy', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Accuracy', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toHaveCount(0);
-  await expect(page.locator('.stats-accuracy-chart-wrap .stats-chart-x-label')).toHaveText(['Game 120', 'Game 140', 'Game 160']);
+  // A dot for every current-scoring game (21-160) under the rolling average line.
+  await expect(page.locator('.stats-accuracy-chart-wrap .stats-chart-x-label')).toHaveText(['Game 21', 'Game 90', 'Game 160']);
+  expect(await page.locator('.stats-accuracy-chart-games').evaluate(path => path.getAttribute('d').match(/M/g).length)).toBe(140);
+  await expect(page.locator('.stats-chart-legend')).toContainText('Each game');
+  await expect(page.locator('.stats-chart-legend')).toContainText('Average of up to 100 games');
   const latest = history.slice(-100);
   await expect(page.locator('.stats-metric').filter({ hasText: '100-game accuracy' }).locator('strong')).toHaveText(`${mean(latest.map(game => game.average_accuracy)).toFixed(1)}%`);
   await expect(page.locator('.stats-metric').filter({ hasText: 'First-try accuracy' }).locator('strong')).toHaveText(`${mean(latest.map(game => mean(game.accuracy_history))).toFixed(1)}%`);
-  await expect(page.locator('.stats-accuracy-band .stats-card-meta')).toHaveText('Games 120–160');
+  await expect(page.locator('.stats-accuracy-band .stats-card-meta')).toHaveText('Games 21–160');
   // Time is not tracked anywhere on the page.
   await expect(page.getByRole('tab', { name: 'Timing' })).toHaveCount(0);
   await expect(page.getByText(/pace|per move|time left|typical game|hours?\b/i)).toHaveCount(0);
@@ -226,21 +233,23 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   expect(errors).toEqual([]);
 });
 
-test('rolling accuracy renders empty, single-point, and constant histories', async ({ page, context }) => {
+test('the accuracy chart plots every game from the first, for any history', async ({ page, context }) => {
   const { stats } = await setup(page, context);
   const { buildRollingAccuracy } = require('./public/legacy/js/modules/journey.mjs');
-  for (const scores of [Array(99).fill(80), Array(100).fill(80), Array(120).fill(0), Array(120).fill(100)]) {
+  for (const scores of [[], [80], Array.from({ length: 23 }, (_, i) => 60 + i), Array(120).fill(0), Array(120).fill(100)]) {
     stats.progress.accuracy100 = buildRollingAccuracy(scores);
     await page.locator('#avg-accuracy').click();
-    if (scores.length < 100) {
-      await expect(page.getByText('Available after 100 games with current scoring')).toBeVisible();
+    if (scores.length === 0) {
+      await expect(page.locator('.stats-accuracy-band').getByText('No scored games yet')).toBeVisible();
       await expect(page.locator('.stats-accuracy-chart-line')).toHaveCount(0);
     } else {
       await expect(page.locator('.stats-accuracy-chart-line')).toHaveAttribute('d', /^M[\d., Lh]+$/);
       expect(await page.locator('.stats-accuracy-chart-line').evaluate(path => path.getTotalLength())).toBeGreaterThan(0);
+      // Reopening shows the previous chart until the new data arrives.
+      await expect.poll(() => page.locator('.stats-accuracy-chart-games').evaluate(path => path.getAttribute('d').match(/M/g).length)).toBe(scores.length);
       const labels = await page.locator('.stats-accuracy-chart-wrap .stats-chart-y-axis').innerText();
       expect(labels).not.toMatch(/NaN|Infinity/);
-      await expect(page.locator('.stats-accuracy-band .stats-card-meta')).toHaveText(scores.length === 100 ? 'Game 100' : `Games 100–${scores.length}`);
+      await expect(page.locator('.stats-accuracy-band .stats-card-meta')).toHaveText(scores.length === 1 ? 'Game 1' : `Games 1–${scores.length}`);
     }
     await page.getByRole('button', { name: 'Resume game' }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
@@ -253,13 +262,13 @@ test('the comparison arrow sets this game, across every try, against the 100-gam
   await page.locator('[data-square=e2]').click();
   await page.locator('[data-square=e4]').click();
   await expect.poll(async () => (await snapshot(page)).ply).toBe(2);
-  const configure = async tries => page.evaluate(async tries => {
+  const configure = async (tries, games = 100) => page.evaluate(async ({ tries, games }) => {
     const state = await import('/legacy/js/modules/state.js');
     const charts = await import('/legacy/js/modules/charts.js');
     state.setTryScores(tries.map((accuracy, move) => ({ move, accuracy })));
-    state.setGameHistory(Array.from({ length: 100 }, () => ({ average_accuracy: 80, total_moves: 20 })));
+    state.setGameHistory(Array.from({ length: games }, () => ({ average_accuracy: 80, total_moves: 20 })));
     charts.updateStatistics();
-  }, tries);
+  }, { tries, games });
   await configure([90]);
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'better');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-direction', 'up');
@@ -267,12 +276,24 @@ test('the comparison arrow sets this game, across every try, against the 100-gam
   await expect(page.locator('#current-accuracy')).toHaveText('70.0%');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'worse');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-direction', 'down');
-  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('title', /10\.0 percentage points lower than your 100-game average/);
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('title', /10\.0 percentage points lower than your recent average/);
   await page.setViewportSize({ width: 320, height: 844 });
   expect(await page.locator('.stats-trigger').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   expect(await page.locator('.stat-value-row').evaluateAll(rows => rows.every(el => el.scrollWidth <= el.clientWidth))).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('narrow-metrics.png') });
   await configure([80]);
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
+  // Before 100 games the average covers the games there are, and the label says how many.
+  await expect(page.locator('#avg-accuracy-label')).toHaveText('100-game accuracy');
+  await configure([90], 23);
+  await expect(page.locator('#avg-accuracy-label')).toHaveText('23-game accuracy');
+  await expect(page.locator('#avg-accuracy')).toHaveText('80.0%');
+  await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-direction', 'up');
+  await configure([90], 1);
+  await expect(page.locator('#avg-accuracy-label')).toHaveText('1-game accuracy');
+  await configure([90], 0);
+  await expect(page.locator('#avg-accuracy-label')).toHaveText('100-game accuracy');
+  await expect(page.locator('#avg-accuracy')).toHaveText('--');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('aria-hidden', 'true');
   await configure([]);
   await expect(page.locator('#current-accuracy')).toHaveText('--');
@@ -397,8 +418,12 @@ test('dashboard handles short histories', () => {
   expect(empty.overview).toMatchObject({ recentGames: 0, recent100: null, recentFirstTry: null, best100: null });
   expect(empty.progress.forecast).toBeNull();
   const rows = Array.from({ length: 101 }, (_, index) => statsRow(80, index));
+  // Before 100 games the headlines and chart cover the games there are; the best 100 needs 100.
   const partial = computeProgressDashboard(rows.slice(0, 99));
-  expect(partial.overview).toMatchObject({ recentGames: 99, recent100: null, recentFirstTry: null, best100: null });
+  expect(partial.overview).toMatchObject({ recentGames: 99, recent100: 80, recentFirstTry: 80, best100: null });
+  expect(partial.progress.accuracy100).toHaveLength(99);
+  expect(partial.progress.accuracy100[0]).toEqual({ game: 1, score: 80, accuracy: 80, games: 1 });
+  expect(computeProgressDashboard(rows.slice(0, 1)).overview).toMatchObject({ recentGames: 1, recent100: 80 });
   expect(Object.keys(partial.progress.forecast).sort()).toEqual(['remainingGames', 'remainingGamesHigh', 'remainingGamesLow', 'targetGame', 'targetGameHigh', 'targetGameLow']);
   const full = computeProgressDashboard([statsRow(100, 0), ...rows.slice(0, 99)]);
   expect(full.overview.best100).toBeCloseTo(80.2);

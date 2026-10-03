@@ -3,7 +3,7 @@
  * @module charts
  */
 
-import { recentAccuracy } from './journey.mjs';
+import { ACCURACY_WINDOW, recentAccuracy } from './journey.mjs';
 import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS } from './constants.js';
 import { accuracyColor } from './colors.mjs';
 import { updateMoveFeedback } from './effects.js';
@@ -196,16 +196,20 @@ export function resetMoveAccuracyChart() {
 }
 
 /**
- * Update the accuracy summary: the 100-game average and this game, both
- * across every try.
+ * Update the accuracy summary: the average of your latest games (up to 100,
+ * named in the label) and this game, both across every try.
  */
 export function updateStatistics() {
   const baseline = recentAccuracy(getGameHistory().map(game => ({ accuracy: game.average_accuracy })));
   const gameAccuracy = getGameAccuracy();
+  const windowGames = baseline.games > 0 ? baseline.games : ACCURACY_WINDOW;
 
-  updateMetric('avg-accuracy', baseline, 'Accuracy across every try, averaged over your latest 100 scored games');
+  const label = document.getElementById('avg-accuracy-label');
+  if (label) label.textContent = `${windowGames}-game accuracy`;
+  updateMetric('avg-accuracy', baseline.accuracy,
+    `Accuracy across every try, averaged over your latest ${windowGames} scored ${windowGames === 1 ? 'game' : 'games'}`);
   updateMetric('current-accuracy', gameAccuracy, 'Accuracy across every try in this game');
-  updateComparison('accuracy-comparison', gameAccuracy, baseline);
+  updateComparison('accuracy-comparison', gameAccuracy, baseline.accuracy);
 
   if (gameAccuracy === null) {
     const moveElement = document.getElementById('move-feedback');
@@ -236,7 +240,7 @@ function updateComparison(id, current, baseline) {
   }
   element.dataset.direction = delta > 0 ? 'up' : 'down';
   element.dataset.tone = delta > 0 ? 'better' : 'worse';
-  const description = `Current game: ${current.toFixed(1)}%, ${Math.abs(delta).toFixed(1)} percentage points ${delta > 0 ? 'higher' : 'lower'} than your 100-game average`;
+  const description = `Current game: ${current.toFixed(1)}%, ${Math.abs(delta).toFixed(1)} percentage points ${delta > 0 ? 'higher' : 'lower'} than your recent average`;
   element.title = description;
   element.setAttribute('aria-label', description);
   element.setAttribute('aria-hidden', 'false');

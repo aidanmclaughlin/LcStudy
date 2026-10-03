@@ -154,8 +154,9 @@ export function computeProgressDashboard(
   const recentHistory = recentGames.map(game => game.row);
   const recent = accuracies.slice(-RECENT_WINDOW);
   const recentInterval = meanInterval(recent);
-  const recent100 = recentAccuracy(validGames.map((game) => ({ accuracy: game.accuracy })), RECENT_WINDOW);
-  const recentFirstTry = recentAccuracy(validGames.map((game) => ({ accuracy: firstTryAccuracy(game) })), RECENT_WINDOW);
+  // Headline averages cover the latest games, up to 100, so they start with the first game.
+  const recent100 = recentAccuracy(validGames.map((game) => ({ accuracy: game.accuracy })), RECENT_WINDOW).accuracy;
+  const recentFirstTry = recentAccuracy(validGames.map((game) => ({ accuracy: firstTryAccuracy(game) })), RECENT_WINDOW).accuracy;
   const moveScores = history.flatMap((game) => validMoveScores(game.accuracyHistory));
   const totalMoves = history.reduce((sum, game) => sum + Math.max(0, game.totalMoves), 0);
   const trend = linearTrend(adjusted.slice(-RECENT_WINDOW));

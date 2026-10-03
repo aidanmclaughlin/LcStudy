@@ -194,6 +194,9 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   await expect(page.locator('#completion-title')).toHaveText('Game over');
   await expect(page.locator('#completion-summary')).toHaveText('79.0% · 7 moves');
   await expect(page.locator('#current-accuracy')).toHaveText('79.0%');
+  // With no earlier games, the finished game is the whole recent average.
+  await expect(page.locator('#avg-accuracy-label')).toHaveText('1-game accuracy');
+  await expect(page.locator('#avg-accuracy')).toHaveText('79.0%');
   await expect(page.locator('.completion-actions .btn')).toHaveText(['Review', 'New game']);
   await expect(page.locator('#completion-new')).toBeFocused();
 

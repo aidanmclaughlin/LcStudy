@@ -8,7 +8,7 @@ import { TARGET_ACCURACY } from "@/lib/progress-stats";
 import type { MaiaEloSeriesPoint } from "@/lib/maia-elo";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
-import { niceScale, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
+import { ACCURACY_WINDOW, niceScale, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
 
 const CHART_WIDTH = 1000;
 const CHART_HEIGHT = 100;
@@ -35,6 +35,9 @@ export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps)
   const { elo, overview, progress, consistency, skill, coverage } = stats;
   const [tab, setTab] = useState("overview");
   const recentSample = `Last ${formatInteger(overview.recentGames)} scored games`;
+  // Headline averages cover the latest games, up to 100; the label says how many.
+  const windowGames = overview.recentGames > 0 ? overview.recentGames : ACCURACY_WINDOW;
+  const windowLabel = `${formatInteger(windowGames)}-game accuracy`;
   const tabs = [["overview", "Overview"], ["breakdowns", "Breakdowns"]];
   const forecast = progress.forecast;
 
@@ -47,10 +50,10 @@ export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps)
       </header>
 
       <section className="stats-kpis" aria-label="Progress summary">
-        <Metric label="100-game accuracy" value={overview.recent100 === null ? "--" : formatPercent(overview.recent100)}
-          title="Accuracy across every try, over the last 100 scored games with each game weighted equally" />
+        <Metric label={windowLabel} value={overview.recent100 === null ? "--" : formatPercent(overview.recent100)}
+          title={`Accuracy across every try, over the last ${formatInteger(windowGames)} scored games (up to ${ACCURACY_WINDOW}) with each game weighted equally`} />
         <Metric label="First-try accuracy" value={overview.recentFirstTry === null ? "--" : formatPercent(overview.recentFirstTry)}
-          title="Accuracy of your first try at each move over the same 100 games, the way move-matching accuracy is usually reported" />
+          title="Accuracy of your first try at each move over the same games, the way move-matching accuracy is usually reported" />
         <Metric label="Maia Elo" value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
           title={elo.current ? `Maia-2 rapid equivalent over the last ${elo.current.games} eligible games; 80% range ${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}. Not an official rating.` : "No eligible positions"} />
       </section>
@@ -70,7 +73,7 @@ export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps)
 
       <div role="tabpanel" className="stats-panel" id={`stats-panel-${tab}`} aria-labelledby={`stats-tab-${tab}`}>
         {tab === "overview" && <>
-          <Card title="100-game accuracy" className="stats-accuracy-band"
+          <Card title="Accuracy" className="stats-accuracy-band"
             meta={gameSpan(progress.accuracy100)}>
             <RollingAccuracyChart points={progress.accuracy100} />
           </Card>
@@ -78,7 +81,7 @@ export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps)
             <Card title="Current form" meta={recentSample}>
               <dl className="stats-definition-list">
                 <Definition label="Best 100 games" value={overview.best100 === null ? "--" : formatPercent(overview.best100)} />
-                <Definition label="Difficulty-adjusted" value={overview.recentGames === 100 ? formatPercent(progress.adjustedRecent100) : "--"} />
+                <Definition label="Difficulty-adjusted" value={overview.recentGames > 0 ? formatPercent(progress.adjustedRecent100) : "--"} />
                 <Definition label="Trend per 100 games" value={formatSignedPoints(progress.trendPer100)} />
                 <Definition label="Game-to-game spread" value={formatPoints(consistency.recentDeviation)} />
               </dl>
@@ -147,10 +150,11 @@ function Metric({
   );
 }
 
+/** Every game's accuracy as a dot, and the average of up to 100 games ending at each one as the line. */
 function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
-  if (points.length === 0) return <EmptyState label="Available after 100 games with current scoring" />;
+  if (points.length === 0) return <EmptyState label="No scored games yet" />;
 
-  const values = points.map(point => point.accuracy);
+  const values = points.flatMap(point => [point.score, point.accuracy]);
   const low = Math.min(...values), high = Math.max(...values);
   const padding = Math.max(0.25, (high - low) * 0.06);
   const scale = niceScale(low - padding, high + padding, { targetTicks: 4, floor: 0, ceiling: 100 });
@@ -165,6 +169,8 @@ function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
   const coordinates = points.map((point, index) => `${x(index).toFixed(2)},${y(point.accuracy).toFixed(2)}`);
   const linePath = `M${coordinates.join(" L")}${points.length === 1 ? "h0.01" : ""}`;
   const areaPath = `${linePath} L${x(points.length - 1).toFixed(2)},${CHART_HEIGHT} L${x(0).toFixed(2)},${CHART_HEIGHT} Z`;
+  // Round caps on near-zero segments draw round dots in the stretched SVG.
+  const gamesPath = points.map((point, index) => `M${x(index).toFixed(2)},${y(point.score).toFixed(2)}h0.01`).join("");
   const xTicks = Array.from(new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]));
   const yAxisTicks = scale.ticks.map(tick => ({
     key: String(tick),
@@ -179,25 +185,32 @@ function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
   const last = points.length - 1;
 
   return (
-    <ChartFrame
-      className="stats-accuracy-chart-wrap"
-      titleId="accuracy-chart-title"
-      descriptionId="accuracy-chart-description"
-      title="100-game rolling accuracy over games"
-      description="Average accuracy across every try in the most recent 100 games scored under the current search-based grading system, with each game weighted equally. Earlier policy-based scores are excluded."
-      yTicks={yAxisTicks}
-      xTicks={xAxisTicks}
-      overlay={<span className="stats-chart-dot" style={{ left: `${x(last) / CHART_WIDTH * 100}%`, top: `${y(points[last].accuracy)}%` }} />}
-    >
-      <defs>
-        <linearGradient id="stats-accuracy-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stopColor="#a78bfa" stopOpacity="0.2" />
-          <stop offset="1" stopColor="#a78bfa" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {points.length > 1 && <path className="stats-accuracy-chart-area" d={areaPath} />}
-      <path className="stats-accuracy-chart-line" d={linePath} style={points.length === 1 ? { strokeWidth: 6 } : undefined} />
-    </ChartFrame>
+    <div className="stats-accuracy-figure">
+      <div className="stats-chart-legend" aria-hidden="true">
+        <span><i className="stats-legend-game" />Each game</span>
+        <span><i className="stats-legend-average" />Average of up to {ACCURACY_WINDOW} games</span>
+      </div>
+      <ChartFrame
+        className="stats-accuracy-chart-wrap"
+        titleId="accuracy-chart-title"
+        descriptionId="accuracy-chart-description"
+        title="Accuracy by game"
+        description={`Each game's accuracy across every try, as dots, and the average of up to ${ACCURACY_WINDOW} games ending at each game, as a line, for games scored under the current search-based grading system. Earlier policy-based scores are excluded.`}
+        yTicks={yAxisTicks}
+        xTicks={xAxisTicks}
+        overlay={<span className="stats-chart-dot" style={{ left: `${x(last) / CHART_WIDTH * 100}%`, top: `${y(points[last].accuracy)}%` }} />}
+      >
+        <defs>
+          <linearGradient id="stats-accuracy-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#a78bfa" stopOpacity="0.2" />
+            <stop offset="1" stopColor="#a78bfa" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {points.length > 1 && <path className="stats-accuracy-chart-area" d={areaPath} />}
+        <path className="stats-accuracy-chart-games" d={gamesPath} />
+        <path className="stats-accuracy-chart-line" d={linePath} style={points.length === 1 ? { strokeWidth: 6 } : undefined} />
+      </ChartFrame>
+    </div>
   );
 }
 
