@@ -96,6 +96,16 @@ function boardPlacement(page) {
   ));
 }
 
+/** The shake's sideways distance in px, set as the board shakes. */
+function shakeDistance(page) {
+  return page.locator('#board').evaluate(board => parseFloat(board.style.getPropertyValue('--shake-distance')));
+}
+
+/** The accuracy scale's color for a score, from the game's own module. */
+function scaleColor(page, accuracy) {
+  return page.evaluate(async value => (await import('/legacy/js/modules/colors.mjs')).accuracyColor(value), accuracy);
+}
+
 function pieceAt(page, square) {
   return page.evaluate(name => document.querySelector(`[data-square="${name}"] .piece`)?.dataset.piece || null, square);
 }
@@ -118,6 +128,7 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   await expect(feedback).toHaveText('0.0%');
   await expect(burst).toHaveText('0%');
   expect(await snapshot(page)).toEqual({ scores: [0], tries: [0], ply: 0 });
+  expect(await shakeDistance(page)).toBeCloseTo(32, 6);
 
   // Leela's move is never shown or played.
   await page.waitForTimeout(900);
@@ -129,6 +140,14 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   await play(page, 'd2d4');
   await expect(feedback).toHaveText('70.0%');
   await expect(burst).toHaveText('70%');
+  // The shake grows linearly with the miss; burst and header share one smooth color scale.
+  expect(await shakeDistance(page)).toBeCloseTo(2 + 0.3 * 30, 6);
+  const orange = await scaleColor(page, 70);
+  expect(orange).toBe('#f88700');
+  expect(await burst.evaluate(el => el.style.getPropertyValue('--accuracy-burst-color'))).toBe(orange);
+  await expect(feedback).toHaveAttribute('data-tone', 'accuracy');
+  expect(await feedback.evaluate(el => el.style.getPropertyValue('--accuracy-color'))).toBe(orange);
+  await expect(feedback).toHaveCSS('color', 'rgb(248, 135, 0)');
   await play(page, 'b2b3');
   await expect(feedback).toHaveText('0.0%');
   expect(await snapshot(page)).toEqual({ scores: [0], tries: [0, 70, 0], ply: 0 });
@@ -178,8 +197,13 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   await expect(page.locator('.completion-actions .btn')).toHaveText(['Review', 'New game']);
   await expect(page.locator('#completion-new')).toBeFocused();
 
-  // The chart shows one bar per try, labelled by move and try.
+  // The chart shows one bar per try, labelled by move and try, colored on the same scale.
   await expect.poll(async () => (await chartBars(page))?.data).toEqual(tries);
+  expect(await page.evaluate(async () => {
+    const chart = (await import('/legacy/js/modules/state.js')).getMoveAccuracyChart();
+    const { accuracyColor } = await import('/legacy/js/modules/colors.mjs');
+    return chart.data.datasets[0].backgroundColor.every((color, i) => color === accuracyColor(chart.data.datasets[0].data[i]));
+  })).toBe(true);
   expect((await chartBars(page)).labels).toEqual([
     'Move 1 · try 1', 'Move 1 · try 2', 'Move 1 · try 3', 'Move 1 · try 4', 'Move 2',
     'Move 3 · try 1', 'Move 3 · try 2', 'Move 4', 'Move 5', 'Move 6', 'Move 7'

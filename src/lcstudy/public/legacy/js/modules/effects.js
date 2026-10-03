@@ -4,24 +4,13 @@
  */
 
 import { CONFETTI_COLORS, CELEBRATION_COLORS } from './constants.js';
+import { accuracyColor } from './colors.mjs';
 import { playSuccessChime } from './audio.js';
 import { getGameAccuracy, getMoveAccuracies } from './state.js';
 
 const BOARD_FLASH_CLASSES = ['board-flash-green', 'board-shake', 'board-flash-gray'];
 let boardFlashFrame = 0;
 let boardFlashTimer = 0;
-
-function accuracyTone(accuracy) {
-  if (accuracy >= 90) {
-    return { color: '#22c55e', glow: 'rgba(34, 197, 94, 0.58)' };
-  }
-
-  if (accuracy >= 65) {
-    return { color: '#f59e0b', glow: 'rgba(245, 158, 11, 0.58)' };
-  }
-
-  return { color: '#ef4444', glow: 'rgba(239, 68, 68, 0.62)' };
-}
 
 export function showCompletionOverlay(result = 'Checkmate') {
   const overlay = document.getElementById('completion-overlay');
@@ -69,18 +58,20 @@ export function hideCompletionOverlay() {
 }
 
 /**
- * Shake strength for a move that wasn't Leela's: the worse it scored, the harder.
+ * Shake strength for a move that wasn't Leela's, in proportion to how far
+ * below 100% it scored.
  * @param {number} accuracy - Move accuracy percentage
- * @returns {number} 0.12..1
+ * @returns {number} 0..1
  */
 export function inaccuracyIntensity(accuracy) {
-  return Math.max(0.12, Math.min(1, (100 - Number(accuracy || 0)) / 100));
+  return Math.max(0, Math.min(1, (100 - Number(accuracy || 0)) / 100));
 }
 
 /**
  * Flash the board with a colored outline effect.
  * @param {'success' | 'wrong' | 'illegal'} result - Type of feedback to show
- * @param {number} intensity - 0..1 intensity for wrong feedback
+ * @param {number} intensity - 0..1 for wrong feedback; the shake's distance,
+ *   tilt, and length grow linearly with it
  */
 export function flashBoard(result, intensity = 1) {
   const boardEl = document.getElementById('board');
@@ -93,8 +84,7 @@ export function flashBoard(result, intensity = 1) {
   };
 
   const className = classMap[result] || 'board-shake';
-  const clampedIntensity = Math.max(0, Math.min(1, Number(intensity) || 0));
-  const force = Math.pow(clampedIntensity, 1.35);
+  const force = Math.max(0, Math.min(1, Number(intensity) || 0));
   const duration = className === 'board-shake' ? 240 + force * 520 : 300;
 
   boardEl.style.setProperty('--shake-distance', `${2 + force * 30}px`);
@@ -288,14 +278,14 @@ export function showAccuracyBurst(accuracy) {
   const numeric = Math.max(0, Math.min(100, Number(accuracy) || 0));
   const rect = board.getBoundingClientRect();
   const burst = document.createElement('div');
-  const tone = accuracyTone(numeric);
+  const color = accuracyColor(numeric);
 
   burst.className = 'accuracy-burst';
   burst.textContent = `${numeric.toFixed(0)}%`;
   burst.style.setProperty('--accuracy-burst-x', `${rect.left + rect.width / 2}px`);
   burst.style.setProperty('--accuracy-burst-y', `${rect.top + rect.height / 2}px`);
-  burst.style.setProperty('--accuracy-burst-color', tone.color);
-  burst.style.setProperty('--accuracy-burst-glow', tone.glow);
+  burst.style.setProperty('--accuracy-burst-color', color);
+  burst.style.setProperty('--accuracy-burst-glow', `${color}99`);
 
   document.body.appendChild(burst);
 
@@ -319,9 +309,10 @@ export function updateMoveFeedback(result = null) {
 
   if (!result) return show('--', 'muted');
   if (result.loading) return show('Loading', 'muted');
-  if (result.error) return show('Retry', 'bad');
+  if (result.error) return show('Retry', 'error');
   if (result.illegal) return show('Illegal move', 'muted');
 
   const accuracy = Number(result.accuracy || 0);
-  show(`${accuracy.toFixed(1)}%`, accuracy >= 90 ? 'good' : accuracy >= 65 ? 'ok' : 'bad');
+  feedbackElement.style.setProperty('--accuracy-color', accuracyColor(accuracy));
+  show(`${accuracy.toFixed(1)}%`, 'accuracy');
 }

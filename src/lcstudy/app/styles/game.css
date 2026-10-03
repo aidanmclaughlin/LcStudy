@@ -34,9 +34,9 @@
 }
 
 .panel-value[data-tone="muted"] { color: var(--text-muted); font-weight: 500; }
-.panel-value[data-tone="good"] { color: var(--color-success); }
-.panel-value[data-tone="ok"] { color: var(--color-warning); }
-.panel-value[data-tone="bad"] { color: var(--color-error); }
+.panel-value[data-tone="error"] { color: var(--color-error); }
+/* The accuracy scale's color (colors.mjs), set alongside the value. */
+.panel-value[data-tone="accuracy"] { color: var(--accuracy-color); }
 
 /* ---------------------------------------------------------------------------
    Accuracy summary (opens Stats)

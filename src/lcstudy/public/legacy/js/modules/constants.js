@@ -40,13 +40,6 @@ export const CONFETTI_COLORS = ['#f59e0b', '#fbbf24', '#f87171', '#34d399', '#60
 /** Full confetti colors for game completion */
 export const CELEBRATION_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd', '#98d8c8', '#f7dc6f'];
 
-/** Move accuracy bands: >= 90 good, >= 65 ok, otherwise bad */
-export const ACCURACY_COLORS = {
-  good: '#22c55e',
-  ok: '#f59e0b',
-  bad: '#ef4444'
-};
-
 /** Chart.js common scale options */
 export const CHART_SCALE_OPTIONS = {
   grid: {

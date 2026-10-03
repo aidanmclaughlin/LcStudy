@@ -132,10 +132,10 @@ export function hapticError() {
   triggerPattern(3, 85);
 }
 
+/** More pulses, closer together, in proportion to how far below 100% the move scored. */
 export function hapticInaccuracy(accuracy) {
   const miss = Math.max(0, Math.min(1, (100 - Number(accuracy || 0)) / 100));
-  const force = Math.pow(miss, 1.35);
-  const pulses = Math.max(1, Math.min(5, Math.round(1 + force * 4)));
-  const gap = Math.max(45, 105 - force * 45);
+  const pulses = Math.max(1, Math.min(5, Math.round(1 + miss * 4)));
+  const gap = 105 - miss * 45;
   triggerPattern(pulses, gap);
 }

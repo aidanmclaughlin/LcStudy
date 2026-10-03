@@ -4,7 +4,8 @@
  */
 
 import { recentAccuracy } from './journey.mjs';
-import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS, ACCURACY_COLORS } from './constants.js';
+import { CHART_SCALE_OPTIONS, CHART_TOOLTIP_OPTIONS } from './constants.js';
+import { accuracyColor } from './colors.mjs';
 import { updateMoveFeedback } from './effects.js';
 import {
   getMoveAccuracyChart,
@@ -46,7 +47,7 @@ function initMoveAccuracyChart() {
       datasets: [{
         label: 'Move accuracy',
         data: [],
-        backgroundColor: ACCURACY_COLORS.good,
+        backgroundColor: accuracyColor(100),
         borderWidth: 0,
         borderRadius: 3,
         // Square bottoms sit on the baseline; a 0% move still shows as a stub.
@@ -159,9 +160,9 @@ function updateMoveAccuracyChart() {
     }
   }
 
-  // Color by accuracy band; while reviewing one of your moves, the other moves' bars dim.
+  // Color by accuracy; while reviewing one of your moves, the other moves' bars dim.
   const colors = tries.map(({ move, accuracy }) => {
-    const color = accuracy >= 90 ? ACCURACY_COLORS.good : accuracy >= 65 ? ACCURACY_COLORS.ok : ACCURACY_COLORS.bad;
+    const color = accuracyColor(accuracy);
     const dimmed = isReviewingMoves && currentUserMoveIndex !== -1 && currentUserMoveIndex !== move;
     return dimmed ? `${color}4d` : color;
   });
