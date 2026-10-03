@@ -47,12 +47,6 @@ export const ACCURACY_COLORS = {
   bad: '#ef4444'
 };
 
-/** Moves below this percentile of your recent move accuracy must be replayed before the next game */
-export const REPLAY_PERCENTILE = 25;
-
-/** Games whose moves set that percentile (this one included), matching the 100-game stats */
-export const REPLAY_WINDOW_GAMES = 100;
-
 /** Chart.js common scale options */
 export const CHART_SCALE_OPTIONS = {
   grid: {

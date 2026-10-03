@@ -16,7 +16,6 @@ import {
   incrementMoveCounter,
   pushPgnMove,
   pushMoveHistory,
-  getLastMoveHighlights,
   setLastMoveHighlight
 } from './state.js';
 import { animateMove, finishActiveAnimations, showMoveHint, updateBoardAfterMove } from './board.js';
@@ -26,7 +25,6 @@ import { updatePgnDisplay } from './pgn.js';
 import { saveCompletedGame } from './api.js';
 import { hapticMove, hapticSuccess, hapticError, hapticInaccuracy } from './haptics.js';
 import { promptBegin, promptSubmit, endGameClock } from './timeclock.js';
-import { prepareReplay, recordMiss } from './replay.js';
 
 /** Whether the completed game has already been saved for the current session */
 let completedMateSaved = false;
@@ -35,8 +33,15 @@ let movePlaybackInProgress = false;
 /** Latest move submitted while playback was busy; replayed on release */
 let pendingSubmission = null;
 
+/** Ply whose first try was scored; later tries at it only show their score */
+let scoredPly = null;
+
 const AUTO_PLAY_DELAY_MS = 120;
-const WRONG_MOVE_REVEAL_DELAY_MS = 140;
+const LEELA_MOVE_REVEAL_DELAY_MS = 140;
+
+/** A move scoring at least this (shown as 100%) is as good as Leela's and ends the retries */
+const TOP_MOVE_ACCURACY = 99.5;
+
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 
 /**
@@ -45,6 +50,7 @@ const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG
 export function clearPendingCompletedGame() {
   completedMateSaved = false;
   pendingSubmission = null;
+  scoredPly = null;
 }
 
 /** Whether the current game's result has already been persisted. */
@@ -211,24 +217,15 @@ function buildMissedMoveEvaluation(moveUci) {
   };
 }
 
-/**
- * Find the legal move a submitted UCI string refers to in the live position.
- * @param {string} moveUci - Submitted move
- * @returns {Object|null} Chess.js verbose move
- */
-function findLegalMove(moveUci) {
+function isLegalSubmittedMove(moveUci) {
   const chessEngine = getChessEngine();
-  if (!chessEngine) return null;
+  if (!chessEngine) return false;
 
   const normalized = moveUci.toLowerCase();
-  return chessEngine.moves({ verbose: true }).find((move) => {
+  return chessEngine.moves({ verbose: true }).some((move) => {
     const legalUci = `${move.from}${move.to}${move.promotion || ''}`.toLowerCase();
     return legalUci === normalized || (normalized.length === 4 && legalUci.startsWith(normalized));
-  }) || null;
-}
-
-function isLegalSubmittedMove(moveUci) {
-  return findLegalMove(moveUci) !== null;
+  });
 }
 
 /**
@@ -313,47 +310,49 @@ export async function handleMaiaReply(round) {
 }
 
 /**
- * Complete the current prompt after one submitted legal move.
+ * Score one try at the current prompt. Until Leela's move (or one scoring as
+ * well) is found, the position stays and each try only shows its own score;
+ * only the first try at a move is scored and timed.
  * @param {Object} expectedInfo - Expected move info
  * @param {Object} moveEvaluation - LC0 evaluation for the submitted move
  * @param {boolean} isBestMove - Whether the submitted move matched Leela's move
- * @returns {Promise<boolean>} Success
+ * @returns {Promise<boolean>} Whether the game moved on
  */
 export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestMove) {
-  let moveResult = null;
+  const accuracy = isBestMove ? 100 : moveEvaluation.accuracy;
 
-  if (!isBestMove) {
-    // Captured before the position changes; the game's end decides which misses get replayed.
-    recordMiss({
-      ply: expectedInfo.index,
-      fen: getChessEngine()?.fen(),
-      highlights: getLastMoveHighlights(),
-      best: { uci: expectedInfo.move.uci, san: expectedInfo.move.san || expectedInfo.move.uci },
-      played: findLegalMove(moveEvaluation.uci)?.san || moveEvaluation.san,
-      accuracy: moveEvaluation.accuracy,
-      analysis: expectedInfo.move.analysis || []
-    });
+  if (scoredPly !== expectedInfo.index) {
+    scoredPly = expectedInfo.index;
+    promptSubmit();
+    pushMoveScore(accuracy);
+    incrementMoveCounter();
+    scheduleChartsUpdate();
+  }
+  updateMoveFeedback({ accuracy });
+
+  if (!isBestMove && accuracy < TOP_MOVE_ACCURACY) {
+    // Try again: the answer is never revealed.
+    flashBoard('wrong', inaccuracyIntensity(accuracy));
+    hapticInaccuracy(accuracy);
+    showAccuracyBurst(accuracy);
+    setCorrectStreak(0);
+    return false;
   }
 
+  flashBoard('success');
+  showAccuracyBurst(accuracy);
+  hapticSuccess();
+  setCorrectStreak(getCorrectStreak() + 1);
+
+  let moveResult = null;
   if (isBestMove) {
     // The user just made this exact move; commit it instantly rather than
     // replaying an animation of their own input.
     moveResult = applyMoveToBoard(expectedInfo.move, true);
   } else {
-    const intensity = inaccuracyIntensity(moveEvaluation.accuracy);
-    const shakeDuration = flashBoard('wrong', intensity);
-    hapticInaccuracy(moveEvaluation.accuracy);
-    setCorrectStreak(0);
-
-    await sleep(Math.min(240, Math.max(120, shakeDuration * 0.5)));
-    showAccuracyBurst(moveEvaluation.accuracy);
-    updateMoveFeedback({
-      ...moveEvaluation,
-      bestMoveSan: expectedInfo.move.san,
-      bestMoveUci: expectedInfo.move.uci
-    });
+    // Just as good, but the game goes on from Leela's move: show it, then play it.
     showMoveHint(expectedInfo.move.uci.slice(0, 2), expectedInfo.move.uci.slice(2, 4));
-    moveResult = await applyAutoMoveToBoard(expectedInfo.move, true, WRONG_MOVE_REVEAL_DELAY_MS);
+    moveResult = await applyAutoMoveToBoard(expectedInfo.move, true, LEELA_MOVE_REVEAL_DELAY_MS);
   }
 
   if (!moveResult) {
@@ -363,26 +362,7 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     return false;
   }
 
-  if (isBestMove) {
-    flashBoard('success');
-    showAccuracyBurst(100);
-    hapticSuccess();
-    setCorrectStreak(getCorrectStreak() + 1);
-
-    if (expectedInfo.move && typeof expectedInfo.move.uci === 'string') {
-      const targetSquare = expectedInfo.move.uci.slice(2, 4);
-      celebrateSuccess(targetSquare);
-    }
-  }
-
-  const scoreEvaluation = isBestMove
-    ? { ...moveEvaluation, accuracy: 100 }
-    : moveEvaluation;
-
-  pushMoveScore(scoreEvaluation.accuracy);
-  incrementMoveCounter();
-  updateMoveFeedback(scoreEvaluation);
-  scheduleChartsUpdate();
+  celebrateSuccess(expectedInfo.move.uci.slice(2, 4));
 
   const sessionCache = getSessionCache();
   updateSessionCache({ currentIndex: expectedInfo.index + 1 });
@@ -412,10 +392,8 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     completedMateSaved = true;
     endGameClock();
 
-    const checkmate = Boolean(getChessEngine()?.isCheckmate?.());
-    // Missed moves lock New game until they are replayed.
-    prepareReplay(checkmate ? 'Checkmate' : 'Game over');
-    if (checkmate) {
+    const chessEngine = getChessEngine();
+    if (chessEngine?.isCheckmate?.()) {
       celebrateCheckmate(moveResult.to);
     } else {
       showCompletionOverlay('Game over');
@@ -427,11 +405,13 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
 }
 
 /**
- * Begin timing the next prompt if the game still has moves to play.
+ * Begin timing the next prompt if the game still has moves to play. Retries
+ * at a move whose first try was scored are never timed.
  */
 function beginNextPromptIfAny() {
   const sessionCache = getSessionCache();
-  if (sessionCache.moves.length > 0 && sessionCache.currentIndex < sessionCache.moves.length) {
+  if (sessionCache.moves.length > 0 && sessionCache.currentIndex < sessionCache.moves.length
+    && sessionCache.currentIndex !== scoredPly) {
     promptBegin();
   }
 }
@@ -498,14 +478,14 @@ export async function submitMove(moveUci) {
         return;
       }
 
-      console.warn('Unscored wrong move', normalized);
-      promptSubmit();
-      await completeExpectedMove(expectedInfo, buildMissedMoveEvaluation(normalized), false);
+      // Leela's own move always ends the retries, even if the analysis doesn't list it.
+      const isBestMove = normalized === expectedUci;
+      if (!isBestMove) console.warn('Unscored wrong move', normalized);
+      await completeExpectedMove(expectedInfo, buildMissedMoveEvaluation(normalized), isBestMove);
       return;
     }
 
     hapticMove();
-    promptSubmit();
     normalized = moveEvaluation.uci.toLowerCase();
     const isBestMove = normalized === expectedUci;
     await completeExpectedMove(expectedInfo, moveEvaluation, isBestMove);

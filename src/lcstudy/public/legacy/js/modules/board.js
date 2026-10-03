@@ -373,7 +373,7 @@ export function applyLastMoveHighlights() {
 /**
  * Remove Leela's move hint from the board.
  */
-export function clearMoveHint() {
+function clearMoveHint() {
   window.clearTimeout(moveHintTimer);
   moveHintTimer = 0;
   activeHintSquares.forEach((square) => {

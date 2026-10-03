@@ -5,7 +5,6 @@
 
 import {
   getPgnMoves,
-  getVisibleMoveCount,
   getIsReviewingMoves,
   getCurrentMoveIndex
 } from './state.js';
@@ -21,8 +20,7 @@ export function updatePgnDisplay() {
 
   if (!pgnElement || !pgnContainer) return;
 
-  // While a missed move is replayed, only the moves before it are listed.
-  const pgnMoves = getPgnMoves().slice(0, getVisibleMoveCount());
+  const pgnMoves = getPgnMoves();
   const currentIndex = getIsReviewingMoves() ? getCurrentMoveIndex() : -1;
   updateReviewControls(pgnMoves.length, currentIndex);
 

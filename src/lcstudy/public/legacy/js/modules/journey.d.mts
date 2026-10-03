@@ -4,7 +4,6 @@ export const SEARCH_GRADING_STARTED_AT: string;
 export function buildCurrentScoringAccuracy(history: { accuracy: number | null; playedAt: string | Date }[], windowSize?: number): RollingAccuracyPoint[];
 export function buildRollingAccuracy(accuracies: (number | null)[], windowSize?: number): RollingAccuracyPoint[];
 export interface JourneyGame { accuracy: number | null; totalMoves: number; thinkTimeMs: number | null }
-export function recentMovePercentile(history: { playedAt?: string | Date; moves?: number[] | null }[], currentMoves: number[], percentile?: number, windowSize?: number): number | null;
 export function recentPerformance(history: JourneyGame[], windowSize?: number): { accuracy: number | null; secondsPerMove: number | null };
 export interface JourneyPoint { x: number; y: number; game: number; startGame: number; games: number; provisional: boolean }
 export interface CurrentGamePoint { x: number; y: number; moves: number; currentGame: true }

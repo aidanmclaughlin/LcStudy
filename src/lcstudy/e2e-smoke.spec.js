@@ -302,7 +302,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   if (!alternate) throw new Error('No alternate legal move');
 
   const [altFrom, altTo] = moveParts(alternate.uci);
-  const [secondFrom] = moveParts(secondMove.uci);
+  const [secondFrom, secondTo] = moveParts(secondMove.uci);
   await squareTap(page, altFrom);
   await page.waitForTimeout(150);
   await squareTap(page, altTo);
@@ -311,6 +311,14 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   await page.waitForSelector('.accuracy-burst');
   await page.waitForTimeout(150);
   await page.screenshot({ path: 'e2e-screenshots/03a-low-accuracy-burst.png', fullPage: true });
+
+  // A wrong move leaves the position for another try; only Leela's move plays on.
+  const wrongFeedbackText = await page.locator('#move-feedback').textContent();
+  expect(await pieceAt(page, altFrom)).not.toBeNull();
+  expect(await pieceAt(page, secondFrom)).not.toBeNull();
+  await squareTap(page, secondFrom);
+  await page.waitForTimeout(150);
+  await squareTap(page, secondTo);
   await page.waitForFunction((replySan) => (
     (document.querySelector('#move-list')?.textContent || '').includes(replySan)
   ), secondReply.san);
@@ -352,8 +360,8 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
   if (!metricText || !gameMetricText?.includes('%') || !feedbackText?.includes('%')) {
     throw new Error(`Expected accuracy metrics, got ${metricText} / ${gameMetricText} / ${feedbackText}`);
   }
-  if (feedbackText.includes('100.0')) {
-    throw new Error(`Expected legal wrong move accuracy below 100%, got ${feedbackText}`);
+  if (!wrongFeedbackText?.includes('%') || wrongFeedbackText.includes('100.0')) {
+    throw new Error(`Expected legal wrong move accuracy below 100%, got ${wrongFeedbackText}`);
   }
   await expect(page.locator('#accuracy-chart')).toHaveCount(0);
   await expect(page.locator('#hours-left-count')).toHaveCount(0);
@@ -384,6 +392,7 @@ test('accuracy gameplay, haptics, and move review', async ({ page, context }) =>
     metricText,
     gameMetricText,
     feedbackText,
+    wrongFeedbackText,
     historyText,
     accuracyView,
     firstMove: firstMove.uci,
@@ -681,7 +690,8 @@ test.describe('desktop checkmate', () => {
 
     const expectedMate = fixture.moves[fixture.ply];
     const [expectedFrom, expectedTo] = moveParts(expectedMate.uci);
-    const legalWrong = expectedMate.analysis.find((move) => move.uci !== expectedMate.uci);
+    // Under 99.5% (shown as 100%), so it doesn't count as finding the mate.
+    const legalWrong = expectedMate.analysis.find((move) => move.uci !== expectedMate.uci && move.accuracy < 99.5);
     if (!legalWrong) throw new Error('No legal wrong mate move found');
     const [wrongFrom, wrongTo] = moveParts(legalWrong.uci);
     const mateBoard = new Chess(fixture.fen);
@@ -709,20 +719,26 @@ test.describe('desktop checkmate', () => {
     expect(await pieceAt(page, expectedFrom)).toBe(expectedPieceCode);
     expect(completeCalls).toBe(0);
 
+    // A wrong move leaves the mate on the board for another try.
     await squareClick(page, wrongFrom);
     await squareClick(page, wrongTo);
-    await page.waitForTimeout(120);
+    await page.waitForFunction(() => (document.querySelector('#move-feedback')?.textContent || '').includes('%'));
+    await page.waitForTimeout(600);
     expect(await pieceAt(page, expectedFrom)).toBe(expectedPieceCode);
+    await expect(page.locator('#completion-overlay')).toBeHidden();
+    expect(completeCalls).toBe(0);
+
+    await squareClick(page, expectedFrom);
+    await squareClick(page, expectedTo);
     await page.waitForFunction((expectedSan) => (
-      (document.querySelector('#move-list')?.textContent || '').includes(expectedSan) &&
-      (document.querySelector('#move-feedback')?.textContent || '').includes('%')
+      (document.querySelector('#move-list')?.textContent || '').includes(expectedSan)
     ), expectedMate.san);
     await page.waitForSelector('.confetti');
     await requireMoveHighlight(page, 'user', fixture.moves[fixture.ply]);
     await expect(page.locator('#completion-overlay')).toBeVisible();
     await expect(page.locator('#completion-new')).toBeVisible();
     await expect(page.locator('#completion-new')).toBeFocused();
-    await page.screenshot({ path: 'e2e-screenshots/10-checkmate-auto-play.png', fullPage: true });
+    await page.screenshot({ path: 'e2e-screenshots/10-checkmate-after-retry.png', fullPage: true });
     await expect.poll(() => completeCalls).toBe(1);
     await page.waitForTimeout(3200);
     expect(sessionNewCalls).toBe(2);

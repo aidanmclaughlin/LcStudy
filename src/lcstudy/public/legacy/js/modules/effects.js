@@ -47,9 +47,9 @@ export function showCompletionOverlay(result = 'Checkmate') {
   overlay.setAttribute('aria-hidden', 'false');
   requestAnimationFrame(() => {
     overlay.classList.add('is-visible');
-    // Enter or Space takes the next step straight away: replay misses, or a new game.
+    // Enter or Space starts the next game straight away.
     if (!document.getElementById('stats-dialog')?.open) {
-      overlay.querySelector('.completion-actions .btn-primary:not([hidden])')?.focus({ preventScroll: true });
+      document.getElementById('completion-new')?.focus({ preventScroll: true });
     }
   });
 }
@@ -322,9 +322,6 @@ export function updateMoveFeedback(result = null) {
   if (result.loading) return show('Loading', 'muted');
   if (result.error) return show('Retry', 'bad');
   if (result.illegal) return show('Illegal move', 'muted');
-  if (result.bestMoveSan || result.bestMoveUci) {
-    return show(`Best ${result.bestMoveSan || result.bestMoveUci}`, 'best');
-  }
 
   const accuracy = Number(result.accuracy || 0);
   show(`${accuracy.toFixed(1)}%`, accuracy >= 90 ? 'good' : accuracy >= 65 ? 'ok' : 'bad');

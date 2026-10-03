@@ -39,14 +39,6 @@ import {
 } from './modules/moves.js';
 import { initKeyboardNavigation, initMoveReviewButtons, navigateToMove } from './modules/history.js';
 import { startGameClock, endGameClock, promptBegin } from './modules/timeclock.js';
-import {
-  hasPendingReplay,
-  isReplayActive,
-  resetReplay,
-  restorePendingReplay,
-  startReplay,
-  submitReplayMove
-} from './modules/replay.js';
 
 const DEBUG_LOGS = typeof window !== 'undefined' && Boolean(window.LCSTUDY_DEBUG);
 let activeGameLoadId = 0;
@@ -103,9 +95,6 @@ function saveAbandonedGameIfNeeded() {
  * Start a new game session.
  */
 async function startNewGame() {
-  // Missed moves from the finished game have to be replayed first.
-  if (hasPendingReplay()) return;
-
   // A deploy that went live while this tab sat in the background loads with the next game.
   if (newerDeployCheck && await newerDeployCheck) {
     window.location.reload();
@@ -200,7 +189,6 @@ async function startNewGame() {
   // Reset game state
   resetGameProgress();
   resetMoveHistoryState();
-  resetReplay();
   resetMoveAccuracyChart();
   scheduleChartsUpdate();
   initSoundSettings();
@@ -260,22 +248,6 @@ function checkForNewerDeploy() {
 }
 
 /**
- * Reopen a finished game whose missed moves were never replayed (the page was
- * reloaded or closed) instead of starting a new one.
- * @returns {boolean} Whether a game was reopened
- */
-function resumePendingReplay() {
-  if (!restorePendingReplay()) return false;
-
-  // Already saved when it finished.
-  markGameSaved();
-  setBoardInputEnabled(true);
-  prefetchNextSession(null);
-  initAudioUnlockListeners();
-  return true;
-}
-
-/**
  * Decode piece SVGs before they are first needed so the first moves never
  * flash empty squares.
  */
@@ -307,8 +279,8 @@ async function bootstrap() {
     initializeHaptics();
     setBoardInputEnabled(false);
 
-    // Set up move submission callback; missed-move replays take moves first.
-    setMoveSubmitCallback((moveUci) => (isReplayActive() ? submitReplayMove(moveUci) : submitMove(moveUci)));
+    // Set up move submission callback
+    setMoveSubmitCallback(submitMove);
 
     // Charts initialize in the background; gameplay never waits on them.
     ensureChartJs()
@@ -319,10 +291,15 @@ async function bootstrap() {
       .catch((err) => console.warn('Charts unavailable', err));
 
     warmPieceImages();
-    const resumed = resumePendingReplay();
+
+    // Missed-move replays were replaced by retrying in the game; drop any one still saved.
+    try {
+      localStorage.removeItem('lcstudy_pending_replay');
+    } catch (e) {}
+
     await Promise.all([
       loadGameHistory(),
-      resumed ? null : startNewGame()
+      startNewGame()
     ]);
 
     // Set up keyboard navigation
@@ -340,11 +317,6 @@ async function bootstrap() {
 document.getElementById('completion-new')?.addEventListener('click', async () => {
   try { unlockAudio(); } catch (e) {}
   await startNewGame();
-});
-
-document.getElementById('completion-replay')?.addEventListener('click', () => {
-  try { unlockAudio(); } catch (e) {}
-  startReplay();
 });
 
 document.getElementById('completion-review')?.addEventListener('click', () => {

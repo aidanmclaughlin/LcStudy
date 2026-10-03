@@ -88,9 +88,6 @@ let liveFen = STARTING_FEN;
 /** Last visible move squares by side for the live position */
 let lastMoveHighlights = { user: null, opponent: null };
 
-/** Plies listed and reviewable while a missed move is replayed (null = all) */
-let historyLimit = null;
-
 // =============================================================================
 // Chart State
 // =============================================================================
@@ -169,7 +166,6 @@ export function setCurrentMoveIndex(index) { currentMoveIndex = index; }
 export function setIsReviewingMoves(reviewing) { isReviewingMoves = reviewing; }
 export function setLiveFen(fen) { liveFen = fen; }
 export function setLastMoveHighlights(highlights) { lastMoveHighlights = highlights; }
-export function setHistoryLimit(limit) { historyLimit = limit; }
 export function setMoveAccuracyChart(chart) { moveAccuracyChart = chart; }
 export function setSoundEnabled(enabled) { soundEnabled = enabled; }
 export function setAudioContext(ctx) { audioContext = ctx; }
@@ -299,15 +295,6 @@ export function getMoveHighlightsForIndex(targetIndex) {
 }
 
 /**
- * Number of plies shown in the move list and reachable in review. While a
- * missed move is replayed, only the moves before it count.
- * @returns {number}
- */
-export function getVisibleMoveCount() {
-  return historyLimit === null ? moveHistory.length : Math.min(historyLimit, moveHistory.length);
-}
-
-/**
  * Reset move history for a new game.
  */
 export function resetMoveHistoryState() {
@@ -316,7 +303,6 @@ export function resetMoveHistoryState() {
   isReviewingMoves = false;
   liveFen = STARTING_FEN;
   lastMoveHighlights = { user: null, opponent: null };
-  historyLimit = null;
 }
 
 /**

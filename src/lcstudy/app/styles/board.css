@@ -115,7 +115,7 @@
   background: linear-gradient(135deg, var(--sq-user) 50%, var(--sq-opponent) 50%);
 }
 
-/* Leela's move, flashed before it auto-plays after a miss. */
+/* Leela's move, flashed before it auto-plays in place of an equally good one. */
 .square.move-hint::after {
   content: '';
   position: absolute;

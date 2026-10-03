@@ -12,7 +12,7 @@
     "test:e2e": "playwright test e2e-smoke.spec.js --browser=webkit",
     "test:board": "playwright test --config=board.playwright.config.js",
     "test:progress": "node --test journey.test.mjs && playwright test --config=progress.playwright.config.js",
-    "test:replay": "playwright test --config=replay.playwright.config.js"
+    "test:game": "playwright test --config=game.playwright.config.js"
   },
   "dependencies": {
     "@vercel/postgres": "^0.10.0",

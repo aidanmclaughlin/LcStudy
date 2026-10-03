@@ -46,8 +46,7 @@ export default async function HomePage() {
 
           {/* Sidebar Panels */}
           <div className="sidebar">
-            {/* Game-over panel: beside the board so the final position stays visible.
-                Moves under 40% are replayed here before New game appears. */}
+            {/* Game-over panel: beside the board so the final position stays visible */}
             <section
               id="completion-overlay"
               className="panel completion-panel"
@@ -60,13 +59,9 @@ export default async function HomePage() {
                 <h2 id="completion-title" className="label completion-title">Game over</h2>
                 <span id="completion-summary" className="panel-value" />
               </div>
-              <p id="completion-detail" className="completion-detail" hidden />
               <div className="completion-actions">
                 <button id="completion-review" className="btn btn-secondary" type="button">
                   Review
-                </button>
-                <button id="completion-replay" className="btn btn-primary" type="button" hidden>
-                  Replay moves
                 </button>
                 <button id="completion-new" className="btn btn-primary" type="button">
                   New game

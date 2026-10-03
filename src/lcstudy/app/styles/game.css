@@ -37,7 +37,6 @@
 .panel-value[data-tone="good"] { color: var(--color-success); }
 .panel-value[data-tone="ok"] { color: var(--color-warning); }
 .panel-value[data-tone="bad"] { color: var(--color-error); }
-.panel-value[data-tone="best"] { color: var(--color-success); }
 
 /* ---------------------------------------------------------------------------
    Accuracy summary (opens Stats)
@@ -381,29 +380,10 @@
   color: var(--color-success);
 }
 
-/* Replaying a missed move: violet title, one instruction line in place of the actions. */
-.completion-panel[data-result="replay"] .completion-title {
-  color: var(--color-brand-light);
-}
-
-.completion-detail {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 18px;
-}
-
 .completion-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-}
-
-/* Their display rules would otherwise beat the hidden attribute. */
-.completion-detail[hidden],
-.completion-actions[hidden],
-.completion-actions .btn[hidden] {
-  display: none;
 }
 
 /* ---------------------------------------------------------------------------

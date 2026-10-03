@@ -23,28 +23,6 @@ export function buildRollingAccuracy(accuracies, windowSize = 100) {
   return points;
 }
 
-/**
- * Percentile of move accuracy over this game and the latest games scored on
- * the current scale (the window counts this game), so it rises with play.
- * Linear interpolation between the closest ranks.
- */
-export function recentMovePercentile(history, currentMoves, percentile = 25, windowSize = 100) {
-  const startedAt = Date.parse(SEARCH_GRADING_STARTED_AT);
-  const scores = [...currentMoves];
-  let games = 1;
-  for (let i = history.length - 1; i >= 0 && games < windowSize; i--) {
-    const { playedAt, moves } = history[i];
-    if (!(new Date(playedAt).getTime() >= startedAt) || !Array.isArray(moves) || moves.length === 0) continue;
-    scores.push(...moves);
-    games++;
-  }
-  const sorted = scores.filter(score => Number.isFinite(score) && score >= 0 && score <= 100).sort((a, b) => a - b);
-  if (sorted.length === 0) return null;
-  const rank = percentile / 100 * (sorted.length - 1);
-  const low = sorted[Math.floor(rank)], high = sorted[Math.ceil(rank)];
-  return low + (high - low) * (rank - Math.floor(rank));
-}
-
 /** Home baselines share the latest scored games and weight each game equally. */
 export function recentPerformance(history, windowSize = 100) {
   const games = [];

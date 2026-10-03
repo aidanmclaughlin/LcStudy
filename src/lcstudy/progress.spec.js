@@ -390,7 +390,7 @@ test('paired metrics stay compact and separate the game from move feedback', asy
       const value = row.querySelector('.stat-value-row').getBoundingClientRect();
       return label.right <= value.left && row.scrollWidth <= row.clientWidth;
     }))).toBe(true);
-    for (const feedback of [null, { loading: true }, { error: true }, { illegal: true }, { bestMoveSan: 'Nxf8=Q+' }, { accuracy: 100 }]) {
+    for (const feedback of [null, { loading: true }, { error: true }, { illegal: true }, { accuracy: 100 }]) {
       await page.evaluate(async feedback => (await import('/legacy/js/modules/effects.js')).updateMoveFeedback(feedback), feedback);
       const next = await page.locator('.move-chart-heading').boundingBox();
       expect(next.height).toBe(heading.height);
