@@ -3,21 +3,23 @@ const { test, expect } = require('@playwright/test');
 const { encode } = require('next-auth/jwt');
 const { Chess } = require('chess.js');
 const { computeProgressDashboard } = require('./lib/progress-stats');
+const { buildGameResult } = require('./lib/game-result');
 process.loadEnvFile(path.join(__dirname, '.env.local'));
 
-// average_accuracy is accuracy across every try; accuracy_history holds each move's first try.
+// accuracy_history holds each move's first try; average_accuracy is their mean.
+// The first 20 games predate search-based grading; the rest were played with retries.
 const history = Array.from({ length: 160 }, (_, i) => {
   const average_accuracy = 70 + i * 0.1 + Math.sin(i / 7) * 4;
   return {
-    date: new Date(Date.UTC(2026, 6, i < 20 ? 4 : 6, 0, i)).toISOString(),
-    average_accuracy, total_moves: 20, accuracy_history: Array(20).fill(average_accuracy - 10), maia_level: 1500
+    date: new Date(i < 20 ? Date.UTC(2026, 6, 4, 0, i) : Date.UTC(2026, 9, 4, 0, i)).toISOString(),
+    average_accuracy, total_moves: 20, accuracy_history: Array(20).fill(average_accuracy), maia_level: 1500
   };
 });
 
 function statsRow(accuracy, index, overrides = {}) {
   return {
     userId: 'fixture', gameId: `lichess_maia2_fixture_${index}`, attempts: 20, solved: true,
-    accuracy, averageAccuracy: accuracy, playedAt: new Date(Date.UTC(2026, 6, 6, 0, index)),
+    accuracy, averageAccuracy: accuracy, playedAt: new Date(Date.UTC(2026, 9, 4, 0, index)),
     totalMoves: 20, averageRetries: 0, accuracyHistory: Array(20).fill(accuracy),
     maiaLevel: 1500, difficulty: null, leelaColor: 'w',
     openingLine: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3', 'Nf6', 'O-O', 'd6'],
@@ -26,8 +28,9 @@ function statsRow(accuracy, index, overrides = {}) {
 }
 
 async function setup(page, context) {
+  // Some retries: 20 moves and 20-24 attempts per game, 1.10 attempts per move over any 100 games in a row.
   const stats = computeProgressDashboard(history.map((game, index) => statsRow(game.average_accuracy, index, {
-    playedAt: new Date(game.date), accuracyHistory: game.accuracy_history
+    playedAt: new Date(game.date), accuracyHistory: game.accuracy_history, attempts: 20 + (index % 5)
   })));
   const token = await encode({ secret: process.env.NEXTAUTH_SECRET, token: { sub: '00000000-0000-4000-8000-000000000099', userId: '00000000-0000-4000-8000-000000000099', name: 'Progress test' } });
   await context.addCookies([{ name: 'next-auth.session-token', value: token, url: 'http://127.0.0.1:3110', httpOnly: true, sameSite: 'Lax' }]);
@@ -57,7 +60,7 @@ async function setup(page, context) {
 async function snapshot(page) {
   return page.evaluate(async () => {
     const state = await import('/legacy/js/modules/state.js');
-    return { id: state.getSessionId(), fen: state.getChessEngine().fen(), scores: state.getMoveAccuracies(), tries: state.getTryScores().length, ply: state.getSessionCache().currentIndex, review: state.getCurrentMoveIndex() };
+    return { id: state.getSessionId(), fen: state.getChessEngine().fen(), scores: state.getMoveAccuracies(), tries: state.getTryCount(), ply: state.getSessionCache().currentIndex, review: state.getCurrentMoveIndex() };
   });
 }
 
@@ -67,7 +70,7 @@ test('Stats preserves a played game', async ({ page, context }, testInfo) => {
   const { calls, moves } = await setup(page, context);
   await expect(page.locator('#accuracy-chart')).toHaveCount(0);
   await expect(page.locator('#hours-left-count')).toHaveCount(0);
-  // One summary tile, accuracy across every try; time is not tracked.
+  // One summary tile, first-try accuracy; time is not tracked.
   await expect(page.locator('.stats-trigger .stat-tile')).toHaveCount(1);
   await expect(page.locator('#avg-move-time, #current-move-time, #pace-comparison')).toHaveCount(0);
   await expect(page.locator('.stats-trigger #move-feedback')).toHaveCount(0);
@@ -174,7 +177,8 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   await expect(page.locator('.stats-accuracy-chart-line')).toBeVisible();
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundImage === getComputedStyle(document.getElementById('stats-dialog')).backgroundImage)).toBe(true);
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('.stats-page')).getPropertyValue('--text-primary') === getComputedStyle(document.documentElement).getPropertyValue('--text-primary'))).toBe(true);
-  await expect(page.locator('.stats-metric .stats-metric-label')).toHaveText(['100-game accuracy', 'First-try accuracy', 'Maia Elo']);
+  await expect(page.locator('.stats-metric .stats-metric-label')).toHaveText(['100-game accuracy', 'Attempts per move', 'Maia Elo']);
+  await expect(page.locator('.stats-metric').filter({ hasText: 'Attempts per move' }).locator('strong')).toHaveText('1.10');
   await expect(page.locator('.stats-metric').filter({ hasText: 'Maia Elo' })).toHaveAttribute('title', /last 100 eligible games; 80% range/);
   await expect(page.getByRole('heading', { name: 'Accuracy', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Maia-equivalent Elo', exact: true })).toHaveCount(0);
@@ -185,11 +189,10 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
   await expect(page.locator('.stats-chart-legend')).toContainText('Average of up to 100 games');
   const latest = history.slice(-100);
   await expect(page.locator('.stats-metric').filter({ hasText: '100-game accuracy' }).locator('strong')).toHaveText(`${mean(latest.map(game => game.average_accuracy)).toFixed(1)}%`);
-  await expect(page.locator('.stats-metric').filter({ hasText: 'First-try accuracy' }).locator('strong')).toHaveText(`${mean(latest.map(game => mean(game.accuracy_history))).toFixed(1)}%`);
   await expect(page.locator('.stats-accuracy-band .stats-card-meta')).toHaveText('Games 21–160');
   // Time is not tracked anywhere on the page.
   await expect(page.getByRole('tab', { name: 'Timing' })).toHaveCount(0);
-  await expect(page.getByText(/pace|per move|time left|typical game|hours?\b/i)).toHaveCount(0);
+  await expect(page.getByText(/pace|seconds|thinking|time left|typical game|\bhours?\b/i)).toHaveCount(0);
   const backStyles = await page.getByRole('button', { name: 'Resume game' }).evaluate(button => {
     const style = getComputedStyle(button), box = button.getBoundingClientRect();
     return { background: style.backgroundImage, shadow: style.boxShadow, height: box.height, width: box.width };
@@ -214,7 +217,7 @@ test('responsive charts, tabs, and failed loading preserve the board', async ({ 
     expect(chart.width).toBeLessThanOrEqual(744);
     for (const tab of ['Overview', 'Breakdowns']) {
       await page.getByRole('tab', { name: tab, exact: true }).click();
-      if (tab === 'Breakdowns') await expect(page.locator('.stats-caption')).toHaveText('First tries · Last 100 scored games');
+      if (tab === 'Breakdowns') await expect(page.locator('.stats-caption')).toHaveText('Last 100 scored games');
       expect(await page.locator('#stats-dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       expect(await page.locator('.stats-page').evaluate(el => getComputedStyle(el).caretColor)).toBe('rgba(0, 0, 0, 0)');
       if (tab === 'Breakdowns') {
@@ -257,18 +260,18 @@ test('the accuracy chart plots every game from the first, for any history', asyn
   }
 });
 
-test('the comparison arrow sets this game, across every try, against the 100-game accuracy', async ({ page, context }, testInfo) => {
+test('the comparison arrow sets this game against the recent accuracy', async ({ page, context }, testInfo) => {
   await setup(page, context);
   await page.locator('[data-square=e2]').click();
   await page.locator('[data-square=e4]').click();
   await expect.poll(async () => (await snapshot(page)).ply).toBe(2);
-  const configure = async (tries, games = 100) => page.evaluate(async ({ tries, games }) => {
+  const configure = async (scores, games = 100) => page.evaluate(async ({ scores, games }) => {
     const state = await import('/legacy/js/modules/state.js');
     const charts = await import('/legacy/js/modules/charts.js');
-    state.setTryScores(tries.map((accuracy, move) => ({ move, accuracy })));
+    state.setMoveAccuracies(scores);
     state.setGameHistory(Array.from({ length: games }, () => ({ average_accuracy: 80, total_moves: 20 })));
     charts.updateStatistics();
-  }, { tries, games });
+  }, { scores, games });
   await configure([90]);
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-tone', 'better');
   await expect(page.locator('#accuracy-comparison')).toHaveAttribute('data-direction', 'up');
@@ -307,13 +310,12 @@ test('the accuracy summary stays compact and separate from move feedback', async
     const state = await import('/legacy/js/modules/state.js');
     const charts = await import('/legacy/js/modules/charts.js');
     const effects = await import('/legacy/js/modules/effects.js');
-    // Three moves; the second was found on its second try.
+    // Three moves; the second was found on a retry, which isn't scored.
     state.setMoveAccuracies([100, 0, 80]);
-    state.setTryScores([{ move: 0, accuracy: 100 }, { move: 1, accuracy: 0 }, { move: 1, accuracy: 100 }, { move: 2, accuracy: 80 }]);
     charts.updateStatistics();
     effects.updateMoveFeedback({ accuracy: 80 });
   });
-  await expect(page.locator('#current-accuracy')).toHaveText('70.0%');
+  await expect(page.locator('#current-accuracy')).toHaveText('60.0%');
   await expect(page.locator('#move-feedback')).toHaveText('80.0%');
 
   for (const width of [1440, 1024, 390, 320]) {
@@ -378,7 +380,7 @@ test('dashboard performance uses 100 scored games while coverage stays lifetime'
     leelaColor: index < 25 ? 'b' : 'w'
   }));
   const stats = computeProgressDashboard(rows);
-  expect(stats.overview).toMatchObject({ totalGames: 125, totalMoves: 2500, recentGames: 100, recent100: 70, recentFirstTry: 70, best100: 70 });
+  expect(stats.overview).toMatchObject({ totalGames: 125, totalMoves: 2500, recentGames: 100, recent100: 70, best100: 70 });
   expect(stats.progress.adjustedRecent100).toBe(70);
   expect(stats.progress.series.at(-1)).toMatchObject({ rolling100: 70, adjusted100: 70 });
   expect(stats.consistency.recentDeviation).toBeCloseTo(Math.sqrt(30000 / 99), 8);
@@ -395,32 +397,52 @@ test('dashboard performance uses 100 scored games while coverage stays lifetime'
 
   const unscored = statsRow(null, 125, { accuracyHistory: [] });
   const skipped = computeProgressDashboard([...rows, unscored]);
-  expect(skipped.overview).toMatchObject({ recent100: 70, recentFirstTry: 70, recentGames: 100, totalGames: 126 });
+  expect(skipped.overview).toMatchObject({ recent100: 70, recentGames: 100, totalGames: 126 });
 });
 
-test('the headline counts every try while first-try accuracy counts each move once', () => {
-  // Retries lifted these games to 90% across every try; their first tries averaged 60%.
-  const rows = Array.from({ length: 100 }, (_, index) => statsRow(90, index, {
-    attempts: 30, averageRetries: 0.5, accuracyHistory: [...Array(10).fill(100), ...Array(10).fill(20)]
-  }));
-  const stats = computeProgressDashboard(rows);
-  expect(stats.overview).toMatchObject({ recent100: 90, recentFirstTry: 60, best100: 90 });
-  expect(stats.progress.accuracy100.at(-1).accuracy).toBe(90);
-  // Per-move breakdowns use the first tries.
-  expect(stats.skill.colors).toEqual([{ label: 'White', accuracy: 60, exactRate: 50, games: 100, moves: 2000 }]);
-  expect(stats.overview.exactRate).toBe(50);
-  // Games saved before per-move scores had one try per move, so their accuracy is the first try.
-  expect(computeProgressDashboard(rows.map(row => ({ ...row, accuracyHistory: [] }))).overview.recentFirstTry).toBe(90);
+test('attempts per move count retries over every move of the headline games', () => {
+  // 120 games of 20 moves: older ones took 50 attempts, the latest 100 took 30.
+  const rows = Array.from({ length: 120 }, (_, index) => statsRow(80, index, { attempts: index < 20 ? 50 : 30 }));
+  expect(computeProgressDashboard(rows).overview.recentAttemptsPerMove).toBe(1.5);
+  // Longer games weigh more: the average is over moves, not games.
+  const mixed = [statsRow(80, 0, { totalMoves: 10, attempts: 30 }), statsRow(80, 1, { totalMoves: 30, attempts: 30 })];
+  expect(computeProgressDashboard(mixed).overview.recentAttemptsPerMove).toBe(1.5);
+  // Every move takes at least one attempt, and games without moves are skipped.
+  const odd = [statsRow(80, 0, { attempts: 0 }), statsRow(80, 1, { totalMoves: 0, attempts: 9 })];
+  expect(computeProgressDashboard(odd).overview.recentAttemptsPerMove).toBe(1);
+  // Games from before retries (one try per move) don't count; the tile says how many do.
+  const beforeRetries = Array.from({ length: 70 }, (_, index) => statsRow(80, index, { playedAt: new Date(Date.UTC(2026, 9, 2, 0, index)) }));
+  const withRetries = Array.from({ length: 30 }, (_, index) => statsRow(80, 70 + index, { attempts: 30 }));
+  expect(computeProgressDashboard([...beforeRetries, ...withRetries]).overview)
+    .toMatchObject({ recentGames: 100, recentAttemptsPerMove: 1.5, recentAttemptsGames: 30 });
+  expect(computeProgressDashboard(beforeRetries).overview).toMatchObject({ recentAttemptsPerMove: null, recentAttemptsGames: 0 });
+});
+
+test('the server scores a game on its first tries, whatever the client sends', () => {
+  const tries = [[['b2b3', 0], ['d2d4', 70], ['e2e4', 100]], [['g1f3', 100]]];
+  // An older tab sends the mean over every try; the first tries decide.
+  const result = buildGameResult({ accuracyHistory: [0, 100], attempts: 5, triesHistory: tries, averageAccuracy: 85, totalMoves: 9 });
+  expect(result).toEqual({ accuracyHistory: [0, 100], totalMoves: 2, attempts: 5, averageRetries: 1.5, averageAccuracy: 50, triesHistory: tries });
+  // Attempts can't be fewer than moves or logged tries.
+  expect(buildGameResult({ accuracyHistory: [0, 100], attempts: 1, triesHistory: tries }).attempts).toBe(4);
+  // A try log that doesn't match the first tries is dropped, not the game.
+  expect(buildGameResult({ accuracyHistory: [70, 100], triesHistory: tries }).triesHistory).toBeNull();
+  expect(buildGameResult({ accuracyHistory: [0, 100], triesHistory: tries.slice(0, 1) }).triesHistory).toBeNull();
+  expect(buildGameResult({ accuracyHistory: [0, 100], triesHistory: [[['b2b3', 0]], [['bad', 100]]] }).triesHistory).toBeNull();
+  expect(buildGameResult({ accuracyHistory: [] })).toMatchObject({ totalMoves: 0, attempts: 0, averageAccuracy: null, averageRetries: null });
+  // Scores outside 0-100 reject the game.
+  expect(() => buildGameResult({ accuracyHistory: [50, 101] })).toThrow('Invalid accuracy history');
+  expect(() => buildGameResult({ accuracyHistory: [50, null] })).toThrow('Invalid accuracy history');
 });
 
 test('dashboard handles short histories', () => {
   const empty = computeProgressDashboard([]);
-  expect(empty.overview).toMatchObject({ recentGames: 0, recent100: null, recentFirstTry: null, best100: null });
+  expect(empty.overview).toMatchObject({ recentGames: 0, recent100: null, recentAttemptsPerMove: null, best100: null });
   expect(empty.progress.forecast).toBeNull();
   const rows = Array.from({ length: 101 }, (_, index) => statsRow(80, index));
   // Before 100 games the headlines and chart cover the games there are; the best 100 needs 100.
   const partial = computeProgressDashboard(rows.slice(0, 99));
-  expect(partial.overview).toMatchObject({ recentGames: 99, recent100: 80, recentFirstTry: 80, best100: null });
+  expect(partial.overview).toMatchObject({ recentGames: 99, recent100: 80, best100: null });
   expect(partial.progress.accuracy100).toHaveLength(99);
   expect(partial.progress.accuracy100[0]).toEqual({ game: 1, score: 80, accuracy: 80, games: 1 });
   expect(computeProgressDashboard(rows.slice(0, 1)).overview).toMatchObject({ recentGames: 1, recent100: 80 });

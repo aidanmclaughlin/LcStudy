@@ -1,14 +1,13 @@
 /**
  * Statistical model for the progress dashboard.
  *
- * A game's accuracy (averageAccuracy) is its accuracy across every try, the
- * main metric. accuracyHistory holds the first try at each move, which feeds
- * the first-try headline, the per-move breakdowns, and Maia Elo.
+ * A game's accuracy (averageAccuracy) is the mean of the first try at each
+ * move (accuracyHistory); retries are not scored.
  */
 
 import type { UserGameStatsRow } from "@/lib/db";
 import { computeMaiaElo, type MaiaEloStats } from "@/lib/maia-elo";
-import { buildCurrentScoringAccuracy, recentAccuracy, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
+import { RETRIES_STARTED_AT, buildCurrentScoringAccuracy, recentAccuracy, type RollingAccuracyPoint } from "../public/legacy/js/modules/journey.mjs";
 
 const RECENT_WINDOW = 100;
 const TARGET_WINDOW = 10;
@@ -56,7 +55,10 @@ export interface ProgressDashboardStats {
     allTimeAccuracy: number;
     recentGames: number;
     recent100: number | null;
-    recentFirstTry: number | null;
+    /** Attempts per move, retries included, over those of the same games played with retries; 1 = every move found first try */
+    recentAttemptsPerMove: number | null;
+    /** How many games recentAttemptsPerMove covers */
+    recentAttemptsGames: number;
     recent100Low: number;
     recent100High: number;
     best100: number | null;
@@ -154,9 +156,9 @@ export function computeProgressDashboard(
   const recentHistory = recentGames.map(game => game.row);
   const recent = accuracies.slice(-RECENT_WINDOW);
   const recentInterval = meanInterval(recent);
-  // Headline averages cover the latest games, up to 100, so they start with the first game.
+  // The headline average covers the latest games, up to 100, so it starts with the first game.
   const recent100 = recentAccuracy(validGames.map((game) => ({ accuracy: game.accuracy })), RECENT_WINDOW).accuracy;
-  const recentFirstTry = recentAccuracy(validGames.map((game) => ({ accuracy: firstTryAccuracy(game) })), RECENT_WINDOW).accuracy;
+  const recentAttempts = attemptsPerMove(recentHistory);
   const moveScores = history.flatMap((game) => validMoveScores(game.accuracyHistory));
   const totalMoves = history.reduce((sum, game) => sum + Math.max(0, game.totalMoves), 0);
   const trend = linearTrend(adjusted.slice(-RECENT_WINDOW));
@@ -225,7 +227,8 @@ export function computeProgressDashboard(
       allTimeAccuracy: weightedGameAccuracy(history),
       recentGames: recentGames.length,
       recent100,
-      recentFirstTry,
+      recentAttemptsPerMove: recentAttempts.value,
+      recentAttemptsGames: recentAttempts.games,
       recent100Low: recentInterval.low,
       recent100High: recentInterval.high,
       best100: bestRollingAverage(accuracies, RECENT_WINDOW),
@@ -612,10 +615,22 @@ function weightedGameAccuracy(history: UserGameStatsRow[]): number {
   return moves > 0 ? weighted / moves : 0;
 }
 
-/** A game's accuracy on the first try at each move; games without per-move scores had one try per move. */
-function firstTryAccuracy(game: ValidGame): number {
-  const scores = validMoveScores(game.row.accuracyHistory);
-  return scores.length > 0 ? mean(scores) : game.accuracy;
+/**
+ * Every attempt over every move of the games played with retries (earlier
+ * games had one try per move); each move takes at least one.
+ */
+function attemptsPerMove(history: UserGameStatsRow[]): { value: number | null; games: number } {
+  const retriesStartedAt = Date.parse(RETRIES_STARTED_AT);
+  let attempts = 0;
+  let moves = 0;
+  let games = 0;
+  for (const game of history) {
+    if (!(game.totalMoves > 0) || new Date(game.playedAt).getTime() < retriesStartedAt) continue;
+    games += 1;
+    moves += game.totalMoves;
+    attempts += Math.max(game.totalMoves, finiteNumber(game.attempts) ?? 0);
+  }
+  return { value: moves > 0 ? attempts / moves : null, games };
 }
 
 function isLichessGame(row: UserGameStatsRow): boolean {

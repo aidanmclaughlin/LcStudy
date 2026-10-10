@@ -220,10 +220,11 @@
   text-align: center;
 }
 
-/* Headline metrics: tiles separated by 1px hairlines in any arrangement. */
+/* Headline metrics: equal tiles, however many, separated by 1px hairlines. */
 .stats-kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   gap: 1px;
   overflow: hidden;
   background: var(--border-subtle);

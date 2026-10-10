@@ -28,8 +28,8 @@ interface StatsDashboardProps {
  * Every block is the same card: a label header (with optional meta on the
  * right) above its content. Each number appears once per tab.
  *
- * Accuracy means accuracy across every try in a game; the first try at each
- * move is shown separately, the way move-matching accuracy is usually reported.
+ * Accuracy is the first try at each move, the way move-matching accuracy is
+ * usually reported; retries in the game are not scored.
  */
 export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps) {
   const { elo, overview, progress, consistency, skill, coverage } = stats;
@@ -51,9 +51,11 @@ export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps)
 
       <section className="stats-kpis" aria-label="Progress summary">
         <Metric label={windowLabel} value={overview.recent100 === null ? "--" : formatPercent(overview.recent100)}
-          title={`Accuracy across every try, over the last ${formatInteger(windowGames)} scored games (up to ${ACCURACY_WINDOW}) with each game weighted equally`} />
-        <Metric label="First-try accuracy" value={overview.recentFirstTry === null ? "--" : formatPercent(overview.recentFirstTry)}
-          title="Accuracy of your first try at each move over the same games, the way move-matching accuracy is usually reported" />
+          title={`First-try accuracy over the last ${formatInteger(windowGames)} scored games (up to ${ACCURACY_WINDOW}), with each game weighted equally`} />
+        <Metric label="Attempts per move" value={overview.recentAttemptsPerMove === null ? "--" : overview.recentAttemptsPerMove.toFixed(2)}
+          title={`Attempts until you found Leela's move, retries included, averaged over every move ${overview.recentAttemptsGames === windowGames
+            ? `in the same ${formatInteger(windowGames)} games`
+            : `in the ${formatInteger(overview.recentAttemptsGames)} of those games played with retries (earlier games allowed one try per move)`}; 1.00 means you found every move on the first try`} />
         <Metric label="Maia Elo" value={formatElo(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}
           title={elo.current ? `Maia-2 rapid equivalent over the last ${elo.current.games} eligible games; 80% range ${formatEloRange(elo.current, elo.calibration.minimumElo, elo.calibration.maximumElo)}. Not an official rating.` : "No eligible positions"} />
       </section>
@@ -96,7 +98,7 @@ export function StatsDashboard({ stats, embedded = false }: StatsDashboardProps)
         </>}
 
         {tab === "breakdowns" && <>
-          <p className="stats-caption">First tries · {recentSample}</p>
+          <p className="stats-caption">{recentSample}</p>
           <div className="stats-grid">
             <Card title="Game phase"><Breakdown rows={skill.phases} /></Card>
             <Card title="Position difficulty"><Breakdown rows={skill.difficulties} /></Card>
@@ -195,7 +197,7 @@ function RollingAccuracyChart({ points }: { points: RollingAccuracyPoint[] }) {
         titleId="accuracy-chart-title"
         descriptionId="accuracy-chart-description"
         title="Accuracy by game"
-        description={`Each game's accuracy across every try, as dots, and the average of up to ${ACCURACY_WINDOW} games ending at each game, as a line, for games scored under the current search-based grading system. Earlier policy-based scores are excluded.`}
+        description={`Each game's first-try accuracy, as dots, and the average of up to ${ACCURACY_WINDOW} games ending at each game, as a line, for games scored under the current search-based grading system. Earlier policy-based scores are excluded.`}
         yTicks={yAxisTicks}
         xTicks={xAxisTicks}
         overlay={<span className="stats-chart-dot" style={{ left: `${x(last) / CHART_WIDTH * 100}%`, top: `${y(points[last].accuracy)}%` }} />}

@@ -39,13 +39,16 @@ export interface SessionCreateResponse {
 
 /** Request body for completing a game session */
 export interface SessionCompleteRequest {
+  /** Ignored: the server counts accuracy_history */
   total_moves?: number;
   /** Tries across all moves, retries included */
   attempts?: number;
-  /** Accuracy across every try */
+  /** Ignored: the server derives it from accuracy_history */
   average_accuracy?: number;
   /** First try at each move */
   accuracy_history?: number[];
+  /** The moves tried at each move, in order, as [uci, accuracy] pairs (logged, never scored) */
+  tries_history?: [string, number][][];
   maia_level?: number;
   result?: string;
 }

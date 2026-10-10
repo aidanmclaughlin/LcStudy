@@ -67,3 +67,9 @@ ALTER TABLE user_games ADD COLUMN IF NOT EXISTS suggested_think_ms INTEGER;
 -- Per-game predictability offset (expected accuracy of sampling Leela's own
 -- policy), computed lazily from the PGN analysis blobs and cached here.
 ALTER TABLE games ADD COLUMN IF NOT EXISTS difficulty NUMERIC;
+
+-- Every try at each move, in order: one [[uci, accuracy], ...] list per move,
+-- parallel to accuracy_history (whose entries are the first tries). Only first
+-- tries are scored; the retries are kept so a retry-aware statistic can be
+-- tested later. NULL for games saved before 2026-10-10.
+ALTER TABLE user_games ADD COLUMN IF NOT EXISTS tries_history JSONB;

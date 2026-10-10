@@ -12,9 +12,8 @@ import {
   setLiveFen,
   getCorrectStreak,
   setCorrectStreak,
-  getMoveAccuracies,
   pushMoveScore,
-  pushTryScore,
+  pushTry,
   incrementMoveCounter,
   pushPgnMove,
   pushMoveHistory,
@@ -34,7 +33,7 @@ let movePlaybackInProgress = false;
 /** Latest move submitted while playback was busy; replayed on release */
 let pendingSubmission = null;
 
-/** Ply whose first try has been recorded; later tries at it are retries */
+/** Ply whose first try has been scored; later tries at it are retries */
 let scoredPly = null;
 
 const AUTO_PLAY_DELAY_MS = 120;
@@ -199,10 +198,11 @@ function findMoveEvaluation(moveUci, expectedInfo) {
   let evaluation = analysis.find(item => item.uci.toLowerCase() === normalized);
 
   if (!evaluation && normalized.length === 4) {
+    // The board submits promotions without a piece: take the only one listed, else the queen.
     const promotionMatches = analysis.filter(item => item.uci.toLowerCase().startsWith(normalized));
-    if (promotionMatches.length === 1) {
-      evaluation = promotionMatches[0];
-    }
+    evaluation = promotionMatches.length === 1
+      ? promotionMatches[0]
+      : promotionMatches.find(item => item.uci.toLowerCase() === `${normalized}q`);
   }
 
   return evaluation || null;
@@ -312,9 +312,8 @@ export async function handleMaiaReply(round) {
 
 /**
  * Score one try at the current prompt. Until Leela's move (or one scoring as
- * well) is found, the position stays and each try shows its own score. Every
- * try counts toward the game's accuracy; the first try at each move is also
- * kept as that move's first-try score.
+ * well) is found, the position stays and each try shows its own score. Only
+ * the first try at each move is scored; every try is logged, never scored.
  * @param {Object} expectedInfo - Expected move info
  * @param {Object} moveEvaluation - LC0 evaluation for the submitted move
  * @param {boolean} isBestMove - Whether the submitted move matched Leela's move
@@ -327,10 +326,10 @@ export async function completeExpectedMove(expectedInfo, moveEvaluation, isBestM
     scoredPly = expectedInfo.index;
     pushMoveScore(accuracy);
     incrementMoveCounter();
+    scheduleChartsUpdate();
   }
-  pushTryScore(getMoveAccuracies().length - 1, accuracy);
+  pushTry(moveEvaluation.uci.toLowerCase(), accuracy);
   updateMoveFeedback({ accuracy });
-  scheduleChartsUpdate();
 
   if (!isBestMove && accuracy < TOP_MOVE_ACCURACY) {
     // Try again: the answer is never revealed.

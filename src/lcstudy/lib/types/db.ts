@@ -78,6 +78,8 @@ export interface RecordGameResultParams {
   averageRetries: number | null;
   averageAccuracy: number | null;
   accuracyHistory: number[];
+  /** The moves tried at each move, in order, as [uci, accuracy] pairs */
+  triesHistory: [string, number][][] | null;
   maiaLevel: number | null;
 }
 

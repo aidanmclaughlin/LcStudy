@@ -1,6 +1,9 @@
 // Full v2 corpus deployment (a3ce615): policy-ratio and search-based grades are not comparable.
 export const SEARCH_GRADING_STARTED_AT = '2026-07-05T07:39:27Z';
 
+// Retry until found (571e246): earlier games had exactly one try per move.
+export const RETRIES_STARTED_AT = '2026-10-03T05:35:39Z';
+
 /** Rolling averages and headline accuracy cover at most this many games. */
 export const ACCURACY_WINDOW = 100;
 

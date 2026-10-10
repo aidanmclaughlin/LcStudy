@@ -22,6 +22,7 @@ import {
   recordGameResult,
   type SessionRecord
 } from "@/lib/db";
+import { buildGameResult } from "@/lib/game-result";
 import {
   pickPrecomputedGame,
   type PrecomputedGame
@@ -49,13 +50,12 @@ export interface CreateSessionResult {
 export interface FinalizeSessionInput {
   sessionId: string;
   userId: string;
-  totalMoves?: number;
   /** Tries across all moves, retries included */
   attempts?: number;
-  /** Accuracy across every try */
-  averageAccuracy?: number | null;
-  /** First try at each move */
-  accuracyHistory: number[];
+  /** First try at each move; the game's accuracy is their mean */
+  accuracyHistory: unknown;
+  /** The moves tried at each move, in order (logged, never scored) */
+  triesHistory?: unknown;
   maiaLevel?: number | null;
   result?: string;
 }
@@ -149,7 +149,7 @@ function buildGameRecordSource(game: PrecomputedGame) {
  * @throws Error if session not found or doesn't belong to user
  */
 export async function finalizeSession(input: FinalizeSessionInput): Promise<void> {
-  const { sessionId, userId, accuracyHistory } = input;
+  const { sessionId, userId } = input;
 
   // Verify session ownership
   const session = await getSessionRecord(sessionId);
@@ -157,27 +157,21 @@ export async function finalizeSession(input: FinalizeSessionInput): Promise<void
     throw new Error("Session not found");
   }
 
-  // Calculate statistics. Every move takes at least one try.
-  const movesCount = input.totalMoves ?? accuracyHistory.length;
-  const attempts = Number.isInteger(input.attempts) && (input.attempts as number) >= movesCount
-    ? input.attempts as number
-    : movesCount;
-  const averageAccuracy = input.averageAccuracy ??
-    (accuracyHistory.length > 0
-      ? accuracyHistory.reduce((sum, value) => sum + value, 0) / accuracyHistory.length
-      : null);
+  // The game's accuracy is derived from its first tries, whatever the client sent.
+  const result = buildGameResult(input);
 
   // Record the game result
   await recordGameResult({
     userId: session.userId,
     gameId: session.gameId,
-    attempts,
+    attempts: result.attempts,
     solved: (input.result ?? "finished") === "finished",
-    accuracy: averageAccuracy,
-    totalMoves: movesCount,
-    averageRetries: movesCount > 0 ? (attempts - movesCount) / movesCount : null,
-    averageAccuracy,
-    accuracyHistory,
+    accuracy: result.averageAccuracy,
+    totalMoves: result.totalMoves,
+    averageRetries: result.averageRetries,
+    averageAccuracy: result.averageAccuracy,
+    accuracyHistory: result.accuracyHistory,
+    triesHistory: result.triesHistory,
     maiaLevel: input.maiaLevel ?? session.maiaLevel
   });
 

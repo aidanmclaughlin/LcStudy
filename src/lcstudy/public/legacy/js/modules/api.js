@@ -7,7 +7,8 @@ import {
   getSessionId,
   getSessionCache,
   getMoveAccuracies,
-  getTryScores,
+  getMoveTries,
+  getTryCount,
   getGameAccuracy,
   getGameHistory,
   setGameHistory
@@ -41,9 +42,10 @@ export async function loadGameHistory() {
  * Fire-and-forget with keepalive so the request survives tab closes; the
  * local history is updated immediately either way.
  *
- * average_accuracy is the game's accuracy across every try (the main metric);
- * accuracy_history keeps the first try at each move, the way move-matching
- * accuracy is usually reported.
+ * Only first tries are scored: accuracy_history holds the first try at each
+ * move and average_accuracy their mean (the server derives it again from
+ * accuracy_history). attempts counts every try; tries_history logs the moves
+ * tried at each move, in order.
  * @param {'finished' | 'incomplete'} result - Game result
  */
 export function saveCompletedGame(result) {
@@ -57,7 +59,7 @@ export function saveCompletedGame(result) {
   const sessionCache = getSessionCache();
   const maiaLevel = sessionCache.maiaLevel || window.currentMaiaLevel || 1500;
   const totalMoves = moveAccuracies.length;
-  const attempts = getTryScores().length;
+  const attempts = getTryCount();
   const accuracyHistory = [...moveAccuracies];
   const averageAccuracy = getGameAccuracy();
 
@@ -75,6 +77,7 @@ export function saveCompletedGame(result) {
     attempts,
     average_accuracy: averageAccuracy,
     accuracy_history: accuracyHistory,
+    tries_history: getMoveTries(),
     maia_level: maiaLevel,
     result: result
   };

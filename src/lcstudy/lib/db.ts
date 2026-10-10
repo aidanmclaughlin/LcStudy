@@ -180,12 +180,13 @@ export async function recordGameResult(params: RecordGameResultParams): Promise<
     averageRetries,
     averageAccuracy,
     accuracyHistory,
+    triesHistory,
     maiaLevel
   } = params;
 
   await sql`
-    INSERT INTO user_games (user_id, game_id, attempts, solved, accuracy, total_moves, average_retries, average_accuracy, accuracy_history, maia_level)
-    VALUES (${userId}, ${gameId}, ${attempts}, ${solved}, ${accuracy}, ${totalMoves}, ${averageRetries}, ${averageAccuracy}, ${JSON.stringify(accuracyHistory)}, ${maiaLevel})
+    INSERT INTO user_games (user_id, game_id, attempts, solved, accuracy, total_moves, average_retries, average_accuracy, accuracy_history, tries_history, maia_level)
+    VALUES (${userId}, ${gameId}, ${attempts}, ${solved}, ${accuracy}, ${totalMoves}, ${averageRetries}, ${averageAccuracy}, ${JSON.stringify(accuracyHistory)}, ${triesHistory === null ? null : JSON.stringify(triesHistory)}, ${maiaLevel})
   `;
 }
 

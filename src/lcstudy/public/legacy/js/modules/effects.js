@@ -20,7 +20,7 @@ export function showCompletionOverlay(result = 'Checkmate') {
   if (titleEl) titleEl.textContent = result;
   overlay.dataset.result = result === 'Checkmate' ? 'mate' : 'over';
 
-  // The game's accuracy across every try, and how many moves it covered.
+  // The game's accuracy (the first try at each move) and how many moves it covered.
   const summaryEl = document.getElementById('completion-summary');
   if (summaryEl) {
     const accuracy = getGameAccuracy();

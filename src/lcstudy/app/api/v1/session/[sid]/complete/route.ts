@@ -33,10 +33,9 @@ export async function POST(
     await finalizeSession({
       sessionId: params.sid,
       userId: session.user.id,
-      totalMoves: payload.total_moves,
       attempts: payload.attempts,
-      averageAccuracy: payload.average_accuracy,
-      accuracyHistory: payload.accuracy_history ?? [],
+      accuracyHistory: payload.accuracy_history,
+      triesHistory: payload.tries_history,
       maiaLevel: payload.maia_level,
       result: payload.result ?? "finished"
     });

@@ -7,7 +7,7 @@
  *
  * Layout:
  * - Board column: Chessboard (rendered by board.js)
- * - Sidebar: Game-over panel, accuracy summary with Stats access, per-try chart, move list
+ * - Sidebar: Game-over panel, accuracy summary with Stats access, per-move chart, move list
  */
 
 import Script from "next/script";
@@ -69,7 +69,7 @@ export default async function HomePage() {
               </div>
             </section>
 
-            {/* Accuracy Summary Panel: accuracy across every try, over your latest games (up to 100) and this one */}
+            {/* Accuracy Summary Panel: first-try accuracy over your latest games (up to 100) and this one */}
             <StatsView>
               <span className="stat-tile">
                 <span id="avg-accuracy-label" className="label stat-label">100-game accuracy</span>
@@ -84,14 +84,14 @@ export default async function HomePage() {
               </span>
             </StatsView>
 
-            {/* Move Accuracy Chart Panel: one bar per try; the header value is the last try's score */}
+            {/* Move Accuracy Chart Panel: one bar per move (its first try); the header value is the last try's score, retries included */}
             <section className="panel panel-chart" aria-labelledby="move-chart-title">
               <div className="panel-heading move-chart-heading">
                 <h2 id="move-chart-title" className="label">Move accuracy</h2>
                 <strong id="move-feedback" className="panel-value" data-tone="muted" role="status" aria-atomic="true">--</strong>
               </div>
               <div className="chart-container">
-                <canvas id="move-accuracy-chart" role="img" aria-label="Accuracy of every try in this game" />
+                <canvas id="move-accuracy-chart" role="img" aria-label="Accuracy of the first try at each move in this game" />
               </div>
             </section>
 

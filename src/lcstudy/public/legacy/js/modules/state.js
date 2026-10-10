@@ -53,11 +53,18 @@ let chessEngine = null;
 // Game Progress State
 // =============================================================================
 
-/** Accuracy of the first try at each move in the current game */
+/** Accuracy of the first try at each move in the current game: the logged score */
 let moveAccuracies = [];
 
-/** Every try in the current game, in order: {move, accuracy} (move indexes moveAccuracies) */
-let tryScores = [];
+/**
+ * The moves tried at each move, in order, as [uci, accuracy] pairs, parallel to
+ * moveAccuracies. Logged, never scored. A repeat isn't logged again (it only
+ * counts as a try), which keeps the save payload small however much a move is retried.
+ */
+let moveTries = [];
+
+/** Tries in the current game, repeats included */
+let tryCount = 0;
 
 /** Current move number (1-indexed) */
 let moveCounter = 1;
@@ -131,7 +138,8 @@ export function getBoardObserver() { return boardObserver; }
 export function isRebuilding() { return isRebuildingBoard; }
 export function getChessEngine() { return chessEngine; }
 export function getMoveAccuracies() { return moveAccuracies; }
-export function getTryScores() { return tryScores; }
+export function getMoveTries() { return moveTries; }
+export function getTryCount() { return tryCount; }
 export function getMoveCounter() { return moveCounter; }
 export function getPgnMoves() { return pgnMoves; }
 export function getGameHistory() { return gameHistory; }
@@ -160,7 +168,6 @@ export function setBoardObserver(observer) { boardObserver = observer; }
 export function setIsRebuildingBoard(rebuilding) { isRebuildingBoard = rebuilding; }
 export function setChessEngine(engine) { chessEngine = engine; }
 export function setMoveAccuracies(accuracies) { moveAccuracies = accuracies; }
-export function setTryScores(scores) { tryScores = scores; }
 export function setMoveCounter(counter) { moveCounter = counter; }
 export function setPgnMoves(moves) { pgnMoves = moves; }
 export function setGameHistory(history) { gameHistory = history; }
@@ -204,7 +211,8 @@ export function resetSessionCache() {
  */
 export function resetGameProgress() {
   moveAccuracies = [];
-  tryScores = [];
+  moveTries = [];
+  tryCount = 0;
   moveCounter = 1;
   pgnMoves = [];
   correctStreak = 0;
@@ -216,24 +224,28 @@ export function resetGameProgress() {
  */
 export function pushMoveScore(accuracy) {
   moveAccuracies.push(accuracy);
+  moveTries.push([]);
 }
 
 /**
- * Record one try, first or retry.
- * @param {number} move - Index of the move in moveAccuracies
+ * Count one try at the latest move, first or retry, and log the move if it
+ * hasn't been tried there yet.
+ * @param {string} uci - The move tried
  * @param {number} accuracy - Accuracy percentage
  */
-export function pushTryScore(move, accuracy) {
-  tryScores.push({ move, accuracy });
+export function pushTry(uci, accuracy) {
+  tryCount += 1;
+  const tries = moveTries.at(-1);
+  if (tries && !tries.some(([tried]) => tried === uci)) tries.push([uci, accuracy]);
 }
 
 /**
- * The game's accuracy: the mean over every try, retries included.
- * @returns {number|null} Accuracy percentage, or null before the first try
+ * The game's accuracy: the mean of the first try at each move.
+ * @returns {number|null} Accuracy percentage, or null before the first move
  */
 export function getGameAccuracy() {
-  if (tryScores.length === 0) return null;
-  return tryScores.reduce((sum, { accuracy }) => sum + accuracy, 0) / tryScores.length;
+  if (moveAccuracies.length === 0) return null;
+  return moveAccuracies.reduce((sum, accuracy) => sum + accuracy, 0) / moveAccuracies.length;
 }
 
 /**

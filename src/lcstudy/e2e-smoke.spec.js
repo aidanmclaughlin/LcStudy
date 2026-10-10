@@ -486,7 +486,6 @@ test.describe('progress dashboard', () => {
       await page.goto('/stats', { waitUntil: 'networkidle' });
       await expect(page.getByRole('heading', { name: 'Stats', level: 1 })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Accuracy', exact: true })).toBeVisible();
-      await expect(page.locator('.stats-metric').filter({ hasText: 'First-try accuracy' })).toHaveCount(1);
       await expect(page.getByRole('tab', { name: 'Timing', exact: true })).toHaveCount(0);
       const eloMetric = page.locator('.stats-metric').filter({ hasText: 'Maia Elo' });
       await expect(eloMetric.locator('strong')).toHaveText('1,300');
@@ -729,10 +728,10 @@ test.describe('desktop checkmate', () => {
     await expect.poll(() => completeCalls).toBe(1);
     await page.waitForTimeout(3200);
     expect(sessionNewCalls).toBe(2);
-    // Accuracy across both tries; the first try kept per move; no timing.
+    // Only the first try is scored; the retry that found mate is just counted. No timing.
     expect(completePayloads[0]?.accuracy_history).toEqual([legalWrong.accuracy]);
     expect(completePayloads[0]?.attempts).toBe(2);
-    expect(completePayloads[0]?.average_accuracy).toBeCloseTo((legalWrong.accuracy + 100) / 2, 9);
+    expect(completePayloads[0]?.average_accuracy).toBeCloseTo(legalWrong.accuracy, 9);
     for (const key of ['duration_ms', 'think_time_ms', 'move_times_ms', 'suggested_think_ms']) {
       expect(completePayloads[0]).not.toHaveProperty(key);
     }

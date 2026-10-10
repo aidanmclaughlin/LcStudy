@@ -10,7 +10,7 @@ import { updateMoveFeedback } from './effects.js';
 import {
   getMoveAccuracyChart,
   setMoveAccuracyChart,
-  getTryScores,
+  getMoveAccuracies,
   getGameAccuracy,
   getGameHistory,
   getMoveHistory,
@@ -71,7 +71,7 @@ function initMoveAccuracyChart() {
           ...CHART_TOOLTIP_OPTIONS,
           displayColors: false,
           callbacks: {
-            title: items => items[0].label,
+            title: items => `Move ${items[0].dataIndex + 1}`,
             label: item => `${Number(item.raw).toFixed(1)}% accuracy`
           }
         }
@@ -125,21 +125,20 @@ export function scheduleChartsUpdate() {
 }
 
 /**
- * Update the accuracy bar chart: one bar per try, so the bars average to the
- * game's accuracy.
+ * Update the accuracy bar chart: one bar per move, its first try.
  */
 function updateMoveAccuracyChart() {
   const chart = getMoveAccuracyChart();
   if (!chart) return;
 
-  const tries = getTryScores();
+  const moveAccuracies = getMoveAccuracies();
 
   const moveHistory = getMoveHistory();
   const currentMoveIndex = getCurrentMoveIndex();
   const isReviewingMoves = getIsReviewingMoves();
   const nextSignature = [
-    tries.length,
-    tries.at(-1)?.accuracy ?? '',
+    moveAccuracies.length,
+    moveAccuracies.at(-1) ?? '',
     isReviewingMoves ? currentMoveIndex : -1
   ].join('|');
 
@@ -160,23 +159,15 @@ function updateMoveAccuracyChart() {
     }
   }
 
-  // Color by accuracy; while reviewing one of your moves, the other moves' bars dim.
-  const colors = tries.map(({ move, accuracy }) => {
+  // Color by accuracy; while reviewing one of your moves, the other bars dim.
+  const colors = moveAccuracies.map((accuracy, index) => {
     const color = accuracyColor(accuracy);
-    const dimmed = isReviewingMoves && currentUserMoveIndex !== -1 && currentUserMoveIndex !== move;
+    const dimmed = isReviewingMoves && currentUserMoveIndex !== -1 && currentUserMoveIndex !== index;
     return dimmed ? `${color}4d` : color;
   });
 
-  // Tooltip titles: "Move 3", or "Move 3 · try 2" for a move that took more than one.
-  const triesPerMove = new Map();
-  tries.forEach(({ move }) => triesPerMove.set(move, (triesPerMove.get(move) || 0) + 1));
-  const seen = new Map();
-  chart.data.labels = tries.map(({ move }) => {
-    const attempt = (seen.get(move) || 0) + 1;
-    seen.set(move, attempt);
-    return triesPerMove.get(move) > 1 ? `Move ${move + 1} · try ${attempt}` : `Move ${move + 1}`;
-  });
-  chart.data.datasets[0].data = tries.map(({ accuracy }) => accuracy);
+  chart.data.labels = moveAccuracies.map((_, index) => String(index + 1));
+  chart.data.datasets[0].data = [...moveAccuracies];
   chart.data.datasets[0].backgroundColor = colors;
 
   chart.update('none');
@@ -197,7 +188,7 @@ export function resetMoveAccuracyChart() {
 
 /**
  * Update the accuracy summary: the average of your latest games (up to 100,
- * named in the label) and this game, both across every try.
+ * named in the label) and this game, both on the first try at each move.
  */
 export function updateStatistics() {
   const baseline = recentAccuracy(getGameHistory().map(game => ({ accuracy: game.average_accuracy })));
@@ -207,8 +198,8 @@ export function updateStatistics() {
   const label = document.getElementById('avg-accuracy-label');
   if (label) label.textContent = `${windowGames}-game accuracy`;
   updateMetric('avg-accuracy', baseline.accuracy,
-    `Accuracy across every try, averaged over your latest ${windowGames} scored ${windowGames === 1 ? 'game' : 'games'}`);
-  updateMetric('current-accuracy', gameAccuracy, 'Accuracy across every try in this game');
+    `First-try accuracy, averaged over your latest ${windowGames} scored ${windowGames === 1 ? 'game' : 'games'}`);
+  updateMetric('current-accuracy', gameAccuracy, 'First-try accuracy in this game');
   updateComparison('accuracy-comparison', gameAccuracy, baseline.accuracy);
 
   if (gameAccuracy === null) {

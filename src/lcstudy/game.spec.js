@@ -74,15 +74,15 @@ async function playTurn(page, uci, ply, totalPlies) {
   await expect.poll(async () => (await snapshot(page)).ply).toBe(Math.min(ply + 2, totalPlies));
 }
 
-/** First try at each move, every try, and the next ply to play. */
+/** First try at each move (the scores), how many tries in all, and the next ply to play. */
 function snapshot(page) {
   return page.evaluate(async () => {
     const state = await import('/legacy/js/modules/state.js');
-    return { scores: state.getMoveAccuracies(), tries: state.getTryScores().map(({ accuracy }) => accuracy), ply: state.getSessionCache().currentIndex };
+    return { scores: state.getMoveAccuracies(), tries: state.getTryCount(), ply: state.getSessionCache().currentIndex };
   });
 }
 
-/** The in-game chart's bars: one per try. */
+/** The in-game chart's bars: one per move. */
 function chartBars(page) {
   return page.evaluate(async () => {
     const chart = (await import('/legacy/js/modules/state.js')).getMoveAccuracyChart();
@@ -110,7 +110,7 @@ function pieceAt(page, square) {
   return page.evaluate(name => document.querySelector(`[data-square="${name}"] .piece`)?.dataset.piece || null, square);
 }
 
-test('a miss stays on the board until Leela\'s move is found; every try counts toward the game', async ({ page, context }) => {
+test('a miss stays on the board until Leela\'s move is found; only the first try is scored', async ({ page, context }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const moves = buildMoves(WHITE_GAME, { 0: [['d4', 70]], 4: [['Bb5', 99.4], ['Be2', 99.5]], 6: [['h3', 100]] });
@@ -121,13 +121,13 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   // An illegal move changes nothing and scores nothing.
   await play(page, 'g1g3');
   await expect(feedback).toHaveText('Illegal move');
-  expect(await snapshot(page)).toEqual({ scores: [], tries: [], ply: 0 });
+  expect(await snapshot(page)).toEqual({ scores: [], tries: 0, ply: 0 });
 
   // A wrong move shows its score and leaves the position for another try.
   await play(page, 'b2b3');
   await expect(feedback).toHaveText('0.0%');
   await expect(burst).toHaveText('0%');
-  expect(await snapshot(page)).toEqual({ scores: [0], tries: [0], ply: 0 });
+  expect(await snapshot(page)).toEqual({ scores: [0], tries: 1, ply: 0 });
   expect(await shakeDistance(page)).toBeCloseTo(32, 6);
 
   // Leela's move is never shown or played.
@@ -136,7 +136,7 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   expect(await boardPlacement(page)).toEqual(placement(START));
   await expect(page.locator('#move-list')).toHaveText('No moves yet');
 
-  // Every try is scored for the game; the first stays the move's first-try score.
+  // Every try shows its score, but only the first is the move's score; retries are logged, never scored.
   await play(page, 'd2d4');
   await expect(feedback).toHaveText('70.0%');
   await expect(burst).toHaveText('70%');
@@ -150,8 +150,8 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   await expect(feedback).toHaveCSS('color', 'rgb(248, 135, 0)');
   await play(page, 'b2b3');
   await expect(feedback).toHaveText('0.0%');
-  expect(await snapshot(page)).toEqual({ scores: [0], tries: [0, 70, 0], ply: 0 });
-  await expect(page.locator('#current-accuracy')).toHaveText('23.3%');
+  expect(await snapshot(page)).toEqual({ scores: [0], tries: 3, ply: 0 });
+  await expect(page.locator('#current-accuracy')).toHaveText('0.0%');
   expect(await boardPlacement(page)).toEqual(placement(START));
 
   // Finding it plays on as usual.
@@ -160,11 +160,11 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
   await expect(feedback).toHaveText('100.0%');
   await expect.poll(async () => (await snapshot(page)).ply).toBe(2);
   await expect(page.locator('#move-list .pgn-move')).toHaveText(['e4', 'e5']);
-  expect(await snapshot(page)).toEqual({ scores: [0], tries: [0, 70, 0, 100], ply: 2 });
+  expect(await snapshot(page)).toEqual({ scores: [0], tries: 4, ply: 2 });
 
   await playTurn(page, 'g1f3', 2, moves.length);
-  expect(await snapshot(page)).toEqual({ scores: [0, 100], tries: [0, 70, 0, 100, 100], ply: 4 });
-  await expect(page.locator('#current-accuracy')).toHaveText('54.0%');
+  expect(await snapshot(page)).toEqual({ scores: [0, 100], tries: 5, ply: 4 });
+  await expect(page.locator('#current-accuracy')).toHaveText('50.0%');
 
   // 99.4% still needs another try; a move as good as Leela's (shown as 100%) ends the retries
   // and her own move is played.
@@ -187,45 +187,52 @@ test('a miss stays on the board until Leela\'s move is found; every try counts t
     await playTurn(page, uci, ply, moves.length);
   }
 
-  // The game's accuracy is the mean over every try: 868.9 over 11 tries.
-  const tries = [0, 70, 0, 100, 100, 99.4, 99.5, 100, 100, 100, 100];
-  expect((await snapshot(page)).tries).toEqual(tries);
+  // The game's accuracy is the mean of the first tries, 599.4 over 7 moves; it took 11 tries.
+  const scores = [0, 100, 99.4, 100, 100, 100, 100];
+  expect(await snapshot(page)).toEqual({ scores, tries: 11, ply: 14 });
   await expect(page.locator('#completion-overlay')).toBeVisible();
   await expect(page.locator('#completion-title')).toHaveText('Game over');
-  await expect(page.locator('#completion-summary')).toHaveText('79.0% · 7 moves');
-  await expect(page.locator('#current-accuracy')).toHaveText('79.0%');
+  await expect(page.locator('#completion-summary')).toHaveText('85.6% · 7 moves');
+  await expect(page.locator('#current-accuracy')).toHaveText('85.6%');
   // With no earlier games, the finished game is the whole recent average.
   await expect(page.locator('#avg-accuracy-label')).toHaveText('1-game accuracy');
-  await expect(page.locator('#avg-accuracy')).toHaveText('79.0%');
+  await expect(page.locator('#avg-accuracy')).toHaveText('85.6%');
   await expect(page.locator('.completion-actions .btn')).toHaveText(['Review', 'New game']);
   await expect(page.locator('#completion-new')).toBeFocused();
 
-  // The chart shows one bar per try, labelled by move and try, colored on the same scale.
-  await expect.poll(async () => (await chartBars(page))?.data).toEqual(tries);
+  // The chart shows one bar per move, its first try, colored on the same scale.
+  await expect.poll(async () => (await chartBars(page))?.data).toEqual(scores);
   expect(await page.evaluate(async () => {
     const chart = (await import('/legacy/js/modules/state.js')).getMoveAccuracyChart();
     const { accuracyColor } = await import('/legacy/js/modules/colors.mjs');
     return chart.data.datasets[0].backgroundColor.every((color, i) => color === accuracyColor(chart.data.datasets[0].data[i]));
   })).toBe(true);
-  expect((await chartBars(page)).labels).toEqual([
-    'Move 1 · try 1', 'Move 1 · try 2', 'Move 1 · try 3', 'Move 1 · try 4', 'Move 2',
-    'Move 3 · try 1', 'Move 3 · try 2', 'Move 4', 'Move 5', 'Move 6', 'Move 7'
-  ]);
+  expect((await chartBars(page)).labels).toEqual(['1', '2', '3', '4', '5', '6', '7']);
 
-  // Saved: accuracy across every try, each move's first try, and the try count; no timing.
+  // Saved: each move's first try, their mean, the try count, and the moves tried at each
+  // move in order (the repeated b2b3 only counts as a try); no timing.
   await expect.poll(() => calls.saves.length).toBe(1);
   const [saved] = calls.saves;
-  expect(Object.keys(saved).sort()).toEqual(['accuracy_history', 'attempts', 'average_accuracy', 'maia_level', 'result', 'total_moves']);
-  expect(saved.average_accuracy).toBeCloseTo(868.9 / 11, 9);
+  expect(Object.keys(saved).sort()).toEqual(['accuracy_history', 'attempts', 'average_accuracy', 'maia_level', 'result', 'total_moves', 'tries_history']);
+  expect(saved.average_accuracy).toBeCloseTo(599.4 / 7, 9);
   expect(saved.accuracy_history).toEqual([0, 100, 99.4, 100, 100, 100, 100]);
   expect(saved).toMatchObject({ total_moves: 7, attempts: 11, result: 'finished' });
+  expect(saved.tries_history).toEqual([
+    [['b2b3', 0], ['d2d4', 70], ['e2e4', 100]],
+    [['g1f3', 100]],
+    [['f1b5', 99.4], ['f1e2', 99.5]],
+    [['h2h3', 100]],
+    [['e1g1', 100]],
+    [['b1c3', 100]],
+    [['c1e3', 100]]
+  ]);
 
   await page.keyboard.press('Enter');
   await expect(page.locator('#completion-overlay')).toBeHidden();
   await expect.poll(() => calls.sessions).toBe(3);
   expect(await boardPlacement(page)).toEqual(placement(START));
   await expect(page.locator('#move-list')).toHaveText('No moves yet');
-  expect(await snapshot(page)).toEqual({ scores: [], tries: [], ply: 0 });
+  expect(await snapshot(page)).toEqual({ scores: [], tries: 0, ply: 0 });
   await expect.poll(async () => (await chartBars(page))?.data).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -245,8 +252,8 @@ test('black: a miss on the first move keeps Maia\'s opening move on the board', 
   for (const [ply, uci] of [[1, 'c7c5'], [3, 'd7d6'], [5, 'c5d4'], [7, 'g8f6']]) {
     await playTurn(page, uci, ply, moves.length);
   }
-  // Five tries over four moves: 0, then four at 100.
-  await expect(page.locator('#completion-summary')).toHaveText('80.0% · 4 moves');
+  // First tries 0, 100, 100, 100; the retry at the first move isn't scored.
+  await expect(page.locator('#completion-summary')).toHaveText('75.0% · 4 moves');
   expect(await boardPlacement(page)).toEqual(placement(fenAfter(sans, 8)));
 });
 
@@ -266,9 +273,9 @@ test('a wrong try at the mating move leaves the game open until mate is found', 
 
   await play(page, 'h5f7');
   await expect(page.locator('#completion-title')).toHaveText('Checkmate');
-  await expect(page.locator('#completion-summary')).toHaveText('80.0% · 4 moves');
+  await expect(page.locator('#completion-summary')).toHaveText('75.0% · 4 moves');
   await expect.poll(() => calls.saves.length).toBe(1);
-  expect(calls.saves[0]).toMatchObject({ accuracy_history: [100, 100, 100, 0], attempts: 5, average_accuracy: 80 });
+  expect(calls.saves[0]).toMatchObject({ accuracy_history: [100, 100, 100, 0], attempts: 5, average_accuracy: 75 });
   expect(await pieceAt(page, 'f7')).toBe('wQ');
 });
 
@@ -280,7 +287,7 @@ test('Leela\'s move ends the retries even when the analysis doesn\'t list it', a
   await play(page, 'd2d4');
   await expect(page.locator('#move-feedback')).toHaveText('0.0%');
   await playTurn(page, 'e2e4', 0, moves.length);
-  expect(await snapshot(page)).toEqual({ scores: [0], tries: [0, 100], ply: 2 });
+  expect(await snapshot(page)).toEqual({ scores: [0], tries: 2, ply: 2 });
 });
 
 test('a replay saved before retries replaced it is dropped and a new game starts', async ({ page, context }) => {
